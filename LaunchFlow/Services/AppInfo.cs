@@ -7,10 +7,10 @@ public static class AppInfo
     public static string ProductName => "LaunchFlow";
 
     /// <summary>
-    /// Optional GitHub Releases API URL. Set in Settings, or assign before check
-    /// when you publish releases (e.g. https://api.github.com/repos/you/LaunchFlow/releases/latest).
+    /// Default GitHub Releases API URL for updates. Can be overridden in Settings
+    /// or programmatically.
     /// </summary>
-    public static string? DefaultUpdateFeedUrl { get; set; }
+    public static string? DefaultUpdateFeedUrl { get; set; } = "https://api.github.com/repos/KamiBuilds/LaunchFlow/releases/latest";
 
     public static string VersionString
     {
