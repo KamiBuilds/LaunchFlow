@@ -1,0 +1,26 @@
+name: Build standalone Universal Installer
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  universal:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Build self-contained universal installer
+        shell: pwsh
+        run: |
+          Set-Content .\bootstrapper\release-source.txt 'KamiBuilds/LaunchFlow' -Encoding utf8
+          dotnet publish .\bootstrapper\LaunchFlow.UniversalInstaller.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishReadyToRun=false -p:DebugType=None -p:DebugSymbols=false -o .\dist\universal-publish
+          if ($LASTEXITCODE -ne 0) { throw 'Bootstrapper publish failed' }
+          Copy-Item .\dist\universal-publish\LaunchFlow.UniversalInstaller.exe .\dist\LaunchFlow-Universal-Installer.exe -Force
+      - name: Download this once
+        uses: actions/upload-artifact@v4
+        with:
+          name: LaunchFlow-Universal-Installer
+          path: dist/LaunchFlow-Universal-Installer.exe
+          if-no-files-found: error
