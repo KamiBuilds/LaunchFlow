@@ -1,0 +1,26 @@
+# Build outputs
+**/bin/
+**/obj/
+publish/
+dist/
+.vs/
+.vscode/
+
+# Local credentials, runtime sessions and user data
+*.db
+*.db-shm
+*.db-wal
+*.kdbx
+*.launchflow
+*vault*.json
+*security*.json
+profiles-v2/
+profiles-sealed/
+*.profile.aes
+*.pfx
+*.p12
+*.pem
+*.key
+*.log
+.env
+.env.*
