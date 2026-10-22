@@ -26,7 +26,7 @@ public static class UpdateChecker
         if (string.IsNullOrWhiteSpace(feedUrl))
         {
             return new UpdateInfo(false, currentText, null,
-                "Automatic update checks are off. Publish a GitHub Release (workflow: Release Windows installer) and set the Releases API URL under Settings → Security.");
+                "Automatic update checks are off. Publish a LaunchFlow GitHub Release to enable update checks, or configure a custom feed under Settings → Security.");
         }
 
         try
