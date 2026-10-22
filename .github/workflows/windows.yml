@@ -1,0 +1,90 @@
+name: Windows build and release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: 'Publish a GitHub Release for the version in LaunchFlow.csproj'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Install .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Resolve project version
+        shell: pwsh
+        run: |
+          [xml]$p = Get-Content ./LaunchFlow/LaunchFlow.csproj
+          $version = [string](@($p.Project.PropertyGroup.Version | Where-Object { $_ })[0])
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid project version: $version" }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") { throw 'Release tag does not match project version.' }
+          "LF_VERSION=$version" >> $env:GITHUB_ENV
+          "LF_TAG=v$version" >> $env:GITHUB_ENV
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
+      - name: Build Windows app installer
+        shell: pwsh
+        run: |
+          ./BUILD-INSTALLER.ps1 -Yes -NoAutoInstall
+          if ($LASTEXITCODE -ne 0) { throw 'Windows setup compilation failed' }
+          $setup = Join-Path $PWD "dist/LaunchFlow-Setup-v$env:LF_VERSION-x64.exe"
+          if (-not (Test-Path $setup)) { throw "Expected setup not found: $setup" }
+      - name: Build standalone universal installer
+        shell: pwsh
+        run: |
+          Set-Content -Path ./bootstrapper/release-source.txt -Value 'KamiBuilds/LaunchFlow' -Encoding utf8
+          dotnet publish ./bootstrapper/LaunchFlow.UniversalInstaller.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishReadyToRun=false -p:DebugType=None -p:DebugSymbols=false -o ./dist/universal-publish
+          if ($LASTEXITCODE -ne 0) { throw 'Universal installer compilation failed' }
+          Copy-Item ./dist/universal-publish/LaunchFlow.UniversalInstaller.exe ./dist/LaunchFlow-Universal-Installer.exe -Force
+      - name: Package tracked source into ZIP
+        shell: pwsh
+        run: |
+          $zip = "dist/LaunchFlow-v$env:LF_VERSION-source.zip"
+          git archive --format=zip -o $zip HEAD
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $zip)) { throw 'Source ZIP creation failed' }
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: LaunchFlow-v${{ env.LF_VERSION }}-Windows
+          path: |
+            dist/LaunchFlow-Setup-v${{ env.LF_VERSION }}-x64.exe
+            dist/LaunchFlow-Universal-Installer.exe
+            dist/LaunchFlow-v${{ env.LF_VERSION }}-source.zip
+          if-no-files-found: error
+          retention-days: 60
+      - name: Publish verified build to GitHub Releases
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.LF_TAG }}
+          name: LaunchFlow ${{ env.LF_VERSION }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          files: |
+            dist/LaunchFlow-Setup-v${{ env.LF_VERSION }}-x64.exe
+            dist/LaunchFlow-Universal-Installer.exe
+            dist/LaunchFlow-v${{ env.LF_VERSION }}-source.zip
+          fail_on_unmatched_files: true
