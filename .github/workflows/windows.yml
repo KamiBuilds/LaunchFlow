@@ -59,12 +59,6 @@ jobs:
           dotnet publish ./bootstrapper/LaunchFlow.UniversalInstaller.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishReadyToRun=false -p:DebugType=None -p:DebugSymbols=false -o ./dist/universal-publish
           if ($LASTEXITCODE -ne 0) { throw 'Universal installer compilation failed' }
           Copy-Item ./dist/universal-publish/LaunchFlow.UniversalInstaller.exe ./dist/LaunchFlow-Universal-Installer.exe -Force
-      - name: Package tracked source into ZIP
-        shell: pwsh
-        run: |
-          $zip = "dist/LaunchFlow-v$env:LF_VERSION-source.zip"
-          git archive --format=zip -o $zip HEAD
-          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $zip)) { throw 'Source ZIP creation failed' }
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
         with:
@@ -72,20 +66,17 @@ jobs:
           path: |
             dist/LaunchFlow-Setup-v${{ env.LF_VERSION }}-x64.exe
             dist/LaunchFlow-Universal-Installer.exe
-            dist/LaunchFlow-v${{ env.LF_VERSION }}-source.zip
           if-no-files-found: error
-          retention-days: 60
-      - name: Publish or stage verified build to GitHub Releases
-        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[stage-draft-v0.7.8]'))
+          retention-days: 30
+      - name: Publish stable GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.LF_TAG }}
-          draft: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[stage-draft-v0.7.8]') }}
           name: LaunchFlow ${{ env.LF_VERSION }}
           target_commitish: ${{ github.sha }}
           generate_release_notes: true
           files: |
             dist/LaunchFlow-Setup-v${{ env.LF_VERSION }}-x64.exe
             dist/LaunchFlow-Universal-Installer.exe
-            dist/LaunchFlow-v${{ env.LF_VERSION }}-source.zip
           fail_on_unmatched_files: true

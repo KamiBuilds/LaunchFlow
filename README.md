@@ -1,39 +1,35 @@
 # LaunchFlow
 
-Windows desktop application for website workflows, encrypted local credentials, multiple-monitor browser placement, and configurable Windows triggers.
+LaunchFlow is a Windows desktop application for automated website workflows, secure local credential storage, and multi-monitor browser sessions.
 
-## Download LaunchFlow
+## Install LaunchFlow
 
-After the first release succeeds, download the **[Universal Installer](https://github.com/KamiBuilds/LaunchFlow/releases/latest)**. It checks the latest published release whenever you run it; everyday users do **not** need Visual Studio, Inno Setup, or the .NET SDK.
+**Windows 10 or 11 · x64**
 
-Until the first published release exists, use **[Actions → Windows build and release](https://github.com/KamiBuilds/LaunchFlow/actions/workflows/windows.yml)** to find the latest development build artifact (GitHub sign-in may be required). Development artifacts are not automatically offered by the universal updater.
+### [Download the LaunchFlow Universal Installer](https://github.com/KamiBuilds/LaunchFlow/releases/latest/download/LaunchFlow-Universal-Installer.exe)
 
-## Automated builds and releases
+1. Download and run `LaunchFlow-Universal-Installer.exe`.
+2. Click **Download and install**. The installer fetches the latest stable LaunchFlow version from the official GitHub release, checks the published SHA-256 digest, and launches Windows Setup.
+3. Complete setup and open LaunchFlow. Create your master password, choose startup behavior, and add your website workflows.
 
-- **Each push to `main`** automatically builds the Windows setup executable, universal installer, and a **source ZIP**, then uploads all three as a downloadable Actions artifact.
-- **Each version tag (`v0.7.8`, `v0.7.9`, etc.)** builds the same files and publishes a GitHub Release that the universal installer can download.
-- **To publish without creating a tag manually**, open the Windows build and release workflow, click **Run workflow**, check **Publish a GitHub Release**, and run it. The release uses the version in `LaunchFlow/LaunchFlow.csproj`.
-- Creating a ZIP inside a ChatGPT conversation does **not** automatically push it to GitHub. Changes must be committed to the repository; once committed, GitHub handles packaging.
+**No source archives, Git, Visual Studio, or developer SDKs are needed.** The first installation requires internet access. Windows may display an unknown-publisher warning until the release is digitally signed.
 
-## Source layout
+The versioned `LaunchFlow-Setup-vX.Y.Z-x64.exe` release asset is the payload the universal installer downloads automatically; normal users should download only the universal installer.
 
-| Path | Purpose |
-| --- | --- |
-| `LaunchFlow/` | Windows WPF application, encryption vault, and browser automation |
-| `bootstrapper/` | One-time universal update installer |
-| `installer/` | Inno Setup packaging configuration |
-| `tools/` | Signing and developer utilities |
-| `.github/workflows/windows.yml` | Single Windows build/release workflow |
-| `BUILD-INSTALLER.cmd` | Optional local Windows installer build for developers |
-| `BUILD-INSTALLER.ps1`, `BUILD-UNIVERSAL-INSTALLER.ps1` | Developer build scripts |
-| `CHANGELOG.md`, `CODE-SIGNING.md` | Release history and signing instructions |
+This download becomes available once the first stable release is published. Draft releases are reserved for testing.
 
-## Building locally
+## Updates
 
-On Windows, install the .NET 8 SDK and Inno Setup, or allow the developer build script to offer those dependencies. Run `BUILD-INSTALLER.cmd`. The setup EXE will be under `dist/`. Ordinary users should use a published installer instead of compiling the project.
+Run the **same universal installer** again to find and install the latest stable version. The application also supports checking for newer versions. Existing encrypted vaults and workflow data are retained when upgrading.
 
-## Privacy and release safety
+## Development
 
-Never push local vault databases, user profiles, browser cookies, exported credentials, secrets, signing certificates, or logs to this public repository. The `.gitignore` excludes common sensitive files. Always inspect changes before publishing. Build automation is not a security audit or a replacement for testing installation, Windows locking, encryption, and login flows.
+The core application is in `LaunchFlow/`. The standalone updater is in `bootstrapper/`; Windows setup definitions are in `installer/`; build support is in `tools/`.
 
-**Status:** Development project. Releases are unsigned until a trusted code-signing certificate is configured. Windows may show an unknown-publisher prompt.
+Pushing commits to `main` automatically builds both installers. Downloadable development builds are available under [GitHub Actions](https://github.com/KamiBuilds/LaunchFlow/actions/workflows/windows.yml). A version tag (`v0.7.9`, for example) or a deliberate **Publish a GitHub Release** workflow run publishes them for end users.
+
+Windows developers can use `BUILD-INSTALLER.cmd` with .NET 8 SDK and Inno Setup. See [CHANGELOG.md](CHANGELOG.md) and [CODE-SIGNING.md](CODE-SIGNING.md) for development notes.
+
+## Privacy and security
+
+LaunchFlow keeps vault data locally. Do not commit credentials, encrypted databases, browser sessions, exported profiles, logs or signing certificates. Installer builds must be tested before public distribution.
