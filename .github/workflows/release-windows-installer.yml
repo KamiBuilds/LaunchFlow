@@ -1,0 +1,121 @@
+# Builds and publishes LaunchFlow-Setup-*.exe as a GitHub Release asset.
+# Trigger: push a tag like v0.7.2  OR  run manually (workflow_dispatch).
+name: Release Windows installer
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version label without v (e.g. 0.7.2). Defaults to tag or csproj."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Resolve version
+        id: ver
+        shell: pwsh
+        run: |
+          $v = "${{ github.event.inputs.version }}".Trim()
+          if (-not $v -and $env:GITHUB_REF_TYPE -eq 'tag') {
+            $v = $env:GITHUB_REF_NAME.TrimStart('v','V')
+          }
+          if (-not $v) {
+            [xml]$csproj = Get-Content .\LaunchFlow\LaunchFlow.csproj
+            $v = $csproj.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+          }
+          if (-not $v) { throw "Could not resolve version" }
+          "VERSION=$v" | Out-File $env:GITHUB_ENV -Append
+          "TAG=v$v" | Out-File $env:GITHUB_ENV -Append
+          Write-Host "Version $v"
+
+      - name: Patch installer version
+        shell: pwsh
+        run: |
+          $iss = Get-Content .\installer\LaunchFlow.iss -Raw
+          $iss = $iss -replace '#define AppVersion ".*"', "#define AppVersion `"$env:VERSION`""
+          $iss = $iss -replace 'VersionInfoVersion=.*', "VersionInfoVersion=$env:VERSION.0"
+          Set-Content .\installer\LaunchFlow.iss $iss -NoNewline
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $iscc = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { throw "ISCC missing" }
+          "ISCC=$iscc" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Optional code sign setup
+        shell: pwsh
+        run: |
+          if ("${{ secrets.LAUNCHFLOW_SIGN_PFX_BASE64 }}" -ne "") {
+            $bytes = [Convert]::FromBase64String("${{ secrets.LAUNCHFLOW_SIGN_PFX_BASE64 }}")
+            [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\sign.pfx", $bytes)
+            "LAUNCHFLOW_SIGN_PFX=$env:RUNNER_TEMP\sign.pfx" | Out-File $env:GITHUB_ENV -Append
+            "LAUNCHFLOW_SIGN_PFX_PASSWORD=${{ secrets.LAUNCHFLOW_SIGN_PFX_PASSWORD }}" | Out-File $env:GITHUB_ENV -Append
+          }
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          ./BUILD-INSTALLER.ps1 -Yes -NoAutoInstall
+        env:
+          LAUNCHFLOW_SIGN_PFX: ${{ env.LAUNCHFLOW_SIGN_PFX }}
+          LAUNCHFLOW_SIGN_PFX_PASSWORD: ${{ env.LAUNCHFLOW_SIGN_PFX_PASSWORD }}
+
+      - name: Build universal installer for this repository
+        shell: pwsh
+        run: |
+          Set-Content .\bootstrapper\release-source.txt '${{ github.repository }}' -Encoding utf8
+          dotnet publish .\bootstrapper\LaunchFlow.UniversalInstaller.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishReadyToRun=false -p:DebugType=None -p:DebugSymbols=false -o .\dist\universal-publish
+          if ($LASTEXITCODE -ne 0) { throw 'Universal installer build failed' }
+          Copy-Item .\dist\universal-publish\LaunchFlow.UniversalInstaller.exe .\dist\LaunchFlow-Universal-Installer.exe -Force
+
+      - name: Find setup exe
+        id: artifact
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem .\dist\LaunchFlow-Setup-*.exe | Select-Object -First 1
+          if (-not $exe) { throw "No setup exe in dist\" }
+          "PATH=$($exe.FullName)" | Out-File $env:GITHUB_OUTPUT -Append
+          "NAME=$($exe.Name)" | Out-File $env:GITHUB_OUTPUT -Append
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DOWNLOAD-LaunchFlow-Setup
+          path: |
+            dist/LaunchFlow-Setup-*.exe
+            dist/LaunchFlow-Universal-Installer.exe
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: LaunchFlow ${{ env.VERSION }}
+          generate_release_notes: true
+          files: |
+            dist/LaunchFlow-Setup-*.exe
+            dist/LaunchFlow-Universal-Installer.exe
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

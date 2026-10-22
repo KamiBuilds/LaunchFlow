@@ -1,0 +1,51 @@
+<Window x:Class="LaunchFlow.NewWorkflowWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="New workflow" Width="520" Height="520" MinWidth="480" MinHeight="480"
+        ResizeMode="NoResize" WindowStartupLocation="CenterOwner"
+        Background="#111A2A" Foreground="#E9F1FB" FontFamily="Segoe UI" FontSize="13"
+        Icon="pack://application:,,,/Assets/LaunchFlow.ico">
+  <Grid Margin="24,20">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+    <StackPanel>
+      <TextBlock Text="Create a workflow" FontSize="22" FontWeight="SemiBold"/>
+      <TextBlock Text="Choose a website, optional login, browser, and monitor."
+                 Margin="0,8,0,0" Foreground="#A8BED6" TextWrapping="Wrap"/>
+    </StackPanel>
+    <ScrollViewer Grid.Row="1" Margin="0,16,0,12" VerticalScrollBarVisibility="Auto">
+      <StackPanel>
+        <TextBlock Text="Name" FontWeight="SemiBold"/>
+        <TextBox x:Name="NameBox" Margin="0,6,0,12" Text="My website"/>
+        <TextBlock Text="Start URL" FontWeight="SemiBold"/>
+        <TextBox x:Name="UrlBox" Margin="0,6,0,12" Text="https://"/>
+        <TextBlock Text="Browser" FontWeight="SemiBold"/>
+        <ComboBox x:Name="BrowserCombo" Margin="0,6,0,12" SelectedIndex="0">
+          <ComboBoxItem Content="Edge"/>
+          <ComboBoxItem Content="Chrome"/>
+          <ComboBoxItem Content="Firefox"/>
+          <ComboBoxItem Content="Default browser (open only)"/>
+        </ComboBox>
+        <TextBlock Text="Monitor" FontWeight="SemiBold"/>
+        <ComboBox x:Name="MonitorCombo" Margin="0,6,0,12"/>
+        <CheckBox x:Name="AutoLoginCheck" Content="Save login and sign in automatically" IsChecked="True"/>
+        <TextBlock Text="Username / email (hidden)" FontWeight="SemiBold" Margin="0,10,0,0"/>
+        <PasswordBox x:Name="UsernameBox" Margin="0,6,0,12" Height="36" Background="#0D1522" Foreground="White" BorderBrush="#354358" Padding="10,8"/>
+        <TextBlock Text="Password" FontWeight="SemiBold"/>
+        <PasswordBox x:Name="PasswordBox" Margin="0,6,0,0" Height="36" Background="#0D1522"
+                     Foreground="White" BorderBrush="#354358" Padding="10,8"/>
+        <TextBlock Text="Optional KeePassXC entry path (e.g. Work/Email)"
+                   FontWeight="SemiBold" Margin="0,12,0,0" Foreground="#A8BED6"/>
+        <TextBox x:Name="KeepassPathBox" Margin="0,6,0,0"/>
+      </StackPanel>
+    </ScrollViewer>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+      <Button Content="Cancel" Width="100" Height="38" Margin="0,0,10,0" IsCancel="True" Click="Cancel_Click"/>
+      <Button Content="Create" Width="110" Height="38" Style="{StaticResource PrimaryButton}"
+              IsDefault="True" Click="Create_Click"/>
+    </StackPanel>
+  </Grid>
+</Window>

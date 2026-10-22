@@ -1,0 +1,32 @@
+<Window x:Class="LaunchFlow.CloseChoiceWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Close LaunchFlow" Width="510" Height="290" MinWidth="510" MinHeight="290"
+        ResizeMode="NoResize" WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False" Background="#111A2A" Foreground="#E9F1FB"
+        FontFamily="Segoe UI" FontSize="13" Icon="pack://application:,,,/Assets/LaunchFlow.ico">
+    <Grid Margin="24,20,24,21">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <StackPanel>
+            <TextBlock Text="Close LaunchFlow?" FontSize="22" FontWeight="SemiBold"/>
+            <TextBlock Text="What would you like LaunchFlow to do?" Margin="0,8,0,0"
+                       Foreground="#A8BED6" TextWrapping="Wrap"/>
+        </StackPanel>
+        <Border Grid.Row="1" Margin="0,17,0,15" Padding="12" Background="#1B2A3D" CornerRadius="8">
+            <TextBlock Foreground="#D4E4F5" TextWrapping="Wrap"
+                Text="Keep running in the background to use your shortcut and Windows unlock triggers. Exit completely to stop LaunchFlow and its background process."/>
+        </Border>
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+            <Button Content="Cancel" Width="84" Height="38" Margin="0,0,10,0" Click="Cancel_Click"
+                    Background="#2A3B50" Foreground="White" BorderBrush="#4B6077"/>
+            <Button Content="Exit completely" Width="127" Height="38" Margin="0,0,10,0" Click="Exit_Click"
+                    Background="#303D50" Foreground="White" BorderBrush="#54677E"/>
+            <Button Content="Keep running in background" Width="200" Height="38" Click="Background_Click"
+                    Background="#147D88" Foreground="White" BorderThickness="0"/>
+        </StackPanel>
+    </Grid>
+</Window>

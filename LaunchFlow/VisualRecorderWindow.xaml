@@ -1,0 +1,45 @@
+<Window x:Class="LaunchFlow.VisualRecorderWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Teach workflow steps" Width="620" Height="560" MinWidth="540" MinHeight="460"
+        WindowStartupLocation="CenterOwner"
+        Background="#111A2A" Foreground="#E9F1FB" FontFamily="Segoe UI" FontSize="13"
+        Icon="pack://application:,,,/Assets/LaunchFlow.ico"
+        Closed="Window_Closed">
+  <Grid Margin="24,20">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+    <StackPanel>
+      <TextBlock Text="Teach steps" FontSize="22" FontWeight="SemiBold"
+                 AutomationProperties.Name="Teach workflow steps"/>
+      <TextBlock x:Name="StatusText" Margin="0,8,0,0" Foreground="#A8BED6" TextWrapping="Wrap"
+                 Text="Click Capture clicks, then use the website normally. LaunchFlow records CSS selectors for your clicks (not passwords)."/>
+    </StackPanel>
+    <WrapPanel Grid.Row="1" Margin="0,16,0,8">
+      <Button x:Name="CaptureToggle" Content="Start click capture" Style="{StaticResource PrimaryButton}"
+              Click="ToggleCapture_Click" Margin="0,0,8,8"
+              AutomationProperties.Name="Start or stop click capture"/>
+      <Button Content="Capture current URL" Click="CaptureUrl_Click" Margin="0,0,8,8"/>
+      <Button Content="Add navigate…" Click="AddNavigate_Click" Margin="0,0,8,8"/>
+      <Button Content="Add click…" Click="AddClick_Click" Margin="0,0,8,8"/>
+      <Button Content="Add fill…" Click="AddFill_Click" Margin="0,0,8,8"/>
+      <Button Content="Add wait…" Click="AddWait_Click" Margin="0,0,8,8"/>
+      <Button Content="Remove selected" Click="Remove_Click" Margin="0,0,8,8"/>
+      <Button Content="Clear all" Click="Clear_Click" Margin="0,0,8,8"/>
+    </WrapPanel>
+    <TextBlock x:Name="CaptureStatus" Grid.Row="2" Foreground="#6EE7D7" Margin="0,0,0,8" TextWrapping="Wrap"
+               Text="Click capture is off."/>
+    <ListBox x:Name="StepList" Grid.Row="3" Margin="0,0,0,12" DisplayMemberPath="Description"
+             AutomationProperties.Name="Recorded steps"/>
+    <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
+      <Button Content="Cancel" Width="100" Height="38" Margin="0,0,10,0" IsCancel="True" Click="Cancel_Click"/>
+      <Button Content="Save steps" Width="120" Height="38" Style="{StaticResource PrimaryButton}"
+              IsDefault="True" Click="Save_Click" AutomationProperties.Name="Save recorded steps"/>
+    </StackPanel>
+  </Grid>
+</Window>

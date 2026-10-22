@@ -1,0 +1,24 @@
+NEW: UNIVERSAL INSTALLER (no rebuilding for every update)
+--------------------------------------------------------
+READ UNIVERSAL-INSTALLER-START-HERE.md FIRST.
+
+For future updates, users should run LaunchFlow-Universal-Installer.exe.
+It checks the newest published GitHub Release and downloads the verified setup.
+
+The universal EXE must be compiled ONCE by the publisher (GitHub Actions or
+BUILD-UNIVERSAL-INSTALLER.cmd), after configuring a public GitHub release repo.
+The old BUILD-INSTALLER.cmd is developer-only and remains for offline builds.
+
+LaunchFlow v0.7.8 — masked credential entry and explicit Save credentials
+
+1. Extract this ZIP on Windows.
+2. Double-click BUILD-INSTALLER.cmd in the extracted folder.
+3. After a successful build, exit the old LaunchFlow tray process.
+4. Install dist\LaunchFlow-Setup-v0.7.8-x64.exe to update in place.
+5. In Passwords, enter a new username/email or password and click Save credentials.
+
+Username/email and password entries are always masked. No Show/Hide button exists.
+Saved values are not reloaded into the boxes; blank inputs keep saved values.
+See CREDENTIALS-START-HERE.md for details.
+
+The source checks do not replace a native Windows build and test.

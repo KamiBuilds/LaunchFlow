@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>LaunchFlow.UniversalInstaller</AssemblyName>
+    <RootNamespace>LaunchFlow.UniversalInstaller</RootNamespace>
+    <ApplicationIcon>../LaunchFlow/Assets/LaunchFlow.ico</ApplicationIcon>
+    <Version>1.0.0</Version>
+    <PublishTrimmed>false</PublishTrimmed>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="release-source.txt" LogicalName="LaunchFlow.ReleaseSource" />
+  </ItemGroup>
+</Project>

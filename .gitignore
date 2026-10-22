@@ -1,0 +1,25 @@
+# Build outputs
+**/bin/
+**/obj/
+publish/
+dist/
+.vs/
+.vscode/
+# Sensitive local state
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.kdbx
+*.launchflow
+*.profile.aes
+profiles-v2/
+profiles-sealed/
+*.pfx
+*.p12
+*.pem
+*.key
+.env
+.env.*
+*.log
