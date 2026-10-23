@@ -624,6 +624,22 @@ public partial class MainWindow : Window
 
     private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 
+    // Custom caption buttons preserve the original close/save/tray prompt.
+    private void MaximizeRestore_Click(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    }
+
+    private void WindowClose_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void Window_StateChanged(object sender, EventArgs e)
+    {
+        if (TitlebarMaxButton is null) return;
+        TitlebarMaxButton.Content = WindowState == WindowState.Maximized ? "❐" : "□";
+        TitlebarMaxButton.ToolTip = WindowState == WindowState.Maximized ? "Restore" : "Maximize";
+    }
+
+
     private void HideToTray_Click(object sender, RoutedEventArgs e)
     {
         if (SaveAll()) Hide();
