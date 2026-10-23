@@ -1522,9 +1522,26 @@ public partial class MainWindow : Window
         SidebarToggleButton.Content = _sidebarCollapsed ? "❯" : "❮";
     }
 
+    // The navigation controls use the same MainTabs content and auth flow.
+    private void TopNavigation_Click(object sender, RoutedEventArgs e)
+    {
+        if (ReferenceEquals(sender, WorkflowsNav)) MainTabs.SelectedIndex = 0;
+        else if (ReferenceEquals(sender, PasswordsNav)) MainTabs.SelectedIndex = 1;
+        else if (ReferenceEquals(sender, SettingsNav)) MainTabs.SelectedIndex = 2;
+        SyncTopNavigation();
+    }
+
+    private void SyncTopNavigation()
+    {
+        WorkflowsNav.IsChecked = MainTabs.SelectedIndex == 0;
+        PasswordsNav.IsChecked = MainTabs.SelectedIndex == 1;
+        SettingsNav.IsChecked = MainTabs.SelectedIndex == 2;
+    }
+
     private void MainTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!ReferenceEquals(e.OriginalSource, MainTabs) || _revertingTab) return;
+        if (!ReferenceEquals(e.OriginalSource, MainTabs)) return;
+        if (_revertingTab) { SyncTopNavigation(); return; }
         if (MainTabs.SelectedIndex == 1)
         {
             if (!PasswordSessionIsValid() && !RequireMasterPassword())
@@ -1532,6 +1549,7 @@ public partial class MainWindow : Window
                 _revertingTab = true;
                 MainTabs.SelectedIndex = 0;
                 _revertingTab = false;
+                SyncTopNavigation();
                 return;
             }
             if (_selected is not null) LoadCredentialEditor(_selected);
@@ -1545,6 +1563,7 @@ public partial class MainWindow : Window
             catch (Exception ex) { AppendLog("Could not save credential edits: " + ex.GetType().Name); }
             ClearCredentialEditor();
         }
+        SyncTopNavigation();
     }
 
     private bool RequireMasterPassword(bool forcePrompt = false)
