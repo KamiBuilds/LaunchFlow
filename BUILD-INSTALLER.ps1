@@ -1,4 +1,4 @@
-# LaunchFlow v0.7.8 - one-click Windows installer builder.
+# LaunchFlow - Windows installer builder. Uses the version in LaunchFlow.csproj.
 # Checks .NET 8 SDK and Inno Setup. With explicit consent, installs missing
 # build tools through the official Windows Package Manager (WinGet) catalog.
 # This script builds the distributable installer; end users only need the .exe.
@@ -13,6 +13,16 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
 . (Join-Path $PSScriptRoot 'tools\Sign-LaunchFlow.ps1')
+
+# Reject inconsistent application and setup versions before packaging.
+[xml]$manifest = Get-Content (Join-Path $PSScriptRoot 'LaunchFlow\LaunchFlow.csproj')
+$projectVersion = [string](@($manifest.Project.PropertyGroup.Version | Where-Object { $_ })[0])
+$issText = Get-Content (Join-Path $PSScriptRoot 'installer\LaunchFlow.iss') -Raw
+$expected = '(?m)^#define AppVersion "' + [regex]::Escape($projectVersion) + '"\s*$'
+if ($projectVersion -notmatch '^\d+\.\d+\.\d+$' -or $issText -notmatch $expected) {
+    throw 'LaunchFlow application and Windows Setup versions are inconsistent.'
+}
+
 
 if ($env:OS -ne 'Windows_NT') {
     throw 'LaunchFlow installer builds require Windows 10 or Windows 11 (x64).'
@@ -132,7 +142,7 @@ function Install-FromWinGet {
 
 Write-Host ''
 Write-Host '===========================================' -ForegroundColor Cyan
-Write-Host '  LaunchFlow v0.7.8 - Installer Builder' -ForegroundColor Cyan
+Write-Host '  LaunchFlow v$projectVersion - Installer Builder' -ForegroundColor Cyan
 Write-Host '===========================================' -ForegroundColor Cyan
 Write-Host 'Checking tools required to BUILD the installer...'
 Refresh-ProcessPath

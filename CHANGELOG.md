@@ -1,3 +1,14 @@
+# v0.7.9 — Integrated title bar and navigation (development)
+
+- Consolidated Workflows, Passwords, Settings, and actions into the custom Windows title bar.
+- Added minimize, maximize/restore, and close controls while retaining native window behavior.
+- Introduced a Settings sidebar with a separate Updates section.
+- Improved alignment of the workflow Enabled toggle.
+- Updated app, Windows Setup, About dialog, and build/validation scripts to 0.7.9.
+- Preserved the installer AppId and encrypted vault location for upgrades.
+
+**Status:** Windows compilation and installation testing still required before a public release.
+
 # v0.7.8 — Explicit credential saving and masked usernames
 
 - Added **Save credentials** to the Passwords tab. It updates the encrypted vault only when clicked.
