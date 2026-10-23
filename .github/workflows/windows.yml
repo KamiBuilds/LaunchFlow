@@ -42,6 +42,8 @@ jobs:
         run: |
           choco install innosetup --yes --no-progress
           if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
+      # The builder publishes a self-contained app: .NET runtime and application
+      # dependencies are included with Setup. Users do not install the SDK.
       - name: Build Windows app installer
         shell: pwsh
         run: |
@@ -49,6 +51,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows setup compilation failed' }
           $setup = Join-Path $PWD "dist/LaunchFlow-Setup-v$env:LF_VERSION-x64.exe"
           if (-not (Test-Path $setup)) { throw "Expected setup not found: $setup" }
+      # Self-contained, single-file EXE that downloads and verifies the latest
+      # stable Windows Setup. End users only download the Universal Installer.
       - name: Build standalone universal installer
         shell: pwsh
         run: |

@@ -20,6 +20,19 @@ internal static class Program
     }
 }
 
+// Universal distribution:
+// - This installer is built as ONE self-contained Windows EXE. Its .NET runtime
+//   is included, so users do not install an SDK or a separate runtime.
+// - It finds the latest published stable version using GitHub Releases,
+//   downloads the matching Setup EXE, verifies the published SHA-256 and size,
+//   and launches Windows Setup after the user confirms.
+// - Windows Setup includes LaunchFlow, its .NET runtime, and app libraries.
+// - Browser automation uses the user's installed Edge or Chrome browser.
+//   Additional browsers are not installed silently.
+//
+// The release contains two EXEs internally, but users download just
+// LaunchFlow-Universal-Installer.exe. ZIP archives are not required.
+
 internal sealed record ReleaseInfo(string Tag, string Version, string AssetName, Uri Url, string Sha256, long Size);
 
 internal sealed class InstallerForm : Form
@@ -68,7 +81,7 @@ internal sealed class InstallerForm : Form
         _status.Text = "Checking for the newest release…";
         _status.Font = new Font("Segoe UI Semibold", 12, FontStyle.Bold);
         _status.SetBounds(30, 95, 500, 48);
-        _details.Text = "This installer downloads the latest official LaunchFlow release from GitHub. No developer tools are required on this PC.";
+        _details.Text = "One installer, always the latest stable LaunchFlow. Required .NET runtimes and app libraries are included; no developer tools needed.";
         _details.ForeColor = Color.FromArgb(163, 186, 210);
         _details.SetBounds(30, 152, 505, 64);
         _progress.SetBounds(30, 220, 505, 11);
@@ -165,7 +178,7 @@ internal sealed class InstallerForm : Form
             if (installed is null)
             {
                 _status.Text = $"LaunchFlow {version} is available";
-                _details.Text = "LaunchFlow is not installed yet. Select Download and install to continue. The installer will ask for confirmation.";
+                _details.Text = "The latest setup includes LaunchFlow and its required app components. Select Download and install; no separate runtime or SDK is needed.";
             }
             else if (Version.TryParse(installed, out var installedVersion) &&
                      Version.TryParse(version, out var availableVersion) && installedVersion >= availableVersion)
@@ -245,7 +258,7 @@ internal sealed class InstallerForm : Form
             // that is still opened with FileShare.None by this downloader.
             await output.DisposeAsync();
             _status.Text = "Verified — opening setup";
-            _details.Text = "The download matches the SHA-256 digest published by GitHub. Follow the Windows setup wizard to update or install LaunchFlow.";
+            _details.Text = "Verified against the release's SHA-256 digest. Windows Setup installs LaunchFlow with its bundled runtime and app components.";
             Process.Start(new ProcessStartInfo(pendingPath) { UseShellExecute = true });
             pendingPath = null; // setup may still need to read its file; don't delete it now
         }

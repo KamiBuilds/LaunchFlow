@@ -25,7 +25,9 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        // Prefer installed Edge/Chrome channels; do not download Playwright browsers.
+        // Self-contained Windows Setup ships LaunchFlow, the .NET runtime and app
+        // libraries. Browser automation uses installed Edge/Chrome channels;
+        // never silently download or install a separate browser executable.
         Environment.SetEnvironmentVariable("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "1");
 
         DispatcherUnhandledException += (_, args) =>

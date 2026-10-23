@@ -12,7 +12,9 @@ LaunchFlow is a Windows desktop application for automated website workflows, sec
 2. Click **Download and install**. The installer fetches the latest stable LaunchFlow version from the official GitHub release, checks the published SHA-256 digest, and launches Windows Setup.
 3. Complete setup and open LaunchFlow. Create your master password, choose startup behavior, and add your website workflows.
 
-**No source archives, Git, Visual Studio, or developer SDKs are needed.** The first installation requires internet access. Windows may display an unknown-publisher warning until the release is digitally signed.
+**No ZIP files, Git, Visual Studio, separate .NET installation, or developer SDKs are needed.** The Universal Installer is a standalone Windows EXE. It downloads the latest published stable Windows Setup, verifies the release's SHA-256 digest, and launches Setup. That setup includes LaunchFlow, the .NET runtime, and its application dependencies. An internet connection is needed for downloads and updates. Windows may display an unknown-publisher warning until the executables are digitally signed.
+
+**Browser requirement:** Website automation uses an already-installed Microsoft Edge or Google Chrome browser. Edge is normally included in Windows 10/11. LaunchFlow does not silently install or change browsers, so a supported browser is needed to run website workflows.
 
 The versioned `LaunchFlow-Setup-vX.Y.Z-x64.exe` release asset is the payload the universal installer downloads automatically; normal users should download only the universal installer.
 
