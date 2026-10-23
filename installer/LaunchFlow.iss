@@ -1,10 +1,10 @@
-#define AppVersion "0.7.9"
+#define AppVersion "0.7.10"
 #define AppName "LaunchFlow"
 [Setup]
 AppId={{9B1A7C15-093B-4DBA-BDA7-BF43A2E67320}
 AppName={#AppName}
 AppVersion={#AppVersion}
-VersionInfoVersion=0.7.9.0
+VersionInfoVersion=0.7.10.0
 AppPublisher=LaunchFlow
 AppCopyright=LaunchFlow
 AppSupportURL=https://github.com

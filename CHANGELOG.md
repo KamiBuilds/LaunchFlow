@@ -1,3 +1,12 @@
+# v0.7.10 — First-launch workflow display (development)
+
+- Fixed a startup UI issue where the Workflows page stayed blank until switching to Passwords or Settings and back.
+- Realize the headerless WPF TabControl after Loaded and reselect Workflows without triggering normal tab-change save/password handling.
+- Populate the editor from the initially selected saved workflow; show the empty-state page only when there are no workflows.
+- Updated application and installer versions to 0.7.10; the upgrade AppId and encrypted vault data stay unchanged.
+
+**Build status:** Still requires a Windows compile and fresh-launch test before release.
+
 # v0.7.9 — Integrated title bar and navigation (development)
 
 - Consolidated Workflows, Passwords, Settings, and actions into the custom Windows title bar.

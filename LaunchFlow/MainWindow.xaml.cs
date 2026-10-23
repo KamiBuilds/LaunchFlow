@@ -33,6 +33,7 @@ public partial class MainWindow : Window
 
     private bool _revertingTab;
     private bool _sidebarCollapsed;
+    private bool _startupWorkflowViewReady;
     private bool _capturingShortcut;
     private string _activeShortcut = "";
 
@@ -1133,6 +1134,47 @@ public partial class MainWindow : Window
         catch (OperationCanceledException) { /* superseded by another session event */ }
     }
 
+    private void EnsureStartupWorkflowVisible()
+    {
+        // This view uses a headerless WPF TabControl. WPF can leave its initial
+        // SelectedContent unrealized until the first tab change, even though
+        // the workflow collection was already loaded from the encrypted vault.
+        // Re-select Workflows AFTER Loaded, when the control template exists.
+        // Suppress normal tab-change save/password handling during this one-time
+        // initial render: no user edit has happened yet.
+        if (_startupWorkflowViewReady) return;
+        _startupWorkflowViewReady = true;
+        _revertingTab = true;
+        try
+        {
+            MainTabs.ApplyTemplate();
+            MainTabs.SelectedIndex = -1;
+            MainTabs.SelectedIndex = 0;
+        }
+        finally
+        {
+            _revertingTab = false;
+        }
+
+        // The first saved workflow should immediately populate the editor.
+        // Suppress selection handlers until its controls have been initialized.
+        var selected = WorkflowList.SelectedItem as WebsiteWorkflow
+                       ?? _configuration.Workflows.FirstOrDefault();
+        _loadingEditor = true;
+        try
+        {
+            WorkflowList.SelectedItem = selected;
+            _selected = selected;
+        }
+        finally
+        {
+            _loadingEditor = false;
+        }
+        if (selected is null) ShowEmptyEditor();
+        else ShowEditor(selected);
+        SyncTopNavigation();
+    }
+
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         // Vault creation, migration and unlock happen in App.OnStartup,
@@ -1142,6 +1184,7 @@ public partial class MainWindow : Window
         _windowSource = HwndSource.FromHwnd(handle);
         _windowSource?.AddHook(HotkeyHook);
         TrySetShortcut(string.IsNullOrWhiteSpace(_configuration.GlobalShortcut) ? "Ctrl+M" : _configuration.GlobalShortcut);
+        EnsureStartupWorkflowVisible();
         if (_configuration.RunOnAppStart) Dispatcher.BeginInvoke(new Action(() => _ = RunEnabledAsync()));
         // --tray is handled in App.OnStartup to avoid a window flash; keep this
         // as a fallback if the window was shown before the flag was applied.

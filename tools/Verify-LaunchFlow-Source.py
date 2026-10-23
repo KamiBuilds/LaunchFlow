@@ -33,5 +33,8 @@ for xaml in (root/'LaunchFlow').glob('*.xaml'):
     try: ET.parse(xaml)
     except ET.ParseError as ex: errors.append(f'Invalid XAML XML {xaml.name}: {ex}')
 check(len(list((root/'LaunchFlow').glob('*.xaml')))>=5,'XAML files parsed')
+main_code=(root/'LaunchFlow/MainWindow.xaml.cs').read_text(encoding='utf-8')
+check('EnsureStartupWorkflowVisible();' in main_code and 'MainTabs.SelectedIndex = -1;' in main_code,
+      'initial Workflows content is forced to render after Loaded')
 print('\n'+ ('FAILED: '+', '.join(errors) if errors else 'Source/configuration checks PASS. Native Windows build remains required.'))
 sys.exit(bool(errors))
