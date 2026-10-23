@@ -26,7 +26,7 @@ Run the **same universal installer** again to find and install the latest stable
 
 The core application is in `LaunchFlow/`. The standalone updater is in `bootstrapper/`; Windows setup definitions are in `installer/`; build support is in `tools/`.
 
-Pushing commits to `main` automatically builds both installers. Downloadable development builds are available under [GitHub Actions](https://github.com/KamiBuilds/LaunchFlow/actions/workflows/windows.yml). A version tag (`v0.7.9`, for example) or a deliberate **Publish a GitHub Release** workflow run publishes them for end users.
+For a controlled build, open [Windows installer — manual build and release](https://github.com/KamiBuilds/LaunchFlow/actions/workflows/windows.yml), choose **Run workflow**, and leave **Publish stable release** unchecked. After installing and testing the resulting executables on Windows, run the workflow with **Publish stable release** checked to publish an update. Source changes do not start builds automatically.
 
 Windows developers can use `BUILD-INSTALLER.cmd` with .NET 8 SDK and Inno Setup. See [CHANGELOG.md](CHANGELOG.md) and [CODE-SIGNING.md](CODE-SIGNING.md) for development notes.
 
