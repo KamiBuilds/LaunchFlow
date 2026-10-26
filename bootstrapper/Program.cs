@@ -183,6 +183,7 @@ internal sealed class InstallerForm : Form
     {
         if (_busy || _release is null || _newerInstalled) return;
         var release = _release;
+        if (RefuseDowngrade(release)) return;
         if (MessageBox.Show(this, $"Download LaunchFlow {release.Version} from the configured GitHub Releases repository and run its installer?\n\nRepository: {_repository}",
                 "Confirm installation", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
             return;
@@ -208,6 +209,8 @@ internal sealed class InstallerForm : Form
                     value => { _progress.Value = value; _status.Text = $"Downloading… {value}%"; }, cts.Token);
             }
             cts.Token.ThrowIfCancellationRequested();
+            // Another installer may finish while this window is open or while the download awaits I/O.
+            if (RefuseDowngrade(release)) return;
             _status.Text = "Verified — Windows Setup is running";
             _details.Text = "Finish or cancel Windows Setup to return here. LaunchFlow includes its runtime and app components; browser setup requires your choice in the app.";
             _downloadCancellation = null;
@@ -244,6 +247,18 @@ internal sealed class InstallerForm : Form
             _progress.Visible = false;
             RefreshButtons();
         }
+    }
+
+    private bool RefuseDowngrade(ReleaseInfo release)
+    {
+        var installed = ReadInstalledVersion();
+        if (!Version.TryParse(installed, out var installedVersion) || installedVersion <= Version.Parse(release.Version))
+            return false;
+        _newerInstalled = true;
+        _status.Text = $"Newer version {installed} is installed";
+        _details.Text = $"Published version: {release.Version}. Downgrade is blocked to protect newer data formats.";
+        RefreshButtons();
+        return true;
     }
 
     private static string ReadEmbeddedRepository()

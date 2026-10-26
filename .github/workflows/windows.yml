@@ -65,6 +65,8 @@ jobs:
         run: |
           dotnet run --project ./tests/installer/Installer.Tests.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw 'Installer behavior tests failed' }
+          dotnet run --project ./tests/bootstrapper-form/FormTests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Bootstrapper form behavior tests failed' }
           ./tests/installer/Packaging.Tests.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Packaging behavior tests failed' }
           ./tests/installer/Parse.Tests.ps1

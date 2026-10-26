@@ -15,6 +15,8 @@ Run on a developer machine with .NET 8 SDK and PowerShell:
 ```powershell
 dotnet run --project ./tests/installer/Installer.Tests.csproj -c Release
 if ($LASTEXITCODE -ne 0) { throw 'Installer behavior tests failed' }
+dotnet run --project ./tests/bootstrapper-form/FormTests.csproj -c Release
+if ($LASTEXITCODE -ne 0) { throw 'Bootstrapper form behavior tests failed' }
 ./tests/installer/Packaging.Tests.ps1
 if ($LASTEXITCODE -ne 0) { throw 'Packaging behavior tests failed' }
 ./tests/installer/Parse.Tests.ps1
@@ -67,7 +69,9 @@ The parent reconciled this work with the actual `chatgpt` v0.7.19 source in an i
 
 Integration caught a newer-branch regression: merely building artifacts could close and ultimately force-kill the user's installed LaunchFlow process. An inert process-discovery/termination guard reproduced five builder control-flow failures, then passed after removing that behavior. The builder now leaves running applications alone. Application closure belongs to the separately launched Windows Setup. Historical RED and subsequent GREEN are retained as `parent-build-preserves-running-app-RED.log` / `-GREEN.log`.
 
-This integration candidate still requires fresh independent review and the native gates below. These results do not turn the previous cross-published bootstrapper into a natively tested installer.
+Independent review withheld approval on a reproduced cached downgrade decision: a concurrent upgrade could finish after refresh while this form still authorized the older release. The repair re-reads installed-version policy at download entry and again after verification before setup launch. Maintained tests in `tests/bootstrapper-form` link the actual form/helpers with inert UI, registry, HTTP and process seams. They reproduce both stale-entry and during-download failures, then pass after the respective guards. Positive controls cover fresh blocking, same-version reinstall, child/staging lifetime, close deferral and download cancellation. Their three-byte fixture is checked, never executed. The initial unused-fixture-field compilation failure is retained separately from the runtime RED evidence.
+
+These are application-policy checkpoints, not an atomic OS-wide installation transaction or protection from same-account/admin replacement. Native installer coordination and final integrated review remain required; simulated child lifetime is not native Inno proof.
 
 ## Remaining native Windows gates
 
