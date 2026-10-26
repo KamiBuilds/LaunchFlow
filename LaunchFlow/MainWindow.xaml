@@ -138,19 +138,6 @@
                   Padding="9,7" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
           <Button Content="Save" Click="Save_Click" Padding="9,7"
                   shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
-          <ComboBox x:Name="WorkspaceCombo" Width="140" IsEditable="True"
-                    DisplayMemberPath="Name" Margin="4,0" Padding="4"
-                    ToolTip="Choose or type a workspace name"
-                    AutomationProperties.Name="Workspace profiles"
-                    shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
-          <Button Content="Save workspace" Click="SaveWorkspace_Click" Padding="8,7"
-                  ToolTip="Save all currently enabled websites as a named workspace"
-                  AutomationProperties.Name="Save current workspace"
-                  shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
-          <Button Content="▶ Workspace" Click="RunWorkspace_Click" Padding="8,7"
-                  ToolTip="Run the websites in the selected workspace"
-                  AutomationProperties.Name="Run selected workspace"
-                  shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
           <Button Content="▶ Run all" Click="Run_Click" AutomationProperties.Name="Run all enabled websites" Style="{StaticResource PrimaryButton}"
                   Padding="9,7" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
           <Button x:Name="StopButton" Content="■ Stop" Click="Stop_Click" IsEnabled="False"
@@ -185,6 +172,18 @@
           <StackPanel DockPanel.Dock="Top" Margin="0,0,0,15">
             <TextBlock Text="YOUR WORKFLOWS" FontWeight="SemiBold" FontSize="11" Foreground="#A0B4CC"/>
             <TextBlock Text="Select a site to configure" Foreground="#7D91A8" FontSize="12" Margin="0,7,0,0"/>
+            <TextBlock Text="WORKSPACES" Margin="0,13,0,5"
+                       FontSize="11" FontWeight="SemiBold" Foreground="#A0B4CC"/>
+            <ComboBox x:Name="WorkspaceCombo" IsEditable="True"
+                      DisplayMemberPath="Name" ToolTip="Choose or type a workspace name"
+                      AutomationProperties.Name="Workspace profiles" />
+            <WrapPanel Margin="0,6,0,0">
+              <Button Content="Save workspace" Click="SaveWorkspace_Click"
+                      Padding="6,5" ToolTip="Save enabled websites as a workspace"
+                      AutomationProperties.Name="Save workspace"/>
+              <Button Content="▶ Run" Click="RunWorkspace_Click" Padding="6,5"
+                      ToolTip="Run the selected workspace" AutomationProperties.Name="Run selected workspace"/>
+            </WrapPanel>
           </StackPanel>
           <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,14,0,0">
             <Button x:Name="DuplicateWorkflowButton" Content="Duplicate" Click="DuplicateWorkflow_Click" IsEnabled="False"/>
@@ -286,9 +285,10 @@
                            ToolTip="Only needed for unusual KeePassXC database layouts"/>
                 </Expander>
                 <TextBlock Text="Login type is detected automatically (email first, Next, password, SSO or MFA)." Style="{StaticResource FieldLabel}" Margin="0,9,0,6" TextWrapping="Wrap" Visibility="Collapsed"/>
-                <ComboBox x:Name="LoginModeCombo" SelectedIndex="0" Visibility="Collapsed">
+                <ComboBox x:Name="LoginModeCombo" SelectedIndex="0" Visibility="Visible" AutomationProperties.Name="Login authentication mode">
                   <ComboBoxItem Content="Automatic"/>
                   <ComboBoxItem Content="None"/>
+                  <ComboBoxItem Content="SSO"/>
                 </ComboBox>
                 <TextBlock Text="LaunchFlow detects username/Next/password steps. If your company uses SSO, you may need to approve its login address once and complete MFA yourself." TextWrapping="Wrap" Foreground="#BED2E5" FontSize="12" Margin="0,8,0,0"/>
                 <Grid Margin="0,12,0,0">
