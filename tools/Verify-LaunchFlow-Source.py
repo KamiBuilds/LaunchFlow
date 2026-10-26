@@ -122,5 +122,26 @@ check('MaxBytes' in diagnostics and 'File.Move(LogPath' in diagnostics,
       'local diagnostics have bounded rotation')
 check((root/'.github/workflows/validate-pr.yml').is_file(),
       'Windows compile validation workflow included')
+policy=(root/'LaunchFlow/Services/EnterprisePolicy.cs').read_text(encoding='utf-8')
+check('Registry.LocalMachine' in policy and 'DisableCredentialFill' in policy
+      and 'AllowedHosts' in policy and 'DenyAll()' in policy,
+      'enterprise policies use admin-controlled registry with fail-closed read')
+engine=(root/'LaunchFlow/Services/AutomationEngine.cs').read_text(encoding='utf-8')
+check('WorkflowStepException' in engine and 'StepsNeedAttention' in engine
+      and 'linkedRun.Token' in engine and 'policy.AllowsUrl(page.Url)' in engine,
+      'workflow safety, cancellation and host policy enforced')
+check('GetAwaiter().GetResult()' not in main_code and
+      'await _runner.CloseSessionsAsync()' in main_code,
+      'vault lock never blocks WPF dispatcher on async browser cleanup')
+check((root/'LaunchFlow/Models/WorkspaceProfile.cs').exists()
+      and 'SaveWorkspace_Click' in main_code and 'RunWorkspace_Click' in main_code,
+      'workspace save and run controls wired')
+check('element.textContent' not in recorder_code and
+      'source.Frame.Url' in recorder_code,
+      'Teach recorder avoids page labels and enforces frame host allowlist')
+check((root/'tests/LaunchFlow.SafetySmokeTests/Program.cs').exists()
+      and 'LaunchFlow.SafetySmokeTests.csproj' in
+      (root/'.github/workflows/validate-pr.yml').read_text(encoding='utf-8'),
+      'Windows CI includes executable policy/workspace smoke tests')
 print('\n'+ ('FAILED: '+', '.join(errors) if errors else 'Source/configuration checks PASS. Native Windows build remains required.'))
 sys.exit(bool(errors))
