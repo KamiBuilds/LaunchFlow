@@ -22,7 +22,7 @@ check('VersionInfoVersion='+version+'.0' in iss,'installer Windows version')
 cs=(root/'LaunchFlow/Services/DarkWindowChrome.cs').read_text(encoding='utf-8')
 check('System.Windows.Media.Color.FromRgb' in cs,'WPF Color disambiguation')
 app=(root/'LaunchFlow/App.xaml.cs').read_text(encoding='utf-8')
-check(app.count('_ = Dispatcher.BeginInvoke(')==2,'two explicit UI dispatcher fire-and-forget calls')
+check(app.count('_ = Dispatcher.BeginInvoke(')>=3,'dispatcher callbacks handle file opening, activation and build shutdown')
 auto=(root/'LaunchFlow/Services/AutomationEngine.cs').read_text(encoding='utf-8')
 check('new Dictionary<string, object?>' not in auto and auto.count('new Dictionary<string, object>')>=2,'Playwright CDP argument nullability')
 workflow=(root/'.github/workflows/windows.yml').read_text(encoding='utf-8')
@@ -56,5 +56,20 @@ check('LaunchFlow-Setup-v$projectVersion-x64.exe' in build_script,
       'builder selects the exact versioned installer')
 check('coreclr.dll' in build_script and 'Microsoft.Playwright.dll' in build_script,
       'builder validates bundled application components')
-print('\n'+ ('FAILED: '+', '.join(errors) if errors else 'Source/configuration checks PASS. Native Windows build remains required.'))
+new_workflow=(root/'LaunchFlow/NewWorkflowWindow.xaml.cs').read_text(encoding='utf-8')
+new_workflow_xaml=(root/'LaunchFlow/NewWorkflowWindow.xaml').read_text(encoding='utf-8')
+check('using Microsoft.Playwright;' in main_code, 'Playwright IPage namespace imported')
+check('await ShowNewWorkflowAsync(wizard)' in main_code and 'wizard.ShowDialog()' not in main_code,
+      'New Workflow is modeless')
+check('new NewWorkflowWindow();' in main_code and 'new NewWorkflowWindow { Owner = this }' not in main_code,
+      'New Workflow stays independent when main window is minimized')
+check('ProtocolCombo' in new_workflow_xaml and 'PortBox' in new_workflow_xaml,
+      'HTTP HTTPS and custom port controls present')
+check('BuildWebsiteUrl()' in new_workflow and 'IsLocalAddress(' in new_workflow,
+      'local IP and website normalization implemented')
+check('System.Windows.Clipboard.GetText()' in new_workflow,
+      'WPF Clipboard namespace is unambiguous')
+check('Stop-RunningLaunchFlow' in build_script and 'EXIT_FOR_BUILD' in app,
+      'builder requests LaunchFlow shutdown through session IPC')
+print('\n'+ ('FAILED: ', '.join(errors) if errors else 'Source/configuration checks PASS. Native Windows build remains required.'))
 sys.exit(bool(errors))

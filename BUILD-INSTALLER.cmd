@@ -1,9 +1,9 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-title LaunchFlow - Make app installer (one-time build)
+title LaunchFlow - Build Windows Installer
 echo.
-echo This builds LaunchFlow-Setup-v0.7.8-x64.exe in the dist folder.
+echo Builds the latest LaunchFlow Windows Setup into the dist folder.
 echo After it finishes, install THAT setup .exe — not this builder.
 echo.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0BUILD-INSTALLER.ps1" -Yes -LaunchSetup %*
@@ -16,6 +16,6 @@ if %ERR% neq 0 (
   exit /b %ERR%
 )
 echo.
-echo Done. Use dist\LaunchFlow-Setup-v0.7.8-x64.exe from now on.
+echo Done. Your new Setup EXE is in the dist folder.
 pause
 exit /b 0

@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="New workflow" Width="520" Height="520" MinWidth="480" MinHeight="480"
-        ResizeMode="NoResize" WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize" WindowStartupLocation="CenterScreen" ShowInTaskbar="True"
         Background="#111A2A" Foreground="#E9F1FB" FontFamily="Segoe UI" FontSize="13"
         Icon="pack://application:,,,/Assets/LaunchFlow.ico">
   <Grid Margin="24,20">
@@ -20,8 +20,38 @@
       <StackPanel>
         <TextBlock Text="Name" FontWeight="SemiBold"/>
         <TextBox x:Name="NameBox" Margin="0,6,0,12" Text="My website"/>
-        <TextBlock Text="Website address (https://...)" FontWeight="SemiBold"/>
-        <TextBox x:Name="UrlBox" Margin="0,6,0,12" Text="https://"/>
+        <TextBlock Text="Website address or IP" FontWeight="SemiBold"/>
+        <DockPanel Margin="0,6,0,6">
+          <Button DockPanel.Dock="Right" Content="Paste URL" Click="PasteUrl_Click"
+                  Margin="8,0,0,0" ToolTip="Paste a copied website address or local IP"/>
+          <TextBox x:Name="UrlBox" Text="" VerticalContentAlignment="Center"
+                   ToolTip="Examples: example.com, 192.168.1.50, localhost:3000, http://192.168.1.50:8080"/>
+        </DockPanel>
+        <Grid Margin="0,4,0,8">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="180"/>
+            <ColumnDefinition Width="18"/>
+            <ColumnDefinition Width="140"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
+          <StackPanel Grid.Column="0">
+            <TextBlock Text="Connection" FontWeight="SemiBold"/>
+            <ComboBox x:Name="ProtocolCombo" Margin="0,6,0,0" SelectedIndex="0">
+              <ComboBoxItem Content="Auto"/>
+              <ComboBoxItem Content="HTTPS"/>
+              <ComboBoxItem Content="HTTP"/>
+            </ComboBox>
+          </StackPanel>
+          <StackPanel Grid.Column="2">
+            <TextBlock Text="Port (optional)" FontWeight="SemiBold"/>
+            <TextBox x:Name="PortBox" Margin="0,6,0,0" MaxLength="5"
+                     ToolTip="For example, 8080 or 3000 (range 1–65535). Overrides a port in the address."/>
+          </StackPanel>
+        </Grid>
+        <TextBlock Text="Examples: example.com, 192.168.1.50:8080 or localhost:3000. Auto uses HTTP for local addresses and HTTPS for websites. Pasted full URLs keep their protocol."
+                   FontSize="11" Foreground="#A8BED6" TextWrapping="Wrap" Margin="0,0,0,6"/>
+        <TextBlock Text="HTTP isn't encrypted. Use HTTPS for sensitive logins whenever possible."
+                   FontSize="11" Foreground="#E6B96F" TextWrapping="Wrap" Margin="0,0,0,12"/>
         <TextBlock Text="Browser" FontWeight="SemiBold"/>
         <ComboBox x:Name="BrowserCombo" Margin="0,6,0,12" SelectedIndex="0">
           <ComboBoxItem Content="Edge"/>
@@ -43,7 +73,7 @@
       </StackPanel>
     </ScrollViewer>
     <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
-      <Button Content="Cancel" Width="100" Height="38" Margin="0,0,10,0" IsCancel="True" Click="Cancel_Click"/>
+      <Button Content="Cancel" Width="100" Height="38" Margin="0,0,10,0" Click="Cancel_Click"/>
       <Button Content="Create" Width="110" Height="38" Style="{StaticResource PrimaryButton}"
               IsDefault="True" Click="Create_Click"/>
     </StackPanel>

@@ -11,6 +11,7 @@ using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using LaunchFlow.Models;
 using LaunchFlow.Services;
 using Microsoft.Win32;
+using Microsoft.Playwright;
 using Forms = System.Windows.Forms;
 using ComboBox = System.Windows.Controls.ComboBox;
 using MessageBox = System.Windows.MessageBox;
@@ -34,6 +35,7 @@ public partial class MainWindow : Window
     private bool _revertingTab;
     private bool _sidebarCollapsed;
     private bool _teachingInProgress;
+    private NewWorkflowWindow? _newWorkflowWindow;
     private bool _startupWorkflowViewReady;
     private bool _capturingShortcut;
     private string _activeShortcut = "";
@@ -186,6 +188,14 @@ public partial class MainWindow : Window
     {
         _exiting = true;
         Close();
+    }
+
+    internal void RequestShutdownForBuild()
+    {
+        // Stop automation and close LaunchFlow before installing a new build.
+        _runCancellation?.Cancel();
+        _unlockCancellation?.Cancel();
+        ExitFromTray();
     }
 
     private void AppendLog(string message)
@@ -463,46 +473,74 @@ public partial class MainWindow : Window
         else ShowEditor(selection);
     }
 
-    private void AddWorkflow_Click(object sender, RoutedEventArgs e)
+    private static Task<bool> ShowNewWorkflowAsync(NewWorkflowWindow wizard)
     {
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        wizard.Closed += (_, _) => completion.TrySetResult(wizard.WasCreated);
+        try { wizard.Show(); }
+        catch (Exception ex) { completion.TrySetException(ex); }
+        return completion.Task;
+    }
+
+    private async void AddWorkflow_Click(object sender, RoutedEventArgs e)
+    {
+        if (_newWorkflowWindow is not null)
+        {
+            _newWorkflowWindow.Activate();
+            return;
+        }
+
         try { ApplyCurrentEditor(); }
         catch (Exception ex)
         {
             MessageBox.Show(this, ex.Message, "Cannot save previous workflow", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
-        var wizard = new NewWorkflowWindow { Owner = this };
-        if (wizard.ShowDialog() != true) return;
-        var next = wizard.CreatedWorkflow;
-        if (next is null) return;
+
+        // An unowned setup window stays open when LaunchFlow is minimized.
+        var wizard = new NewWorkflowWindow();
+        _newWorkflowWindow = wizard;
         try
         {
-            // Store this workflow's credentials under its unique identifier, not by URL.
-            // Two websites using the same email can have different passwords.
-            if (!string.IsNullOrEmpty(wizard.NewPassword))
-                _vault.Save(next.Id, new(wizard.NewUsername, wizard.NewPassword));
-            wizard.ClearPendingSecrets();
-            _configuration.Workflows.Add(next);
-            _store.Save(_configuration);
-            RefreshWorkflowList(next);
-            AppendLog($"Created workflow '{next.Name}' with " +
-                (next.AutoLogin ? "an encrypted login." : "manual sign-in."));
-            if (!_configuration.ShortcutTipShown)
+            if (!await ShowNewWorkflowAsync(wizard)) return;
+            var next = wizard.CreatedWorkflow;
+            if (next is null) return;
+            try
             {
-                _configuration.ShortcutTipShown = true;
+                // Store each website's credentials under its unique workflow ID.
+                if (!string.IsNullOrEmpty(wizard.NewPassword))
+                    _vault.Save(next.Id, new(wizard.NewUsername, wizard.NewPassword));
+                _configuration.Workflows.Add(next);
                 _store.Save(_configuration);
-                MessageBox.Show(this,
-                    $"Your first workflow is ready. Press {ShortcutBox.Text} to run all enabled workflows.\n\nYou can change the shortcut under Settings → Shortcuts.",
-                    "Run your workspace", MessageBoxButton.OK, MessageBoxImage.Information);
+                RefreshWorkflowList(next);
+                AppendLog($"Created workflow '{next.Name}' with " +
+                    (next.AutoLogin ? "an encrypted login." : "manual sign-in."));
+                if (!_configuration.ShortcutTipShown)
+                {
+                    _configuration.ShortcutTipShown = true;
+                    _store.Save(_configuration);
+                    MessageBox.Show(this,
+                        $"Your first workflow is ready. Press {ShortcutBox.Text} to run all enabled workflows.\n\nYou can change the shortcut under Settings → Shortcuts.",
+                        "Run your workspace", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                _configuration.Workflows.Remove(next);
+                try { _vault.Delete(next.Id); } catch { }
+                MessageBox.Show(this, "The new workflow could not be saved: " + ex.Message,
+                    "Create workflow", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
         catch (Exception ex)
         {
+            MessageBox.Show(this, "Could not open the new workflow window: " + ex.Message,
+                "Create workflow", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
             wizard.ClearPendingSecrets();
-            _configuration.Workflows.Remove(next);
-            try { _vault.Delete(next.Id); } catch { /* Don't hide the original error. */ }
-            MessageBox.Show(this, "The new workflow could not be saved: " + ex.Message,
-                "Create workflow", MessageBoxButton.OK, MessageBoxImage.Error);
+            if (ReferenceEquals(_newWorkflowWindow, wizard)) _newWorkflowWindow = null;
         }
     }
 

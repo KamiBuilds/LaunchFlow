@@ -1,3 +1,15 @@
+# v0.7.16 — Independent website setup and local network URLs
+
+- New Workflow remains visible when the main window is minimized.
+- Add websites using HTTP, HTTPS, local IP addresses, localhost and custom ports.
+- Preserve the protocol in pasted full URLs and warn about HTTP when saving credentials.
+- Keep New Workflow modeless with one setup window at a time.
+- The Windows builder requests shutdown of LaunchFlow before rebuilding and uses a forced close only as a fallback.
+- Fixed the Playwright import for the Teach recorder.
+- Preserved encrypted vault data and the existing Inno Setup AppId.
+
+**Status:** Static verification required; Windows installation and runtime tests are still needed.
+
 # v0.7.12 — Reliability and packaging cleanup (development)
 
 - Fixed modeless Teach saving steps to the wrong website if the selection changes.

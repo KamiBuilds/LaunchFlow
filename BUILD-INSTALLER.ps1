@@ -28,6 +28,67 @@ if ($env:OS -ne 'Windows_NT') {
     throw 'LaunchFlow installer builds require Windows 10 or Windows 11 (x64).'
 }
 
+function Get-RunningLaunchFlow {
+    $sessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
+    @(Get-Process -Name 'LaunchFlow' -ErrorAction SilentlyContinue |
+      Where-Object { $_.SessionId -eq $sessionId -and $_.Id -ne $PID })
+}
+
+function Wait-ForLaunchFlowExit {
+    param([int]$Seconds)
+    $deadline = [DateTime]::UtcNow.AddSeconds($Seconds)
+    do {
+        if ((Get-RunningLaunchFlow).Count -eq 0) { return $true }
+        Start-Sleep -Milliseconds 350
+    } while ([DateTime]::UtcNow -lt $deadline)
+    return (Get-RunningLaunchFlow).Count -eq 0
+}
+
+function Stop-RunningLaunchFlow {
+    $running = @(Get-RunningLaunchFlow)
+    if ($running.Count -eq 0) { return }
+    Write-Host 'Closing the running LaunchFlow before building the update...' -ForegroundColor Cyan
+    $pipe = $null
+    $writer = $null
+    try {
+        $sessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
+        $pipeName = "LaunchFlow.Activate.Session$sessionId"
+        $pipe = [System.IO.Pipes.NamedPipeClientStream]::new(
+            '.', $pipeName, [System.IO.Pipes.PipeDirection]::Out)
+        $pipe.Connect(850)
+        $writer = [System.IO.StreamWriter]::new(
+            $pipe, [System.Text.UTF8Encoding]::new($false))
+        $writer.AutoFlush = $true
+        $writer.WriteLine('EXIT_FOR_BUILD')
+    }
+    catch {
+        Write-Host 'The installed version does not support safe shutdown; trying its window.' -ForegroundColor DarkYellow
+    }
+    finally {
+        if ($null -ne $writer) { $writer.Dispose() }
+        if ($null -ne $pipe) { $pipe.Dispose() }
+    }
+    if (Wait-ForLaunchFlowExit -Seconds 7) {
+        Write-Host '[OK] LaunchFlow exited.' -ForegroundColor Green
+        return
+    }
+    foreach ($process in @(Get-RunningLaunchFlow)) {
+        try { $null = $process.CloseMainWindow() } catch { }
+    }
+    if (Wait-ForLaunchFlowExit -Seconds 5) {
+        Write-Host '[OK] LaunchFlow exited.' -ForegroundColor Green
+        return
+    }
+    # Older instances may lack the IPC shutdown handler.
+    Write-Warning 'LaunchFlow did not exit normally; forcing it closed. Unsaved changes may be lost.'
+    foreach ($process in @(Get-RunningLaunchFlow)) {
+        Stop-Process -Id $process.Id -Force -ErrorAction Stop
+    }
+    if (-not (Wait-ForLaunchFlowExit -Seconds 6))
+        { throw 'LaunchFlow is still running. Build cancelled to protect installed files.' }
+    Write-Host '[OK] LaunchFlow has fully closed.' -ForegroundColor Green
+}
+
 function Refresh-ProcessPath {
     $parts = @(
         [Environment]::GetEnvironmentVariable('Path', 'Machine'),
@@ -221,6 +282,7 @@ if (-not $dotnet -or -not (Has-DotNet8Sdk -DotNetPath $dotnet)) {
 if (-not $inno) { throw 'Inno Setup is still missing; cannot build LaunchFlow installer.' }
 
 Write-Host ''
+Stop-RunningLaunchFlow
 Write-Host 'Publishing LaunchFlow for Windows x64 (self-contained, ReadyToRun)...'
 $publishDir = Join-Path $PSScriptRoot 'publish'
 if (Test-Path -LiteralPath $publishDir) {

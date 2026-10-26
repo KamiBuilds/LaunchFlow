@@ -270,6 +270,14 @@ public partial class App : Application
                     // Deliberately fire-and-forget the UI notification (CS4014).
                     _ = Dispatcher.BeginInvoke(new Action(RestoreRunningWindow));
                 }
+                else if (string.Equals(message, "EXIT_FOR_BUILD", StringComparison.Ordinal))
+                {
+                    _ = Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        if (MainWindow is LaunchFlow.MainWindow window && window.IsLoaded)
+                            window.RequestShutdownForBuild();
+                    }));
+                }
             }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
             {
