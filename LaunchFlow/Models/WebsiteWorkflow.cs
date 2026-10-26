@@ -11,6 +11,7 @@ public sealed class WebsiteWorkflow
     public string DestinationUrl { get; set; } = "";
     public string Browser { get; set; } = "Edge";
     public int MonitorIndex { get; set; }
+    public string MonitorDeviceName { get; set; } = "";
     public string LoginMode { get; set; } = "Auto";
     public bool AutoLogin { get; set; } = true;
     public string UsernameSelector { get; set; } = "input[type='email'], input[name*='user' i], input[name*='email' i], #username, #email";
@@ -50,6 +51,7 @@ public sealed class WebsiteWorkflow
             DestinationUrl = DestinationUrl,
             Browser = Browser,
             MonitorIndex = MonitorIndex,
+            MonitorDeviceName = MonitorDeviceName,
             LoginMode = LoginMode,
             AutoLogin = AutoLogin,
             UsernameSelector = UsernameSelector,
