@@ -138,7 +138,20 @@
                   Padding="9,7" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
           <Button Content="Save" Click="Save_Click" Padding="9,7"
                   shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
-          <Button Content="▶ Run all" Click="Run_Click" Style="{StaticResource PrimaryButton}"
+          <ComboBox x:Name="WorkspaceCombo" Width="140" IsEditable="True"
+                    DisplayMemberPath="Name" Margin="4,0" Padding="4"
+                    ToolTip="Choose or type a workspace name"
+                    AutomationProperties.Name="Workspace profiles"
+                    shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+          <Button Content="Save workspace" Click="SaveWorkspace_Click" Padding="8,7"
+                  ToolTip="Save all currently enabled websites as a named workspace"
+                  AutomationProperties.Name="Save current workspace"
+                  shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+          <Button Content="▶ Workspace" Click="RunWorkspace_Click" Padding="8,7"
+                  ToolTip="Run the websites in the selected workspace"
+                  AutomationProperties.Name="Run selected workspace"
+                  shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+          <Button Content="▶ Run all" Click="Run_Click" AutomationProperties.Name="Run all enabled websites" Style="{StaticResource PrimaryButton}"
                   Padding="9,7" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
           <Button x:Name="StopButton" Content="■ Stop" Click="Stop_Click" IsEnabled="False"
                   Padding="9,7" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
