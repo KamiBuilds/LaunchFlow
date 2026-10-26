@@ -14,6 +14,8 @@ public sealed class AutomationEngine : IAsyncDisposable
     private CancellationTokenSource? _activeRunCancellation;
 
     public event Action<string>? OnLog;
+    public enum WorkflowRunState { Running, WaitingForSignIn, Completed, Failed, Cancelled }
+    public event Action<string, WorkflowRunState>? OnWorkflowStatus;
     public Func<WebsiteWorkflow, string, Task<bool>>? ApproveLoginOriginAsync { get; set; }
 
     public bool IsRunning
@@ -85,26 +87,39 @@ public sealed class AutomationEngine : IAsyncDisposable
             {
                 linkedRun.Token.ThrowIfCancellationRequested();
                 if (!includeDisabled && !workflow.Enabled) continue;
+                OnWorkflowStatus?.Invoke(workflow.Name, WorkflowRunState.Running);
                 try
                 {
                     var attention = await RunOneAsync(workflow, linkedRun.Token, configuration, keepassMasterPassword)
                         .ConfigureAwait(false);
                     if (attention is not null)
+                    {
                         result.LoginNeedsAttention.Add(attention);
+                        OnWorkflowStatus?.Invoke(workflow.Name, WorkflowRunState.WaitingForSignIn);
+                    }
                     else
+                    {
                         result.FinishedCount++;
+                        OnWorkflowStatus?.Invoke(workflow.Name, WorkflowRunState.Completed);
+                    }
                 }
-                catch (OperationCanceledException) { throw; }
+                catch (OperationCanceledException)
+                {
+                    OnWorkflowStatus?.Invoke(workflow.Name, WorkflowRunState.Cancelled);
+                    throw;
+                }
                 catch (WorkflowStepException ex)
                 {
                     result.FailedCount++;
                     result.StepsNeedAttention.Add(new StepAttention(
                         workflow.Id, workflow.Name, ex.StepType));
+                    OnWorkflowStatus?.Invoke(workflow.Name, WorkflowRunState.Failed);
                     Log($"Workflow '{workflow.Name}' needs a step repaired: {ex.StepType}.");
                 }
                 catch (Exception ex)
                 {
                     result.FailedCount++;
+                    OnWorkflowStatus?.Invoke(workflow.Name, WorkflowRunState.Failed);
                     Log($"Workflow '{workflow.Name}' failed ({ex.GetType().Name}). Check or repair the workflow.");
                 }
             }
