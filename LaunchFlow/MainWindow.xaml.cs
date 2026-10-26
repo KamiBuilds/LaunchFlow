@@ -822,7 +822,7 @@ public partial class MainWindow : Window
 
     private async Task SaveTaughtStepsAsync(WebsiteWorkflow workflow, IPage page)
     {
-        var recorder = new VisualRecorderWindow(page) { Owner = this };
+        var recorder = new VisualRecorderWindow(page, workflow) { Owner = this };
         if (!await ShowRecorderAsync(recorder) || recorder.RecordedSteps.Count == 0) return;
 
         // Teach remains modeless; the selected website may have changed.
