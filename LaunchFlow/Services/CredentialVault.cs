@@ -9,12 +9,14 @@ public sealed class CredentialVault
 {
     public bool Has(Guid workflowId)
     {
+        EnterprisePolicy.Current.RequireCredentialStorage();
         if (!VaultDatabase.Current.IsUnlocked) return false;
         return VaultDatabase.Current.HasCredential(workflowId);
     }
 
     public SiteCredential? Read(Guid workflowId)
     {
+        EnterprisePolicy.Current.RequireCredentialRead();
         if (!VaultDatabase.Current.IsUnlocked) return null;
         return VaultDatabase.Current.ReadCredential(workflowId);
     }
@@ -28,6 +30,7 @@ public sealed class CredentialVault
         Configuration? configuration = null,
         string? keepassMasterPassword = null)
     {
+        EnterprisePolicy.Current.RequireCredentialRead();
         var local = Read(workflow.Id);
         if (local is not null) return local;
 
@@ -64,10 +67,15 @@ public sealed class CredentialVault
         VaultDatabase.Current.DeleteCredential(workflowId);
     }
 
-    public Dictionary<Guid, SiteCredential> ExportAll() =>
-        VaultDatabase.Current.IsUnlocked
+    public Dictionary<Guid, SiteCredential> ExportAll()
+    {
+        var policy = EnterprisePolicy.Current;
+        policy.RequireTransfer();
+        policy.RequireCredentialStorage();
+        return VaultDatabase.Current.IsUnlocked
             ? VaultDatabase.Current.ExportCredentials()
             : new Dictionary<Guid, SiteCredential>();
+    }
 
     private static Configuration? TryLoadConfig()
     {

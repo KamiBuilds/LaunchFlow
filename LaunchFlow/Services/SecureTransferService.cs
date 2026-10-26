@@ -21,6 +21,9 @@ public static class SecureTransferService
         CredentialVault vault,
         bool includePasswords)
     {
+        var policy = EnterprisePolicy.Current;
+        policy.RequireTransfer();
+        if (includePasswords) policy.RequireCredentialStorage();
         var package = new PortableExport.PortablePackage
         {
             Config = Clone(configuration),
@@ -31,8 +34,14 @@ public static class SecureTransferService
         PortableExport.Write(path, exportPassword, package);
     }
 
-    public static PortableExport.PortablePackage Read(string path, string exportPassword) =>
-        PortableExport.Read(path, exportPassword);
+    public static PortableExport.PortablePackage Read(string path, string exportPassword)
+    {
+        var policy = EnterprisePolicy.Current;
+        policy.RequireTransfer();
+        // Snapshot import replaces credentials even when the package contains none.
+        policy.RequireCredentialStorage();
+        return PortableExport.Read(path, exportPassword);
+    }
 
     private static Configuration Clone(Configuration source) =>
         JsonSerializer.Deserialize<Configuration>(

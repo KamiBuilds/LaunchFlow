@@ -7,19 +7,15 @@ public sealed class WorkflowStep
     public string? Value { get; set; }
     public string? Description { get; set; }
 
-    public override string ToString()
+    // Targets, descriptions and even unknown action types may contain credentials.
+    // Editors can present them deliberately; implicit formatting must not disclose them.
+    public override string ToString() => Type switch
     {
-        if (!string.IsNullOrWhiteSpace(Description))
-            return Description;
-
-        return Type switch
-        {
-            "Navigate" => $"Navigate → {Target}",
-            "Click" => $"Click → {Target}",
-            "Fill" => $"Fill → {Target}" + (string.IsNullOrEmpty(Value) ? "" : $" = {Value}"),
-            "Wait" => $"Wait → {Target}",
-            "Press" => $"Press → {Target}",
-            _ => $"{Type} → {Target}"
-        };
-    }
+        "Navigate" => "Navigate",
+        "Click" => "Click",
+        "Fill" => "Fill",
+        "Wait" => "Wait",
+        "Press" => "Press",
+        _ => "Workflow step"
+    };
 }

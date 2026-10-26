@@ -75,7 +75,8 @@ public sealed class VaultDatabase
                 key = null;
                 _configCache = null;
                 _secretsCache = null;
-                MigrateLegacyCredentialBlobIfNeeded();
+                if (!EnterprisePolicy.Current.DisableCredentialStorage)
+                    MigrateLegacyCredentialBlobIfNeeded();
                 return true;
             }
             catch
@@ -88,6 +89,7 @@ public sealed class VaultDatabase
 
     public void Initialize(string password, Configuration config, Dictionary<Guid, SiteCredential>? secrets = null)
     {
+        if (secrets is { Count: > 0 }) EnterprisePolicy.Current.RequireCredentialStorage();
         if (!PasswordStrength.MeetsMinimum(password))
             throw new ArgumentException(
                 $"Master password must be at least {PasswordStrength.MinimumLength} characters and not trivially weak.");
@@ -146,6 +148,10 @@ public sealed class VaultDatabase
 
     public void ReplaceSnapshot(Configuration config, Dictionary<Guid, SiteCredential> credentials)
     {
+        var policy = EnterprisePolicy.Current;
+        policy.RequireTransfer();
+        // Even an empty snapshot would delete existing credentials. Refuse, never strip.
+        policy.RequireCredentialStorage();
         RequireUnlocked();
         lock (_gate)
         {
@@ -189,6 +195,7 @@ public sealed class VaultDatabase
 
     public bool HasCredential(Guid id)
     {
+        EnterprisePolicy.Current.RequireCredentialStorage();
         RequireUnlocked();
         lock (_gate)
         {
@@ -198,6 +205,7 @@ public sealed class VaultDatabase
 
     public SiteCredential? ReadCredential(Guid id)
     {
+        EnterprisePolicy.Current.RequireCredentialRead();
         RequireUnlocked();
         lock (_gate)
         {
@@ -209,6 +217,7 @@ public sealed class VaultDatabase
 
     public void SaveCredential(Guid id, SiteCredential credential)
     {
+        EnterprisePolicy.Current.RequireCredentialStorage();
         RequireUnlocked();
         lock (_gate)
         {
@@ -235,6 +244,9 @@ public sealed class VaultDatabase
 
     public Dictionary<Guid, SiteCredential> ExportCredentials()
     {
+        var policy = EnterprisePolicy.Current;
+        policy.RequireTransfer();
+        policy.RequireCredentialStorage();
         RequireUnlocked();
         lock (_gate)
         {
