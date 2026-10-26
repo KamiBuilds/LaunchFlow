@@ -146,6 +146,8 @@ public sealed class VaultDatabase
 
     public void ReplaceSnapshot(Configuration config, Dictionary<Guid, SiteCredential> credentials)
     {
+        if (EnterprisePolicy.Load().DisableCredentialStorage && credentials.Count > 0)
+            throw new InvalidOperationException("Importing credentials is disabled by your organization.");
         RequireUnlocked();
         lock (_gate)
         {
@@ -209,6 +211,8 @@ public sealed class VaultDatabase
 
     public void SaveCredential(Guid id, SiteCredential credential)
     {
+        if (EnterprisePolicy.Load().DisableCredentialStorage)
+            throw new InvalidOperationException("Credential storage is disabled by your organization.");
         RequireUnlocked();
         lock (_gate)
         {
