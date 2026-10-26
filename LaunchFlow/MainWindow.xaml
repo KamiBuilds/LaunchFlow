@@ -172,6 +172,10 @@
           <StackPanel DockPanel.Dock="Top" Margin="0,0,0,15">
             <TextBlock Text="YOUR WORKFLOWS" FontWeight="SemiBold" FontSize="11" Foreground="#A0B4CC"/>
             <TextBlock Text="Select a site to configure" Foreground="#7D91A8" FontSize="12" Margin="0,7,0,0"/>
+            <TextBlock x:Name="WorkflowStatusLabel" Text="Ready"
+                       FontSize="11" Foreground="#55D8C8" Margin="0,6,0,0"
+                       TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
+                       AutomationProperties.Name="Workflow status"/>
             <TextBlock x:Name="WorkspaceHeading" Text="WORKSPACES" Margin="0,13,0,5"
                        FontSize="11" FontWeight="SemiBold" Foreground="#A0B4CC"/>
             <ComboBox x:Name="WorkspaceCombo" IsEditable="True"
