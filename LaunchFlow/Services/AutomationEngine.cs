@@ -11,6 +11,7 @@ public sealed class AutomationEngine : IAsyncDisposable
     private readonly Dictionary<Guid, TrackedSession> _sessions = new();
     private IPlaywright? _playwright;
     private bool _running;
+    private CancellationTokenSource? _activeRunCancellation;
 
     public event Action<string>? OnLog;
     public Func<WebsiteWorkflow, string, Task<bool>>? ApproveLoginOriginAsync { get; set; }
@@ -50,24 +51,30 @@ public sealed class AutomationEngine : IAsyncDisposable
         Configuration? configuration = null,
         string? keepassMasterPassword = null)
     {
+        CancellationTokenSource linkedRun;
         lock (_gate)
         {
             if (_running)
                 throw new InvalidOperationException("Automation is already running.");
             _running = true;
+            linkedRun = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _activeRunCancellation = linkedRun;
         }
 
+        var policy = EnterprisePolicy.Load();
         var result = new RunResult();
         try
         {
+            if (policy.DisableAutomation)
+                throw new InvalidOperationException("Automation is disabled by your organization's policy.");
             await EnsurePlaywrightAsync().ConfigureAwait(false);
             foreach (var workflow in workflows)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                linkedRun.Token.ThrowIfCancellationRequested();
                 if (!includeDisabled && !workflow.Enabled) continue;
                 try
                 {
-                    var attention = await RunOneAsync(workflow, cancellationToken, configuration, keepassMasterPassword)
+                    var attention = await RunOneAsync(workflow, linkedRun.Token, configuration, keepassMasterPassword)
                         .ConfigureAwait(false);
                     if (attention is not null)
                         result.LoginNeedsAttention.Add(attention);
@@ -84,7 +91,13 @@ public sealed class AutomationEngine : IAsyncDisposable
         }
         finally
         {
-            lock (_gate) _running = false;
+            lock (_gate)
+            {
+                _running = false;
+                if (ReferenceEquals(_activeRunCancellation, linkedRun))
+                    _activeRunCancellation = null;
+            }
+            linkedRun.Dispose();
         }
 
         return result;
@@ -92,6 +105,9 @@ public sealed class AutomationEngine : IAsyncDisposable
 
     public async Task<IPage> GetPageForRecorderAsync(WebsiteWorkflow workflow)
     {
+        var policy = EnterprisePolicy.Load();
+        if (policy.DisableAutomation || policy.DisableTeach || !policy.AllowsUrl(workflow.StartUrl))
+            throw new InvalidOperationException("Recording is blocked by your organization's policy.");
         await EnsurePlaywrightAsync().ConfigureAwait(false);
         var page = await GetOrCreatePageAsync(workflow, CancellationToken.None).ConfigureAwait(false);
         ValidateUrl(workflow.StartUrl);
@@ -114,12 +130,18 @@ public sealed class AutomationEngine : IAsyncDisposable
     /// </summary>
     public async Task CloseSessionsAsync()
     {
-        lock (_gate) _running = false;
-        foreach (var session in _sessions.Values.ToList())
+        List<TrackedSession> sessions;
+        lock (_gate)
+        {
+            try { _activeRunCancellation?.Cancel(); }
+            catch (ObjectDisposedException) { /* run finished at the same time */ }
+            sessions = _sessions.Values.ToList();
+            _sessions.Clear();
+        }
+        foreach (var session in sessions)
         {
             try { await session.Context.CloseAsync().ConfigureAwait(false); } catch { /* lock path */ }
         }
-        _sessions.Clear();
     }
 
     public async ValueTask DisposeAsync()
@@ -137,8 +159,15 @@ public sealed class AutomationEngine : IAsyncDisposable
     {
         Log($"Starting '{workflow.Name}'…");
         ValidateUrl(workflow.StartUrl);
+        var policy = EnterprisePolicy.Load();
+        if (policy.DisableAutomation || !policy.AllowsUrl(workflow.StartUrl))
+            throw new InvalidOperationException("This website is blocked by your organization's policy.");
         if (!string.IsNullOrWhiteSpace(workflow.DestinationUrl))
+        {
             ValidateUrl(workflow.DestinationUrl);
+            if (!policy.AllowsUrl(workflow.DestinationUrl))
+                throw new InvalidOperationException("Destination website is blocked by policy.");
+        }
 
         if (IsDefaultBrowserOpenOnly(workflow.Browser))
         {
@@ -158,7 +187,8 @@ public sealed class AutomationEngine : IAsyncDisposable
         var alreadyOnSite = !string.IsNullOrEmpty(currentUrl) &&
                             Uri.TryCreate(currentUrl, UriKind.Absolute, out var cur) &&
                             Uri.TryCreate(workflow.StartUrl, UriKind.Absolute, out var start) &&
-                            string.Equals(cur.Host, start.Host, StringComparison.OrdinalIgnoreCase);
+                            string.Equals(cur.Scheme, start.Scheme, StringComparison.OrdinalIgnoreCase) &&
+                            string.Equals(cur.Authority, start.Authority, StringComparison.OrdinalIgnoreCase);
 
         if (!alreadyOnSite)
         {
@@ -174,7 +204,8 @@ public sealed class AutomationEngine : IAsyncDisposable
         }
 
         if (workflow.AutoLogin &&
-            !string.Equals(workflow.LoginMode, "None", StringComparison.OrdinalIgnoreCase))
+            !string.Equals(workflow.LoginMode, "None", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(workflow.LoginMode, "SSO", StringComparison.OrdinalIgnoreCase))
         {
             await TryAutoLoginAsync(workflow, page, ct, configuration, keepassMasterPassword)
                 .ConfigureAwait(false);
@@ -191,11 +222,17 @@ public sealed class AutomationEngine : IAsyncDisposable
             ct.ThrowIfCancellationRequested();
             try
             {
-                await ExecuteStepAsync(page, step, ct).ConfigureAwait(false);
+                if (step.Type == "Navigate" && !policy.AllowsUrl(step.Target))
+                    throw new InvalidOperationException("Navigation blocked by policy.");
+                await ExecuteStepAsync(page, step, ct).WaitAsync(ct).ConfigureAwait(false);
             }
+            catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
-                Log($"Step '{step.Type}' failed on '{workflow.Name}': {ex.Message}. Continuing remaining steps when possible.");
+                // Never continue after an unknown browser state. A later click
+                // could submit the wrong form or duplicate a destructive action.
+                throw new InvalidOperationException(
+                    $"Step '{step.Type}' needs repair in workflow '{workflow.Name}'.", ex);
             }
         }
 
@@ -219,6 +256,12 @@ public sealed class AutomationEngine : IAsyncDisposable
         Configuration? configuration,
         string? keepassMasterPassword)
     {
+        var policy = EnterprisePolicy.Load();
+        if (!policy.AllowsCredentialFill(page.Url))
+        {
+            Log($"Automatic sign-in for '{workflow.Name}' is blocked by policy.");
+            return;
+        }
         var credential = _vault.Read(workflow, configuration, keepassMasterPassword);
         if (credential is null)
         {
@@ -262,20 +305,24 @@ public sealed class AutomationEngine : IAsyncDisposable
                 ? origin
                 : GetOrigin(workflow.PasswordCredentialOrigin);
             var afterContinueOrigin = GetOrigin(page.Url);
-            if (!string.IsNullOrWhiteSpace(workflow.PasswordCredentialOrigin) &&
-                !OriginsMatch(afterContinueOrigin, passwordOrigin) &&
-                !await IsOriginAllowedAsync(workflow, afterContinueOrigin).ConfigureAwait(false))
+            if (!policy.AllowsCredentialFill(page.Url) ||
+                (!OriginsMatch(afterContinueOrigin, passwordOrigin) &&
+                 !await IsOriginAllowedAsync(workflow, afterContinueOrigin).ConfigureAwait(false)))
             {
                 Log($"Password page origin {afterContinueOrigin} was not approved. Complete sign-in manually if needed.");
                 return;
             }
 
+            ct.ThrowIfCancellationRequested();
             if (!string.IsNullOrWhiteSpace(workflow.PasswordSelector))
             {
                 var pass = page.Locator(workflow.PasswordSelector).First;
                 if (await pass.CountAsync().ConfigureAwait(false) > 0)
                 {
-                    await pass.FillAsync(credential.Password).ConfigureAwait(false);
+                    if (!policy.AllowsCredentialFill(page.Url) ||
+                        !await IsOriginAllowedAsync(workflow, GetOrigin(page.Url)).ConfigureAwait(false))
+                        return;
+                    await pass.FillAsync(credential.Password).WaitAsync(ct).ConfigureAwait(false);
                     filledPass = true;
                 }
                 else
@@ -391,18 +438,22 @@ public sealed class AutomationEngine : IAsyncDisposable
     private async Task<IPage> GetOrCreatePageAsync(WebsiteWorkflow workflow, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        if (_sessions.TryGetValue(workflow.Id, out var existing))
+        TrackedSession? existing;
+        lock (_gate) _sessions.TryGetValue(workflow.Id, out existing);
+        if (existing is not null)
         {
             try
             {
                 if (existing.Page.IsClosed)
-                    _sessions.Remove(workflow.Id);
+                {
+                    lock (_gate) _sessions.Remove(workflow.Id);
+                }
                 else
                     return existing.Page;
             }
             catch
             {
-                _sessions.Remove(workflow.Id);
+                lock (_gate) _sessions.Remove(workflow.Id);
             }
         }
 
@@ -426,9 +477,22 @@ public sealed class AutomationEngine : IAsyncDisposable
         }
 
         var context = await LaunchContextWithRecoveryAsync(browserType, workflow, profileDir, options, ct).ConfigureAwait(false);
-        var page = context.Pages.FirstOrDefault() ?? await context.NewPageAsync().ConfigureAwait(false);
-        _sessions[workflow.Id] = new TrackedSession(context, page);
-        return page;
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            var page = context.Pages.FirstOrDefault() ?? await context.NewPageAsync().ConfigureAwait(false);
+            lock (_gate)
+            {
+                ct.ThrowIfCancellationRequested();
+                _sessions[workflow.Id] = new TrackedSession(context, page);
+            }
+            return page;
+        }
+        catch
+        {
+            try { await context.CloseAsync().ConfigureAwait(false); } catch { }
+            throw;
+        }
     }
 
     private async Task<IBrowserContext> LaunchContextWithRecoveryAsync(
