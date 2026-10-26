@@ -85,7 +85,7 @@ public sealed class AutomationEngine : IAsyncDisposable
                 catch (Exception ex)
                 {
                     result.FailedCount++;
-                    Log($"Workflow '{workflow.Name}' failed: {ex.Message}");
+                    Log($"Workflow '{workflow.Name}' failed ({ex.GetType().Name}). Check or repair the workflow.");
                 }
             }
         }
@@ -131,13 +131,15 @@ public sealed class AutomationEngine : IAsyncDisposable
     public async Task CloseSessionsAsync()
     {
         List<TrackedSession> sessions;
+        CancellationTokenSource? active;
         lock (_gate)
         {
-            try { _activeRunCancellation?.Cancel(); }
-            catch (ObjectDisposedException) { /* run finished at the same time */ }
+            active = _activeRunCancellation;
             sessions = _sessions.Values.ToList();
             _sessions.Clear();
         }
+        try { active?.Cancel(); }
+        catch (ObjectDisposedException) { /* run finished at the same time */ }
         foreach (var session in sessions)
         {
             try { await session.Context.CloseAsync().ConfigureAwait(false); } catch { /* lock path */ }
@@ -217,14 +219,28 @@ public sealed class AutomationEngine : IAsyncDisposable
             }
         }
 
+        if (workflow.AutoLogin && string.Equals(workflow.LoginMode, "SSO", StringComparison.OrdinalIgnoreCase))
+        {
+            var signIn = await LoginHealth.InspectAsync(page, ct).ConfigureAwait(false);
+            if (signIn.NeedsAttention)
+                return new LoginAttention(workflow.Id, workflow.Name, "Finish organization SSO/MFA in the browser.");
+        }
+
         foreach (var step in workflow.Steps)
         {
             ct.ThrowIfCancellationRequested();
             try
             {
+                if (!policy.AllowsUrl(page.Url))
+                    throw new InvalidOperationException("Page redirected to a website blocked by policy.");
+                if (policy.DisableCredentialFill && step.Type == "Fill")
+                    throw new InvalidOperationException("Fill steps disabled by policy.");
                 if (step.Type == "Navigate" && !policy.AllowsUrl(step.Target))
                     throw new InvalidOperationException("Navigation blocked by policy.");
                 await ExecuteStepAsync(page, step, ct).WaitAsync(ct).ConfigureAwait(false);
+                ct.ThrowIfCancellationRequested();
+                if (!policy.AllowsUrl(page.Url))
+                    throw new InvalidOperationException("Step redirected to a website blocked by policy.");
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
@@ -367,9 +383,10 @@ public sealed class AutomationEngine : IAsyncDisposable
                 Log($"Auto-login attempted for '{workflow.Name}'.");
             }
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            Log($"Auto-login for '{workflow.Name}' incomplete: {ex.Message}. " +
+            Log($"Auto-login for '{workflow.Name}' incomplete: {ex.GetType().Name}. " +
                 "Leaving the browser open for manual sign-in / MFA.");
         }
     }
@@ -613,7 +630,7 @@ public sealed class AutomationEngine : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            Log("Could not position browser on monitor: " + ex.Message);
+            Log("Could not position browser on monitor: " + ex.GetType().Name);
         }
     }
 
