@@ -1707,12 +1707,12 @@ public partial class MainWindow : Window
         return false;
     }
 
-    private void LockPasswords_Click(object sender, RoutedEventArgs e)
+    private async void LockPasswords_Click(object sender, RoutedEventArgs e)
     {
-        SecureVaultLock("Vault manually locked; master password required before automation.");
+        await SecureVaultLockAsync("Vault manually locked; master password required before automation.");
     }
 
-    private void ChangeMasterPassword_Click(object sender, RoutedEventArgs e)
+    private async void ChangeMasterPassword_Click(object sender, RoutedEventArgs e)
     {
         var current = new SecretPromptWindow("Change master password", "Enter your current master password.") { Owner = this };
         if (current.ShowDialog() != true) return;
@@ -1733,7 +1733,7 @@ public partial class MainWindow : Window
             _master.Change(current.Secret, next.Secret);
             WindowsHelloService.Disable();
             _configuration.WindowsHelloUnlockEnabled = false;
-            SecureVaultLock("Master password changed; vault locked. Re-enable Windows Hello if you use it.");
+            await SecureVaultLockAsync("Master password changed; vault locked. Re-enable Windows Hello if you use it.");
             AppendLog("Master password changed. Windows Hello unlock was cleared.");
         }
         catch (Exception ex) { MessageBox.Show(this, ex.Message, "Password not changed", MessageBoxButton.OK, MessageBoxImage.Warning); }
