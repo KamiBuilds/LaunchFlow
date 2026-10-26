@@ -15,6 +15,7 @@ Use Intune, Group Policy or another authorized configuration management system.
 |---|---|---|
 | DisableAutomation | DWORD | Blocks running browser workflows |
 | DisableCredentialFill | DWORD | Blocks automatic password/username filling |
+| DisableCredentialStorage | DWORD | Blocks saving and importing credentials in the vault; existing stored secrets are not erased automatically |
 | DisableExport | DWORD | Blocks creating encrypted .launchflow exports |
 | DisableTeach | DWORD | Blocks recording browser interactions |
 | RequireHttpsForCredentials | DWORD | Blocks filling credentials on non-HTTPS pages |
