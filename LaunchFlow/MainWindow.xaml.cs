@@ -86,6 +86,9 @@ public partial class MainWindow : Window
         _runner = new AutomationEngine(_vault);
         _runner.ApproveLoginOriginAsync = ConfirmLoginOriginAsync;
         _runner.OnLog += line => Dispatcher.BeginInvoke(new Action(() => AppendLog(line)));
+        _runner.OnWorkflowStatus += (name, state) =>
+            _ = Dispatcher.BeginInvoke(new Action(() =>
+                WorkflowStatusLabel.Text = $"{name}: {state}"));
 
         StartupCheck.IsChecked = _configuration.StartWithWindows;
         UnlockCheck.IsChecked = _configuration.RunOnUnlock;
