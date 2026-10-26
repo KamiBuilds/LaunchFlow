@@ -8,7 +8,7 @@ using the encrypted Export flow before testing a development build.
 ## Ten workstreams
 
 1. **Enterprise controls — initial implementation.** Machine policy under
-   `HKLM\SOFTWARE\Policies\LaunchFlow` gates runs, Teach, credential filling,
+   `HKLM\SOFTWARE\Policies\LaunchFlow` gates runs, Teach, credential filling and storage,
    import/export, and exact-host navigation. No remote management plane or full
    organizational role-based policy editor yet.
 2. **Self-healing — safe detection/repair foundation.** Broken action stops
