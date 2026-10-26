@@ -22,10 +22,23 @@ public sealed class AutomationEngine : IAsyncDisposable
     }
 
     public sealed record LoginAttention(Guid WorkflowId, string WorkflowName, string Reason);
+    public sealed record StepAttention(Guid WorkflowId, string WorkflowName, string StepType);
+    private sealed class WorkflowStepException : Exception
+    {
+        public Guid WorkflowId { get; }
+        public string StepType { get; }
+        public WorkflowStepException(Guid workflowId, string stepType, Exception inner)
+            : base("Workflow step needs repair.", inner)
+        {
+            WorkflowId = workflowId;
+            StepType = stepType;
+        }
+    }
 
     public sealed class RunResult
     {
         public List<LoginAttention> LoginNeedsAttention { get; } = new();
+        public List<StepAttention> StepsNeedAttention { get; } = new();
         public int FinishedCount { get; set; }
         public int FailedCount { get; set; }
     }
@@ -82,6 +95,13 @@ public sealed class AutomationEngine : IAsyncDisposable
                         result.FinishedCount++;
                 }
                 catch (OperationCanceledException) { throw; }
+                catch (WorkflowStepException ex)
+                {
+                    result.FailedCount++;
+                    result.StepsNeedAttention.Add(new StepAttention(
+                        workflow.Id, workflow.Name, ex.StepType));
+                    Log($"Workflow '{workflow.Name}' needs a step repaired: {ex.StepType}.");
+                }
                 catch (Exception ex)
                 {
                     result.FailedCount++;
@@ -247,8 +267,7 @@ public sealed class AutomationEngine : IAsyncDisposable
             {
                 // Never continue after an unknown browser state. A later click
                 // could submit the wrong form or duplicate a destructive action.
-                throw new InvalidOperationException(
-                    $"Step '{step.Type}' needs repair in workflow '{workflow.Name}'.", ex);
+                throw new WorkflowStepException(workflow.Id, step.Type, ex);
             }
         }
 
