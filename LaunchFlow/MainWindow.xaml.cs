@@ -1062,13 +1062,13 @@ public partial class MainWindow : Window
         try
         {
             await Task.Delay(LockTimeout, token);
-            await Dispatcher.InvokeAsync(async () =>
+            await Dispatcher.InvokeAsync(new Func<Task>(async () =>
             {
                 // Check elapsed lock interval after sleep/resume or duplicate events.
                 if (_windowsLocked && _lockedSinceUtc == lockTime &&
                     DateTimeOffset.UtcNow - lockTime >= LockTimeout)
                     await SecureVaultLockAsync("Windows has been locked for the configured timeout: encrypted vault locked.");
-            }).Task.Unwrap();
+            })).Task.Unwrap();
         }
         catch (OperationCanceledException) { }
     }
@@ -1086,7 +1086,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            AppendLog("Could not close browser sessions before lock: " + ex.Message);
+            AppendLog("Could not close browser sessions before lock: " + ex.GetType().Name);
             if (_configuration.DiagnosticsLogEnabled) CrashLog.Write("CloseSessions", ex);
         }
 
@@ -1099,7 +1099,7 @@ public partial class MainWindow : Window
             }
             catch (Exception ex)
             {
-                AppendLog("Could not seal browser profiles: " + ex.Message);
+                AppendLog("Could not seal browser profiles: " + ex.GetType().Name);
                 if (_configuration.DiagnosticsLogEnabled) CrashLog.Write("SealProfiles", ex);
             }
         }
