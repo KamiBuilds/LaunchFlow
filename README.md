@@ -12,7 +12,7 @@ LaunchFlow is a Windows desktop application for automated website workflows, sec
 2. Click **Download and install**. The installer fetches the latest stable LaunchFlow version from the official GitHub release, checks the published SHA-256 digest, and launches Windows Setup.
 3. Complete setup and open LaunchFlow. Create your master password, choose startup behavior, and add your website workflows.
 
-**No ZIP files, Git, Visual Studio, separate .NET installation, or developer SDKs are needed.** The Universal Installer is a standalone Windows EXE. It downloads the latest published stable Windows Setup, verifies the release's SHA-256 digest, and launches Setup. That setup includes LaunchFlow, the .NET runtime, and its application dependencies. An internet connection is needed for downloads and updates. Windows may display an unknown-publisher warning until the executables are digitally signed.
+**For end users: one EXE, no ZIPs, no SDK, and no separate .NET runtime installation.** The Universal Installer is a standalone Windows EXE. It downloads the latest published stable Windows Setup, verifies the release's SHA-256 digest, and launches Setup. That setup includes LaunchFlow, the .NET runtime, and its application dependencies. An internet connection is needed for downloads and updates. Windows may display an unknown-publisher warning until the executables are digitally signed.
 
 **Browser requirement:** Website automation uses an already-installed Microsoft Edge or Google Chrome browser. Edge is normally included in Windows 10/11. LaunchFlow does not silently install or change browsers, so a supported browser is needed to run website workflows.
 
@@ -40,7 +40,11 @@ The core application is in `LaunchFlow/`. The standalone updater is in `bootstra
 
 For a controlled build, open [Windows installer — manual build and release](https://github.com/KamiBuilds/LaunchFlow/actions/workflows/windows.yml), choose **Run workflow**, and leave **Publish stable release** unchecked. After installing and testing the resulting executables on Windows, run the workflow with **Publish stable release** checked to publish an update. Source changes do not start builds automatically.
 
-Windows developers can use `BUILD-INSTALLER.cmd` with .NET 8 SDK and Inno Setup. See [CHANGELOG.md](CHANGELOG.md) and [CODE-SIGNING.md](CODE-SIGNING.md) for development notes.
+Developers can use `BUILD-INSTALLER.cmd` to build locally. It checks for the .NET 8 SDK and Inno Setup, and can offer to install missing build tools using WinGet. **These developer tools are never needed on the end user's PC.** See [CHANGELOG.md](CHANGELOG.md) and [CODE-SIGNING.md](CODE-SIGNING.md) for development notes.
+
+## Known testing limitations
+
+Teach currently records clicks on its managed browser page. Popups and separate tabs may need manual steps. Keep credentials in **Passwords**, not Teach; it does not record typed inputs or passwords. The Universal Installer uses **published** stable GitHub Releases, not drafts.
 
 ## Privacy and security
 

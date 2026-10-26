@@ -23,3 +23,16 @@ profiles-sealed/
 .env
 .env.*
 *.log
+
+# Private vaults and diagnostics
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.pem
+*.key
+diagnostics.log
+.env
+.env.*
+!.env.example

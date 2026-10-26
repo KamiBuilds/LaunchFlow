@@ -33,6 +33,7 @@ public partial class MainWindow : Window
 
     private bool _revertingTab;
     private bool _sidebarCollapsed;
+    private bool _teachingInProgress;
     private bool _startupWorkflowViewReady;
     private bool _capturingShortcut;
     private string _activeShortcut = "";
@@ -723,67 +724,88 @@ public partial class MainWindow : Window
 
     private static Task<bool> ShowRecorderAsync(VisualRecorderWindow recorder)
     {
-        // Unlike ShowDialog, Show() leaves the main window movable and usable.
-        var done = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        recorder.Closed += (_, _) => done.TrySetResult(recorder.Saved);
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        recorder.Closed += (_, _) => completion.TrySetResult(recorder.Saved);
         try { recorder.Show(); }
-        catch (Exception ex) { done.TrySetException(ex); }
-        return done.Task;
+        catch (Exception ex) { completion.TrySetException(ex); }
+        return completion.Task;
+    }
+
+    private async Task SaveTaughtStepsAsync(WebsiteWorkflow workflow, IPage page)
+    {
+        var recorder = new VisualRecorderWindow(page) { Owner = this };
+        if (!await ShowRecorderAsync(recorder) || recorder.RecordedSteps.Count == 0) return;
+
+        // Teach remains modeless; the selected website may have changed.
+        var original = _configuration.Workflows.FirstOrDefault(w => w.Id == workflow.Id);
+        if (original is null)
+        {
+            MessageBox.Show(this,
+                "This website was removed while Teach was open, so no clicks were saved.",
+                "Website no longer exists", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        int previousCount = original.Steps.Count;
+        original.Steps.AddRange(recorder.RecordedSteps);
+        try { _store.Save(_configuration); }
+        catch
+        {
+            original.Steps.RemoveRange(previousCount, original.Steps.Count - previousCount);
+            throw;
+        }
+        if (_selected?.Id == original.Id) RefreshSteps();
+        AppendLog($"Saved {recorder.RecordedSteps.Count} taught click(s) for '{original.Name}'.");
     }
 
     private async void RecordSteps_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is null || !SaveAll()) return;
+        if (_teachingInProgress || _selected is null || !SaveAll()) return;
+        var workflow = _selected;
+        _teachingInProgress = true;
         try
         {
-            var page = await _runner.GetPageForRecorderAsync(_selected);
-            var recorder = new VisualRecorderWindow(page) { Owner = this };
-            if (await ShowRecorderAsync(recorder))
-            {
-                _selected.Steps.AddRange(recorder.RecordedSteps);
-                RefreshSteps();
-                _store.Save(_configuration);
-                AppendLog($"Saved {recorder.RecordedSteps.Count} taught steps for {_selected.Name}.");
-            }
+            var page = await _runner.GetPageForRecorderAsync(workflow);
+            await SaveTaughtStepsAsync(workflow, page);
         }
         catch (Exception ex)
         {
             MessageBox.Show(this, MakeBrowserFriendlyMessage(ex),
-                "Visual recorder", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "Teach clicks", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+        finally { _teachingInProgress = false; }
     }
 
     private async void RepairLogin_Click(object sender, RoutedEventArgs e)
     {
+        if (_teachingInProgress) return;
         try { await RepairLoginCoreAsync(); }
         catch (Exception ex)
         {
-            MessageBox.Show(this, MakeBrowserFriendlyMessage(ex), "Repair login", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, MakeBrowserFriendlyMessage(ex),
+                "Repair login", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
     private async Task RepairLoginCoreAsync()
     {
-        if (_selected is null || !SaveAll()) return;
-        MessageBox.Show(this,
-            "The website will open alongside a small Teach window.\n\n" +
-            "1. Complete any sign-in prompts in your browser.\n" +
-            "2. Click the buttons you want LaunchFlow to remember. Recording starts automatically.\n" +
-            "3. Return to Teach and click Save clicks.\n\n" +
-            "Passwords are never recorded. Use Passwords to store your login safely.",
-            "Repair login", MessageBoxButton.OK, MessageBoxImage.Information);
-        var page = await _runner.GetPageForRecorderAsync(_selected);
-        var health = await LoginHealth.InspectAsync(page);
-        if (health.NeedsAttention)
-            AppendLog($"Repair login: {health.Reason}");
-        var recorder = new VisualRecorderWindow(page) { Owner = this };
-        if (await ShowRecorderAsync(recorder) && recorder.RecordedSteps.Count > 0)
+        if (_teachingInProgress || _selected is null || !SaveAll()) return;
+        var workflow = _selected;
+        _teachingInProgress = true;
+        try
         {
-            _selected.Steps.AddRange(recorder.RecordedSteps);
-            RefreshSteps();
-            _store.Save(_configuration);
-            AppendLog($"Repair login saved {recorder.RecordedSteps.Count} step(s) for {_selected.Name}.");
+            MessageBox.Show(this,
+                "1. Complete sign-in in your browser.\n" +
+                "2. Click buttons you want LaunchFlow to remember.\n" +
+                "3. Return to Teach and click Save clicks.\n\n" +
+                "Use Passwords to save a login; Teach does not record passwords.",
+                "Repair login", MessageBoxButton.OK, MessageBoxImage.Information);
+            var page = await _runner.GetPageForRecorderAsync(workflow);
+            var health = await LoginHealth.InspectAsync(page);
+            if (health.NeedsAttention) AppendLog($"Repair login: {health.Reason}");
+            await SaveTaughtStepsAsync(workflow, page);
         }
+        finally { _teachingInProgress = false; }
     }
 
     private void Stop_Click(object sender, RoutedEventArgs e) => _runCancellation?.Cancel();

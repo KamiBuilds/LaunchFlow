@@ -44,5 +44,17 @@ check((root/'LaunchFlow/TutorialWindow.xaml').is_file() and 'new TutorialWindow'
 main_code=(root/'LaunchFlow/MainWindow.xaml.cs').read_text(encoding='utf-8')
 check('EnsureStartupWorkflowVisible();' in main_code and 'MainTabs.SelectedIndex = -1;' in main_code,
       'initial Workflows content is forced to render after Loaded')
+main_code=(root/'LaunchFlow/MainWindow.xaml.cs').read_text(encoding='utf-8')
+recorder_code=(root/'LaunchFlow/VisualRecorderWindow.xaml.cs').read_text(encoding='utf-8')
+build_script=(root/'BUILD-INSTALLER.ps1').read_text(encoding='utf-8')
+check('FirstOrDefault(w => w.Id == workflow.Id)' in main_code,
+      'Teach persists clicks only to its original website')
+check('_teachingInProgress' in main_code, 'overlapping Teach sessions are blocked')
+check('(() => {' in recorder_code and '})()' in recorder_code,
+      'recorder page-initialization script is invoked')
+check('LaunchFlow-Setup-v$projectVersion-x64.exe' in build_script,
+      'builder selects the exact versioned installer')
+check('coreclr.dll' in build_script and 'Microsoft.Playwright.dll' in build_script,
+      'builder validates bundled application components')
 print('\n'+ ('FAILED: '+', '.join(errors) if errors else 'Source/configuration checks PASS. Native Windows build remains required.'))
 sys.exit(bool(errors))

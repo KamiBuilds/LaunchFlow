@@ -73,7 +73,7 @@ public partial class VisualRecorderWindow : Window
     }
 
     private string BuildRecorderScript() => $$"""
-        () => {
+        (() => {
           const binding = '{{_bindingName}}';
           if (window.__lfStopTeach) window.__lfStopTeach();
           let active = true;
@@ -113,7 +113,7 @@ public partial class VisualRecorderWindow : Window
             document.removeEventListener('click', onClick, true);
           };
           return true;
-        }
+        })()
         """;
 
     private async void ToggleCapture_Click(object sender, RoutedEventArgs e)

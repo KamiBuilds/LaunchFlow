@@ -95,11 +95,16 @@ public sealed class AutomationEngine : IAsyncDisposable
         await EnsurePlaywrightAsync().ConfigureAwait(false);
         var page = await GetOrCreatePageAsync(workflow, CancellationToken.None).ConfigureAwait(false);
         ValidateUrl(workflow.StartUrl);
-        await page.GotoAsync(workflow.StartUrl, new PageGotoOptions
+        // Keep any sign-in progress in the browser during Teach or Repair.
+        if (!Uri.TryCreate(page.Url, UriKind.Absolute, out var current) ||
+            (current.Scheme != Uri.UriSchemeHttp && current.Scheme != Uri.UriSchemeHttps))
         {
-            WaitUntil = WaitUntilState.DOMContentLoaded,
-            Timeout = 60_000
-        }).ConfigureAwait(false);
+            await page.GotoAsync(workflow.StartUrl, new PageGotoOptions
+            {
+                WaitUntil = WaitUntilState.DOMContentLoaded,
+                Timeout = 60_000
+            }).ConfigureAwait(false);
+        }
         return page;
     }
 

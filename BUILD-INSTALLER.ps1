@@ -142,7 +142,7 @@ function Install-FromWinGet {
 
 Write-Host ''
 Write-Host '===========================================' -ForegroundColor Cyan
-Write-Host '  LaunchFlow v$projectVersion - Installer Builder' -ForegroundColor Cyan
+Write-Host "  LaunchFlow v$projectVersion - Installer Builder" -ForegroundColor Cyan
 Write-Host '===========================================' -ForegroundColor Cyan
 Write-Host 'Checking tools required to BUILD the installer...'
 Refresh-ProcessPath
@@ -235,6 +235,13 @@ if (Test-Path -LiteralPath $publishDir) {
     -o $publishDir
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed. Check build errors above.' }
 
+# Ensure the setup contains the runtime and required automation library.
+foreach ($requiredFile in @('LaunchFlow.exe', 'coreclr.dll', 'hostpolicy.dll', 'Microsoft.Playwright.dll')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $publishDir $requiredFile) -PathType Leaf)) {
+        throw "The publish is missing $requiredFile. Refusing to package an incomplete installer."
+    }
+}
+
 # Optional Authenticode (SmartScreen). See CODE-SIGNING.md.
 #   LAUNCHFLOW_SIGN_PFX + LAUNCHFLOW_SIGN_PFX_PASSWORD
 #   LAUNCHFLOW_SIGN_THUMBPRINT  or  LAUNCHFLOW_SIGN_SUBJECT
@@ -262,11 +269,10 @@ $innoArgs.Add($iss)
 & $inno @innoArgs
 if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed. Check errors above.' }
 
-$installer = Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'dist') -Filter 'LaunchFlow-Setup-*.exe' -File |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1 -ExpandProperty FullName
-if (-not $installer) {
-    throw "Inno Setup returned successfully but no LaunchFlow-Setup-*.exe was found in dist\"
+# Use this build's exact version, never an old file left in dist.
+$installer = Join-Path $PSScriptRoot "dist\LaunchFlow-Setup-v$projectVersion-x64.exe"
+if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
+    throw "Inno Setup did not create the expected installer: $installer"
 }
 # Fallback if Inno did not sign (no /Slfsign=): sign the outer setup.exe here.
 Invoke-LaunchFlowSign -PathToSign $installer -QuietIfUnsigned | Out-Null

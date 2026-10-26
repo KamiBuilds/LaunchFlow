@@ -1,3 +1,15 @@
+# v0.7.12 — Reliability and packaging cleanup (development)
+
+- Fixed modeless Teach saving steps to the wrong website if the selection changes.
+- Prevented overlapping Teach sessions and handled removal of a website during recording.
+- Fixed the Playwright page-initialization script so Teach listeners run across navigations.
+- Kept sign-in progress intact when opening Teach or Repair login on an existing browser page.
+- Improved installer builder reliability: require an exact versioned Setup file and bundled .NET runtime dependencies.
+- Clarified that end users need neither the .NET SDK nor Inno Setup.
+- Preserved the existing installer AppId and encrypted vault location.
+
+**Status:** Source checks only. A native Windows compile and real install/upgrade test are still required.
+
 # v0.7.11 — KISS-rule usability and Teach clicks (experimental)
 
 - Made Teach a movable non-modal window so the main app and browser remain usable.
