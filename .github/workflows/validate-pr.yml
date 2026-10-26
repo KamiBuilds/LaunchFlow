@@ -32,5 +32,7 @@ jobs:
         run: python tools/Verify-LaunchFlow-Source.py
       - name: Restore dependencies
         run: dotnet restore LaunchFlow/LaunchFlow.csproj
+      - name: Run safety regression smoke tests
+        run: dotnet run --project tests/LaunchFlow.SafetySmokeTests/LaunchFlow.SafetySmokeTests.csproj --configuration Release
       - name: Compile Windows desktop app
         run: dotnet build LaunchFlow/LaunchFlow.csproj --configuration Release --no-restore -warnaserror
