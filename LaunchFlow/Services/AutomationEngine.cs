@@ -191,14 +191,8 @@ public sealed class AutomationEngine : IAsyncDisposable
         foreach (var step in workflow.Steps)
         {
             ct.ThrowIfCancellationRequested();
-            try
-            {
-                await ExecuteStepAsync(page, step, ct).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                Log($"Step '{step.Type}' failed on '{workflow.Name}': {ex.Message}. Continuing remaining steps when possible.");
-            }
+            // A failed action leaves browser state uncertain; do not dispatch later steps or a destination navigation.
+            await ExecuteStepAsync(page, step, ct).ConfigureAwait(false);
         }
 
         if (!string.IsNullOrWhiteSpace(workflow.DestinationUrl))
