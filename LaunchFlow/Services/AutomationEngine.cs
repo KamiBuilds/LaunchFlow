@@ -506,11 +506,8 @@ public sealed class AutomationEngine : IAsyncDisposable
         };
         var channel = ResolveChannel(workflow.Browser);
         if (channel is not null) options.Channel = channel;
-        if (!workflow.Browser.Contains("Firefox", StringComparison.OrdinalIgnoreCase))
-        {
-            options.IgnoreDefaultArgs = new[] { "--enable-automation" };
-            options.Args = new[] { "--disable-blink-features=AutomationControlled" };
-        }
+        // Do not hide browser automation indicators or bypass website protections.
+        // Organization policy, identity-provider controls and MFA must be respected.
 
         var context = await LaunchContextWithRecoveryAsync(browserType, workflow, profileDir, options, ct).ConfigureAwait(false);
         try
