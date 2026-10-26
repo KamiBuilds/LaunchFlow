@@ -59,7 +59,7 @@ public sealed class CredentialVault
     public void Save(Guid workflowId, SiteCredential credential)
     {
         if (EnterprisePolicy.Load().DisableCredentialStorage)
-            throw new InvalidOperationException("Credential storage is disabled by your organization.\");
+            throw new InvalidOperationException("Credential storage is disabled by your organization.");
         VaultDatabase.Current.SaveCredential(workflowId, credential);
     }
 
