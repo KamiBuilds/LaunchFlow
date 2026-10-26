@@ -244,7 +244,7 @@ public partial class MainWindow : Window
             .FirstOrDefault(i => ((ComboBoxItem)BrowserCombo.Items[i]).Content?.ToString() == w.Browser);
         BrowserCombo.SelectedIndex = index;
         MonitorCombo.SelectedIndex = Math.Clamp(w.MonitorIndex, 0, Math.Max(0, MonitorCombo.Items.Count - 1));
-        LoginModeCombo.SelectedIndex = w.LoginMode == "None" ? 1 : 0;
+        LoginModeCombo.SelectedIndex = w.LoginMode == "None" ? 1 : w.LoginMode == "SSO" ? 2 : 0;
         UsernameContinueBox.Text = w.UsernameContinueSelector;
         PasswordOriginBox.Text = w.PasswordCredentialOrigin;
         AutoLoginCheck.IsChecked = w.AutoLogin;
@@ -874,7 +874,11 @@ public partial class MainWindow : Window
 
     private async Task RunEnabledAsync(bool onlySelected = false, WorkspaceProfile? workspace = null)
     {
-        if (_windowsLocked) { AppendLog("Windows is locked; automation was paused."); return; }
+        if (_windowsLocked || _vaultLockGate.CurrentCount == 0)
+        {
+            AppendLog("Workstation vault is locking or Windows is locked; automation was paused.");
+            return;
+        }
         if (!VaultDatabase.Current.IsUnlocked)
         {
             ShowFromTray();
@@ -920,8 +924,8 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             failed = true;
-            AppendLog("Run error: " + ex.Message);
-            NotifyTray("LaunchFlow", "A workflow failed: " + ex.Message, Forms.ToolTipIcon.Error);
+            AppendLog("Run error: " + ex.GetType().Name);
+            NotifyTray("LaunchFlow", "A workflow failed. Review the workflow and security policy.", Forms.ToolTipIcon.Error);
         }
         finally
         {
@@ -1331,7 +1335,8 @@ public partial class MainWindow : Window
     private bool NeedsKeePassForRun(WebsiteWorkflow w)
     {
         if (!w.AutoLogin) return false;
-        if (string.Equals(w.LoginMode, "None", StringComparison.OrdinalIgnoreCase)) return false;
+        if (string.Equals(w.LoginMode, "None", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(w.LoginMode, "SSO", StringComparison.OrdinalIgnoreCase)) return false;
         if (string.IsNullOrWhiteSpace(w.KeepassEntryPath)) return false;
         if (_vault.Has(w.Id)) return false;
         return true;
