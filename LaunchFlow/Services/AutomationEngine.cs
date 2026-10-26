@@ -203,7 +203,7 @@ public sealed class AutomationEngine : IAsyncDisposable
         }
 
         var page = await GetOrCreatePageAsync(workflow, ct).ConfigureAwait(false);
-        await PositionWindowAsync(page, workflow.MonitorIndex).ConfigureAwait(false);
+        await PositionWindowAsync(page, workflow.MonitorIndex, workflow.MonitorDeviceName).ConfigureAwait(false);
 
         var currentUrl = page.Url;
         var alreadyOnSite = !string.IsNullOrEmpty(currentUrl) &&
@@ -622,12 +622,15 @@ public sealed class AutomationEngine : IAsyncDisposable
         }
     }
 
-    private async Task PositionWindowAsync(IPage page, int monitorIndex)
+    private async Task PositionWindowAsync(IPage page, int monitorIndex, string? deviceName)
     {
         try
         {
             var monitors = MonitorService.GetMonitors();
-            var monitor = monitors[Math.Clamp(monitorIndex, 0, monitors.Count - 1)];
+            var monitor = !string.IsNullOrWhiteSpace(deviceName)
+                ? monitors.FirstOrDefault(m => m.DeviceName.Equals(deviceName, StringComparison.OrdinalIgnoreCase))
+                  ?? monitors[0]
+                : monitors[Math.Clamp(monitorIndex, 0, monitors.Count - 1)];
             var bounds = monitor.Bounds;
             // Chromium-only CDP window placement; Firefox quietly skips.
             var cdp = await page.Context.NewCDPSessionAsync(page).ConfigureAwait(false);
