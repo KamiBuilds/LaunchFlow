@@ -257,7 +257,14 @@ public partial class MainWindow : Window
         int index = Enumerable.Range(0, BrowserCombo.Items.Count)
             .FirstOrDefault(i => ((ComboBoxItem)BrowserCombo.Items[i]).Content?.ToString() == w.Browser);
         BrowserCombo.SelectedIndex = index;
-        MonitorCombo.SelectedIndex = Math.Clamp(w.MonitorIndex, 0, Math.Max(0, MonitorCombo.Items.Count - 1));
+        var savedMonitor = (MonitorCombo.ItemsSource as IEnumerable<MonitorChoice>)?
+            .FirstOrDefault(m => !string.IsNullOrWhiteSpace(w.MonitorDeviceName) &&
+                m.DeviceName.Equals(w.MonitorDeviceName, StringComparison.OrdinalIgnoreCase));
+        MonitorCombo.SelectedItem = savedMonitor;
+        if (savedMonitor is null)
+            MonitorCombo.SelectedIndex = string.IsNullOrWhiteSpace(w.MonitorDeviceName)
+                ? Math.Clamp(w.MonitorIndex, 0, Math.Max(0, MonitorCombo.Items.Count - 1))
+                : 0; // Original display unavailable: fall back to primary display.
         LoginModeCombo.SelectedIndex = w.LoginMode == "None" ? 1 : w.LoginMode == "SSO" ? 2 : 0;
         UsernameContinueBox.Text = w.UsernameContinueSelector;
         PasswordOriginBox.Text = w.PasswordCredentialOrigin;
@@ -345,6 +352,7 @@ public partial class MainWindow : Window
         w.DestinationUrl = DestinationUrlBox.Text.Trim();
         w.Browser = BrowserSelection(BrowserCombo);
         w.MonitorIndex = (MonitorCombo.SelectedItem as MonitorChoice)?.Index ?? 0;
+        w.MonitorDeviceName = (MonitorCombo.SelectedItem as MonitorChoice)?.DeviceName ?? "";
         w.LoginMode = BrowserSelection(LoginModeCombo);
         w.UsernameContinueSelector = UsernameContinueBox.Text.Trim();
         w.PasswordCredentialOrigin = PasswordOriginBox.Text.Trim();
