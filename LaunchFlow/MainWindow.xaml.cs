@@ -373,7 +373,7 @@ public partial class MainWindow : Window
             _configuration.KeePassDatabasePath = KeePassDbBox.Text.Trim();
             _configuration.KeePassKeyFilePath = KeePassKeyBox.Text.Trim();
             RefreshKeePassStatus();
-                    foreach (var w in _configuration.Workflows)
+            foreach (var w in _configuration.Workflows)
             {
                 AutomationEngine.ValidateUrl(w.StartUrl);
                 if (!string.IsNullOrWhiteSpace(w.DestinationUrl)) AutomationEngine.ValidateUrl(w.DestinationUrl);
@@ -859,7 +859,7 @@ public partial class MainWindow : Window
         }
         _runCancellation?.Dispose();
         _runCancellation = new CancellationTokenSource();
-        
+
         StopButton.IsEnabled = true;
         var failed = false;
         AutomationEngine.RunResult? runResult = null;
@@ -885,7 +885,7 @@ public partial class MainWindow : Window
         }
         finally
         {
-            
+
             StopButton.IsEnabled = false;
             if (!failed && _runCancellation is { IsCancellationRequested: false })
             {
@@ -1434,7 +1434,7 @@ public partial class MainWindow : Window
         {
             _configuration.WindowsHelloUnlockEnabled = true;
             _store.Save(_configuration);
-                AppendLog("Windows Hello unlock enabled for this Windows account.");
+            AppendLog("Windows Hello unlock enabled for this Windows account.");
             MessageBox.Show(this, "Windows Hello unlock is on for this PC.", "Windows Hello");
         }
     }
@@ -1613,6 +1613,9 @@ public partial class MainWindow : Window
                 catch (Exception ex)
                 {
                     AppendLog("Could not unseal browser profiles: " + ex.Message);
+                    MessageBox.Show(this, "Some browser sessions could not be restored. Their encrypted files were retained. " +
+                        "Affected workflows are blocked; your saved vault logins are separate.",
+                        "Browser sessions need attention", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
                 _passwordsUnlocked = true;
                 _passwordSessionExpiresUtc = DateTimeOffset.UtcNow.Add(PasswordSessionDuration);
@@ -1635,7 +1638,8 @@ public partial class MainWindow : Window
         var current = new SecretPromptWindow("Change master password", "Enter your current master password.") { Owner = this };
         if (current.ShowDialog() != true) return;
         var next = new SecretPromptWindow("New master password",
-            $"Choose a new password of at least {PasswordStrength.MinimumLength} characters (mixed case, number, or symbol recommended).") { Owner = this };
+            $"Choose a new password of at least {PasswordStrength.MinimumLength} characters (mixed case, number, or symbol recommended).")
+        { Owner = this };
         if (next.ShowDialog() != true) return;
         if (!PasswordStrength.MeetsMinimum(next.Secret))
         {
@@ -1663,12 +1667,15 @@ public partial class MainWindow : Window
         if (!RequireMasterPassword(forcePrompt: true)) return;
         var dialog = new Microsoft.Win32.SaveFileDialog
         {
-            Title = "Export LaunchFlow", Filter = "LaunchFlow file (*.launchflow)|*.launchflow",
-            DefaultExt = ".launchflow", FileName = "My-LaunchFlow.launchflow"
+            Title = "Export LaunchFlow",
+            Filter = "LaunchFlow file (*.launchflow)|*.launchflow",
+            DefaultExt = ".launchflow",
+            FileName = "My-LaunchFlow.launchflow"
         };
         if (dialog.ShowDialog(this) != true) return;
         var first = new SecretPromptWindow("Protect your export",
-            $"Set an export password ({PasswordStrength.MinimumLength}+ characters). You'll need it on the new PC.") { Owner = this };
+            $"Set an export password ({PasswordStrength.MinimumLength}+ characters). You'll need it on the new PC.")
+        { Owner = this };
         if (first.ShowDialog() != true) return;
         var second = new SecretPromptWindow("Confirm export password", "Enter your export password again.") { Owner = this };
         if (second.ShowDialog() != true) return;
@@ -1688,7 +1695,8 @@ public partial class MainWindow : Window
         if (!RequireMasterPassword(forcePrompt: true)) return;
         var file = new OpenFileDialog
         {
-            Title = "Import LaunchFlow", Filter = "LaunchFlow file (*.launchflow)|*.launchflow"
+            Title = "Import LaunchFlow",
+            Filter = "LaunchFlow file (*.launchflow)|*.launchflow"
         };
         if (file.ShowDialog(this) != true) return;
         ImportLaunchFlowFile(file.FileName);

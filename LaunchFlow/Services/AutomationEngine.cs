@@ -258,13 +258,9 @@ public sealed class AutomationEngine : IAsyncDisposable
                 }
             }
 
-            var passwordOrigin = string.IsNullOrWhiteSpace(workflow.PasswordCredentialOrigin)
-                ? origin
-                : GetOrigin(workflow.PasswordCredentialOrigin);
             var afterContinueOrigin = GetOrigin(page.Url);
-            if (!string.IsNullOrWhiteSpace(workflow.PasswordCredentialOrigin) &&
-                !OriginsMatch(afterContinueOrigin, passwordOrigin) &&
-                !await IsOriginAllowedAsync(workflow, afterContinueOrigin).ConfigureAwait(false))
+            // A username step may leave the trusted origin even when no separate password origin was configured.
+            if (!await IsOriginAllowedAsync(workflow, afterContinueOrigin).ConfigureAwait(false))
             {
                 Log($"Password page origin {afterContinueOrigin} was not approved. Complete sign-in manually if needed.");
                 return;
@@ -410,6 +406,10 @@ public sealed class AutomationEngine : IAsyncDisposable
         var profileDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "LaunchFlow", "profiles-v2", workflow.Id.ToString("N"));
+        // Do not replace a failed restore with an empty browser profile and overwrite its sealed data on the next lock.
+        var sealedPath = Path.Combine(ProfileVaultService.SealedRoot, workflow.Id.ToString("N") + ".profile.aes");
+        if (!Directory.Exists(profileDir) && File.Exists(sealedPath))
+            throw new InvalidOperationException("This browser profile could not be restored. Its encrypted files were retained; do not replace them.");
         Directory.CreateDirectory(profileDir);
 
         var options = new BrowserTypeLaunchPersistentContextOptions
@@ -445,29 +445,9 @@ public sealed class AutomationEngine : IAsyncDisposable
         }
         catch (Exception ex) when (LooksLikeProfileInUse(ex))
         {
-            Log($"Browser profile for '{workflow.Name}' looks busy. Trying to recover it…");
-            TryDeleteBrowserLockFiles(profileDir);
-            try
-            {
-                return await browserType.LaunchPersistentContextAsync(profileDir, options).ConfigureAwait(false);
-            }
-            catch (Exception retryEx) when (LooksLikeProfileInUse(retryEx))
-            {
-                var recoveryDir = profileDir + "-recovery";
-                TryDeleteDirectory(recoveryDir);
-                try
-                {
-                    CopyDirectory(profileDir, recoveryDir);
-                }
-                catch
-                {
-                    Directory.CreateDirectory(recoveryDir);
-                }
-
-                TryDeleteBrowserLockFiles(recoveryDir);
-                Log($"The previous browser session for '{workflow.Name}' is still holding the normal profile. LaunchFlow opened a recovery profile instead, so you may need to sign in again once.");
-                return await browserType.LaunchPersistentContextAsync(recoveryDir, options).ConfigureAwait(false);
-            }
+            // An active profile belongs to its running browser. Removing locks or copying SQLite files can corrupt it.
+            throw new InvalidOperationException(
+                $"The browser profile for '{workflow.Name}' is already in use. Close that workflow's browser window and try again.", ex);
         }
     }
 
@@ -477,49 +457,6 @@ public sealed class AutomationEngine : IAsyncDisposable
         return message.Contains("existing browser session", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("profile is already in use", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("singleton", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static void TryDeleteBrowserLockFiles(string directory)
-    {
-        if (!Directory.Exists(directory)) return;
-        foreach (var name in new[] { "SingletonLock", "SingletonSocket", "SingletonCookie", "lockfile", "LOCK", "parent.lock" })
-        {
-            try
-            {
-                var path = Path.Combine(directory, name);
-                if (File.Exists(path)) File.Delete(path);
-            }
-            catch { }
-        }
-    }
-
-    private static void TryDeleteDirectory(string path)
-    {
-        try
-        {
-            if (Directory.Exists(path)) Directory.Delete(path, true);
-        }
-        catch { }
-    }
-
-    private static void CopyDirectory(string source, string destination)
-    {
-        if (!Directory.Exists(source))
-        {
-            Directory.CreateDirectory(destination);
-            return;
-        }
-
-        Directory.CreateDirectory(destination);
-        foreach (var dir in Directory.GetDirectories(source, "*", SearchOption.AllDirectories))
-            Directory.CreateDirectory(dir.Replace(source, destination, StringComparison.OrdinalIgnoreCase));
-
-        foreach (var file in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
-        {
-            var target = file.Replace(source, destination, StringComparison.OrdinalIgnoreCase);
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            File.Copy(file, target, true);
-        }
     }
 
     private async Task PositionWindowAsync(IPage page, int monitorIndex)

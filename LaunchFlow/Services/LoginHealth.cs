@@ -41,7 +41,7 @@ public static class LoginHealth
                 }
             }
 
-            var passwordVisible = await page.Locator("input[type='password']").CountAsync().ConfigureAwait(false) > 0;
+            var passwordVisible = await page.Locator("input[type='password']:visible").CountAsync().ConfigureAwait(false) > 0;
             if (passwordVisible)
             {
                 return new Report(true,
@@ -50,9 +50,10 @@ public static class LoginHealth
 
             return new Report(false, "No obvious login challenge detected.");
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) { throw; }
+        catch (Exception)
         {
-            return new Report(false, "Could not inspect page: " + ex.Message);
+            return new Report(true, "Could not verify sign-in. Check the browser before continuing.");
         }
     }
 }

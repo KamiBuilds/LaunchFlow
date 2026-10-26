@@ -1,5 +1,7 @@
 # LaunchFlow
 
+> **`hermes` development checkpoint — not release-approved.** Core, recorder and installer repairs are being integrated. Review reproduced a credential-fill/navigation race; its document-bound repair is still in progress. Do not use this checkpoint with real credentials. Native Windows app/DPAPI/setup verification and missing-browser consent/setup remain pending. No stable release is authorized by this branch.
+
 LaunchFlow is a Windows desktop application for automated website workflows, secure local credential storage, and multi-monitor browser sessions.
 
 ## Install LaunchFlow

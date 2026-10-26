@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.IO;
-using System.Text;
 using LaunchFlow.Models;
 
 namespace LaunchFlow.Services;
@@ -139,30 +138,25 @@ public static class KeePassXcService
                       "keepassxc-cli was not found. Install KeePassXC and ensure keepassxc-cli is on PATH, " +
                       "or import credentials into the LaunchFlow vault instead.");
 
-        var args = new StringBuilder();
-        args.Append("show -s -a UserName -a Password ");
-        if (string.IsNullOrEmpty(masterPassword))
-            args.Append("--no-password ");
-        if (!string.IsNullOrWhiteSpace(keyFilePath))
+        var psi = new ProcessStartInfo(cli)
         {
-            args.Append("-k ");
-            args.Append(Quote(keyFilePath));
-            args.Append(' ');
-        }
-        args.Append(Quote(databasePath));
-        args.Append(' ');
-        args.Append(Quote(entryPath));
-
-        var psi = new ProcessStartInfo
-        {
-            FileName = cli,
-            Arguments = args.ToString(),
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        foreach (var argument in new[] { "show", "-s", "-a", "UserName", "-a", "Password" })
+            psi.ArgumentList.Add(argument);
+        if (string.IsNullOrEmpty(masterPassword)) psi.ArgumentList.Add("--no-password");
+        if (!string.IsNullOrWhiteSpace(keyFilePath))
+        {
+            psi.ArgumentList.Add("-k");
+            psi.ArgumentList.Add(keyFilePath);
+        }
+        psi.ArgumentList.Add("--");
+        psi.ArgumentList.Add(databasePath);
+        psi.ArgumentList.Add(entryPath);
 
         using var process = Process.Start(psi)
                             ?? throw new InvalidOperationException("Failed to start keepassxc-cli.");
@@ -174,6 +168,9 @@ public static class KeePassXcService
         }
         process.StandardInput.Close();
 
+        // Drain both pipes before waiting; a verbose CLI can fill stderr and block its own exit.
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
         if (!process.WaitForExit(30_000))
         {
             try { process.Kill(entireProcessTree: true); } catch { /* ignore */ }
@@ -182,41 +179,24 @@ public static class KeePassXcService
                 "or import the entry into the LaunchFlow vault for unattended automation.");
         }
 
-        var stdout = process.StandardOutput.ReadToEnd();
-        var stderr = process.StandardError.ReadToEnd();
+        var stdout = stdoutTask.GetAwaiter().GetResult();
+        _ = stderrTask.GetAwaiter().GetResult();
 
         if (process.ExitCode != 0)
             throw new InvalidOperationException(
-                "keepassxc-cli failed to read the entry. " +
-                (string.IsNullOrWhiteSpace(stderr) ? stdout : stderr).Trim() +
-                " Install KeePassXC, ensure keepassxc-cli works, or save the login in the LaunchFlow vault.");
+                "KeePassXC could not read the entry. Check the database, entry name, master password and key file.");
 
         return ParseShowOutput(stdout);
     }
 
     private static SiteCredential ParseShowOutput(string output)
     {
-        string? username = null;
-        string? password = null;
-        foreach (var raw in output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            var line = raw.Trim();
-            // keepassxc-cli show -a prints attribute values one per line in request order,
-            // or "Attribute: value" depending on version.
-            if (line.StartsWith("UserName:", StringComparison.OrdinalIgnoreCase))
-                username = line["UserName:".Length..].Trim();
-            else if (line.StartsWith("Password:", StringComparison.OrdinalIgnoreCase))
-                password = line["Password:".Length..].Trim();
-            else if (username is null)
-                username = line;
-            else if (password is null)
-                password = line;
-        }
-
-        if (password is null)
-            throw new InvalidOperationException("KeePass entry did not return a password.");
-
-        return new SiteCredential(username ?? "", password);
+        // Explicit -a attributes are raw values in request order, not labeled fields.
+        // Trimming or removing empty lines changes valid credentials, especially an empty username.
+        var lines = output.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        if (lines.Length < 2 || lines.Length > 3 || (lines.Length == 3 && lines[2].Length != 0))
+            throw new InvalidOperationException("KeePass returned an unsupported multiline credential.");
+        return new SiteCredential(lines[0], lines[1]);
     }
 
     private static string? ResolveCliPath()
@@ -265,6 +245,4 @@ public static class KeePassXcService
         return null;
     }
 
-    private static string Quote(string value) =>
-        "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
 }

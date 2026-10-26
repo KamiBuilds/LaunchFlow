@@ -1,14 +1,13 @@
 using System.IO;
 using System.IO.Compression;
 using System.Security.Cryptography;
-using System.Text;
 
 namespace LaunchFlow.Services;
 
 /// <summary>
-/// Encrypts Playwright browser profile folders at rest when the vault locks,
-/// and restores them after unlock. Profiles are plaintext only while unlocked
-/// (browsers need direct filesystem access).
+/// Seals managed browser profiles for the current Windows account and restores complete snapshots.
+/// This is separate from vault-password encryption; failures retain source files and are reported.
+/// It is not containment against other processes running as the same Windows user.
 /// </summary>
 public static class ProfileVaultService
 {
@@ -23,6 +22,7 @@ public static class ProfileVaultService
         if (!Directory.Exists(ProfilesRoot)) return;
         Directory.CreateDirectory(SealedRoot);
 
+        var failures = new List<Exception>();
         foreach (var dir in Directory.GetDirectories(ProfilesRoot))
         {
             try
@@ -32,8 +32,11 @@ public static class ProfileVaultService
             catch (Exception ex)
             {
                 CrashLog.Write("ProfileSeal", ex);
+                failures.Add(ex);
             }
         }
+        if (failures.Count > 0)
+            throw new AggregateException("Some browser profiles could not be sealed. Their plaintext folders were retained.", failures);
     }
 
     public static void UnsealAll()
@@ -41,6 +44,7 @@ public static class ProfileVaultService
         if (!Directory.Exists(SealedRoot)) return;
         Directory.CreateDirectory(ProfilesRoot);
 
+        var failures = new List<Exception>();
         foreach (var file in Directory.GetFiles(SealedRoot, "*.profile.aes"))
         {
             try
@@ -50,8 +54,11 @@ public static class ProfileVaultService
             catch (Exception ex)
             {
                 CrashLog.Write("ProfileUnseal", ex);
+                failures.Add(ex);
             }
         }
+        if (failures.Count > 0)
+            throw new AggregateException("Some browser profiles could not be restored. Their encrypted files were retained.", failures);
     }
 
     public static void WipeAllProfiles()
@@ -64,21 +71,30 @@ public static class ProfileVaultService
     {
         var id = Path.GetFileName(directory);
         var sealedPath = Path.Combine(SealedRoot, id + ".profile.aes");
-        var tempZip = Path.Combine(Path.GetTempPath(), $"lf-profile-{id}-{Guid.NewGuid():N}.zip");
+        var temp = sealedPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        var key = ProfileKey();
+        using var zip = new MemoryStream();
+        byte[] plain = Array.Empty<byte>();
         try
         {
-            if (File.Exists(tempZip)) File.Delete(tempZip);
-            ZipFile.CreateFromDirectory(directory, tempZip, CompressionLevel.Optimal, includeBaseDirectory: false);
-            var plain = File.ReadAllBytes(tempZip);
-            var key = ProfileKey();
+            // Do not create a second plaintext copy in the shared temporary directory.
+            ZipFile.CreateFromDirectory(directory, zip, CompressionLevel.Optimal, includeBaseDirectory: false);
+            plain = zip.ToArray();
             var sealedBytes = Encrypt(plain, key);
-            File.WriteAllBytes(sealedPath, sealedBytes);
-            CryptographicOperations.ZeroMemory(key);
-            TryDeleteDir(directory);
+            using (var output = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                output.Write(sealedBytes);
+                output.Flush(flushToDisk: true);
+            }
+            File.Move(temp, sealedPath, overwrite: true);
+            Directory.Delete(directory, recursive: true);
         }
         finally
         {
-            try { if (File.Exists(tempZip)) File.Delete(tempZip); } catch { /* ignore */ }
+            CryptographicOperations.ZeroMemory(key);
+            CryptographicOperations.ZeroMemory(plain);
+            if (zip.TryGetBuffer(out var buffer)) CryptographicOperations.ZeroMemory(buffer.AsSpan());
+            if (File.Exists(temp)) File.Delete(temp);
         }
     }
 
@@ -94,16 +110,18 @@ public static class ProfileVaultService
         {
             if (!TryDecrypt(sealedBytes, key, out var zipBytes))
                 throw new CryptographicException("Profile package could not be decrypted.");
-            var tempZip = Path.Combine(Path.GetTempPath(), $"lf-profile-out-{id}-{Guid.NewGuid():N}.zip");
+            var staging = Path.Combine(ProfilesRoot, ".restore-" + Guid.NewGuid().ToString("N"));
             try
             {
-                File.WriteAllBytes(tempZip, zipBytes);
-                Directory.CreateDirectory(target);
-                ZipFile.ExtractToDirectory(tempZip, target, overwriteFiles: true);
+                // Publish only a complete extraction; a failed restore must remain retryable.
+                Directory.CreateDirectory(staging);
+                using var archive = new ZipArchive(new MemoryStream(zipBytes, writable: false), ZipArchiveMode.Read);
+                archive.ExtractToDirectory(staging, overwriteFiles: false);
+                Directory.Move(staging, target);
             }
             finally
             {
-                try { if (File.Exists(tempZip)) File.Delete(tempZip); } catch { /* ignore */ }
+                if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
                 CryptographicOperations.ZeroMemory(zipBytes);
             }
         }
@@ -113,16 +131,44 @@ public static class ProfileVaultService
         }
     }
 
-    /// <summary>
-    /// Key is machine+user DPAPI material mixed with a fixed app salt.
-    /// Profiles stay bound to this Windows account (same as DPAPI).
-    /// </summary>
+    /// <summary>Profiles use a persisted random key wrapped for this Windows account, independent of the vault password.</summary>
     private static byte[] ProfileKey()
     {
-        var seed = Encoding.UTF8.GetBytes(
-            Environment.UserName + "|" + Environment.MachineName + "|LaunchFlow.Profiles.v1");
-        var protectedSeed = ProtectedData.Protect(seed, null, DataProtectionScope.CurrentUser);
-        return SHA256.HashData(protectedSeed);
+        var path = Path.Combine(VaultDatabase.Current.DataDirectory, "profile-key.dpapi");
+        if (File.Exists(path))
+        {
+            var key = ProtectedData.Unprotect(File.ReadAllBytes(path), null, DataProtectionScope.CurrentUser);
+            if (key.Length == 32) return key;
+            CryptographicOperations.ZeroMemory(key);
+            throw new CryptographicException("The browser-profile key is invalid. Existing files were not changed.");
+        }
+        // The old implementation hashed randomized DPAPI ciphertext and never saved it. It cannot be reconstructed.
+        if (Directory.Exists(SealedRoot) && Directory.EnumerateFiles(SealedRoot, "*.profile.aes").Any())
+            throw new CryptographicException("Existing sealed browser profiles have no recoverable key. Their files were not changed.");
+
+        Directory.CreateDirectory(VaultDatabase.Current.DataDirectory);
+        var created = RandomNumberGenerator.GetBytes(32);
+        var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            var wrapped = ProtectedData.Protect(created, null, DataProtectionScope.CurrentUser);
+            using (var output = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                output.Write(wrapped);
+                output.Flush(flushToDisk: true);
+            }
+            File.Move(temp, path, overwrite: false);
+            return created;
+        }
+        catch
+        {
+            CryptographicOperations.ZeroMemory(created);
+            throw;
+        }
+        finally
+        {
+            if (File.Exists(temp)) File.Delete(temp);
+        }
     }
 
     private static byte[] Encrypt(byte[] plaintext, byte[] key)

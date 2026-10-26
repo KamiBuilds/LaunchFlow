@@ -165,7 +165,13 @@ public partial class App : Application
                     if (db.Unlock(dialog.Password))
                     {
                         try { ProfileVaultService.UnsealAll(); }
-                        catch (Exception ex) { CrashLog.Write("ProfileUnseal", ex); }
+                        catch (Exception ex)
+                        {
+                            CrashLog.Write("ProfileUnseal", ex);
+                            MessageBox.Show("Some browser sessions could not be restored. Their encrypted files were retained. " +
+                                "Affected workflows are blocked rather than replacing those sessions. Your saved vault logins are separate.",
+                                "Browser sessions need attention", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        }
                         return true;
                     }
                     MessageBox.Show("Incorrect master password.", "Vault locked",
