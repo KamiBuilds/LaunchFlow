@@ -13,81 +13,24 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
 . (Join-Path $PSScriptRoot 'tools\Sign-LaunchFlow.ps1')
+. (Join-Path $PSScriptRoot 'BUILD-PACKAGING-HELPERS.ps1')
 
 # Reject inconsistent application and setup versions before packaging.
 [xml]$manifest = Get-Content (Join-Path $PSScriptRoot 'LaunchFlow\LaunchFlow.csproj')
 $projectVersion = [string](@($manifest.Project.PropertyGroup.Version | Where-Object { $_ })[0])
 $issText = Get-Content (Join-Path $PSScriptRoot 'installer\LaunchFlow.iss') -Raw
 $expected = '(?m)^#define AppVersion "' + [regex]::Escape($projectVersion) + '"\s*$'
-if ($projectVersion -notmatch '^\d+\.\d+\.\d+$' -or $issText -notmatch $expected) {
+if ($projectVersion -cnotmatch '\A(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\z' -or $issText -notmatch $expected) {
     throw 'LaunchFlow application and Windows Setup versions are inconsistent.'
 }
+$installer = Get-LaunchFlowSetupPath -Root $PSScriptRoot -Version $projectVersion
 
 
 if ($env:OS -ne 'Windows_NT') {
     throw 'LaunchFlow installer builds require Windows 10 or Windows 11 (x64).'
 }
 
-function Get-RunningLaunchFlow {
-    $sessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
-    @(Get-Process -Name 'LaunchFlow' -ErrorAction SilentlyContinue |
-      Where-Object { $_.SessionId -eq $sessionId -and $_.Id -ne $PID })
-}
-
-function Wait-ForLaunchFlowExit {
-    param([int]$Seconds)
-    $deadline = [DateTime]::UtcNow.AddSeconds($Seconds)
-    do {
-        if ((Get-RunningLaunchFlow).Count -eq 0) { return $true }
-        Start-Sleep -Milliseconds 350
-    } while ([DateTime]::UtcNow -lt $deadline)
-    return (Get-RunningLaunchFlow).Count -eq 0
-}
-
-function Stop-RunningLaunchFlow {
-    $running = @(Get-RunningLaunchFlow)
-    if ($running.Count -eq 0) { return }
-    Write-Host 'Closing the running LaunchFlow before building the update...' -ForegroundColor Cyan
-    $pipe = $null
-    $writer = $null
-    try {
-        $sessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
-        $pipeName = "LaunchFlow.Activate.Session$sessionId"
-        $pipe = [System.IO.Pipes.NamedPipeClientStream]::new(
-            '.', $pipeName, [System.IO.Pipes.PipeDirection]::Out)
-        $pipe.Connect(850)
-        $writer = [System.IO.StreamWriter]::new(
-            $pipe, [System.Text.UTF8Encoding]::new($false))
-        $writer.AutoFlush = $true
-        $writer.WriteLine('EXIT_FOR_BUILD')
-    }
-    catch {
-        Write-Host 'The installed version does not support safe shutdown; trying its window.' -ForegroundColor DarkYellow
-    }
-    finally {
-        if ($null -ne $writer) { $writer.Dispose() }
-        if ($null -ne $pipe) { $pipe.Dispose() }
-    }
-    if (Wait-ForLaunchFlowExit -Seconds 7) {
-        Write-Host '[OK] LaunchFlow exited.' -ForegroundColor Green
-        return
-    }
-    foreach ($process in @(Get-RunningLaunchFlow)) {
-        try { $null = $process.CloseMainWindow() } catch { }
-    }
-    if (Wait-ForLaunchFlowExit -Seconds 5) {
-        Write-Host '[OK] LaunchFlow exited.' -ForegroundColor Green
-        return
-    }
-    # Older instances may lack the IPC shutdown handler.
-    Write-Warning 'LaunchFlow did not exit normally; forcing it closed. Unsaved changes may be lost.'
-    foreach ($process in @(Get-RunningLaunchFlow)) {
-        Stop-Process -Id $process.Id -Force -ErrorAction Stop
-    }
-    if (-not (Wait-ForLaunchFlowExit -Seconds 6))
-        { throw 'LaunchFlow is still running. Build cancelled to protect installed files.' }
-    Write-Host '[OK] LaunchFlow has fully closed.' -ForegroundColor Green
-}
+# Building artifacts must not stop the installed app. Windows Setup handles application closure when explicitly run.
 
 function Refresh-ProcessPath {
     $parts = @(
@@ -194,7 +137,7 @@ function Install-FromWinGet {
     Write-Host "Installing $PackageId from the official WinGet package catalog..." -ForegroundColor Cyan
     # WinGet checks each package against the manifest's installer hash.
     # It may display a Windows UAC prompt. No security controls are bypassed.
-    & $WinGet install --id $PackageId --exact --source winget --accept-package-agreements --accept-source-agreements --silent
+    & $WinGet install --id $PackageId --exact --source winget
     if ($LASTEXITCODE -ne 0) {
         throw "WinGet could not install $PackageId (exit code $LASTEXITCODE). Check the WinGet output above, the network connection, and Windows permissions."
     }
@@ -256,7 +199,7 @@ BUILD-INSTALLER.cmd. On company-managed computers, ask your administrator.
         }
     }
     else {
-        Write-Host 'Auto-accepted (-Yes). Continuing…' -ForegroundColor Cyan
+        Write-Host 'Build-tool installation confirmed (-Yes). Vendor agreement prompts remain interactive.' -ForegroundColor Cyan
     }
     if (-not $hasSdk) {
         Install-FromWinGet -WinGet $winget -PackageId 'Microsoft.DotNet.SDK.8'
@@ -282,7 +225,6 @@ if (-not $dotnet -or -not (Has-DotNet8Sdk -DotNetPath $dotnet)) {
 if (-not $inno) { throw 'Inno Setup is still missing; cannot build LaunchFlow installer.' }
 
 Write-Host ''
-Stop-RunningLaunchFlow
 Write-Host 'Publishing LaunchFlow for Windows x64 (self-contained, ReadyToRun)...'
 $publishDir = Join-Path $PSScriptRoot 'publish'
 if (Test-Path -LiteralPath $publishDir) {
@@ -291,11 +233,14 @@ if (Test-Path -LiteralPath $publishDir) {
 & $dotnet publish (Join-Path $PSScriptRoot 'LaunchFlow\LaunchFlow.csproj') `
     -c Release -r win-x64 --self-contained true `
     -p:PublishSingleFile=false `
+    -p:PublishTrimmed=false `
+    -p:PlaywrightPlatform=win `
     -p:PublishReadyToRun=true `
     -p:DebugType=None `
     -p:DebugSymbols=false `
     -o $publishDir
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed. Check build errors above.' }
+Assert-LaunchFlowPayload -PublishDirectory $publishDir
 
 # Ensure the setup contains the runtime and required automation library.
 foreach ($requiredFile in @('LaunchFlow.exe', 'coreclr.dll', 'hostpolicy.dll', 'Microsoft.Playwright.dll')) {
@@ -328,13 +273,13 @@ else {
     Write-Host 'Inno SignTool skipped (no cert or signtool) — unsigned setup is OK for local use.' -ForegroundColor DarkGray
 }
 $innoArgs.Add($iss)
+# Remove only the expected target: a successful compiler exit must not reuse stale output.
+if (Test-Path -LiteralPath $installer) { Remove-Item -LiteralPath $installer -Force }
 & $inno @innoArgs
 if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed. Check errors above.' }
 
-# Use this build's exact version, never an old file left in dist.
-$installer = Join-Path $PSScriptRoot "dist\LaunchFlow-Setup-v$projectVersion-x64.exe"
-if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
-    throw "Inno Setup did not create the expected installer: $installer"
+if (-not (Test-Path -LiteralPath $installer -PathType Leaf) -or (Get-Item -LiteralPath $installer).Length -eq 0) {
+    throw "Inno Setup returned successfully but the expected artifact is missing or empty: $installer"
 }
 # Fallback if Inno did not sign (no /Slfsign=): sign the outer setup.exe here.
 Invoke-LaunchFlowSign -PathToSign $installer -QuietIfUnsigned | Out-Null

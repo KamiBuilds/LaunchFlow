@@ -3,9 +3,6 @@ using System.Drawing;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Reflection;
-using System.Security.Cryptography;
-using System.Text.Json;
-using System.Text.RegularExpressions;
 using Microsoft.Win32;
 
 namespace LaunchFlow.UniversalInstaller;
@@ -20,26 +17,11 @@ internal static class Program
     }
 }
 
-// Universal distribution:
-// - This installer is built as ONE self-contained Windows EXE. Its .NET runtime
-//   is included, so users do not install an SDK or a separate runtime.
-// - It finds the latest published stable version using GitHub Releases,
-//   downloads the matching Setup EXE, verifies the published SHA-256 and size,
-//   and launches Windows Setup after the user confirms.
-// - Windows Setup includes LaunchFlow, its .NET runtime, and app libraries.
-// - Browser automation uses the user's installed Edge or Chrome browser.
-//   Additional browsers are not installed silently.
-//
-// The release contains two EXEs internally, but users download just
-// LaunchFlow-Universal-Installer.exe. ZIP archives are not required.
-
-internal sealed record ReleaseInfo(string Tag, string Version, string AssetName, Uri Url, string Sha256, long Size);
-
+// Both installer layers include .NET; browser setup is an explicit app-managed choice.
 internal sealed class InstallerForm : Form
 {
     // AppId matches installer/LaunchFlow.iss. Do NOT modify when updating the main app.
     private const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\{9B1A7C15-093B-4DBA-BDA7-BF43A2E67320}_is1";
-    private const long MaxDownloadBytes = 1_073_741_824; // 1 GB hard limit
 
     private readonly Label _heading = new();
     private readonly Label _status = new();
@@ -54,11 +36,12 @@ internal sealed class InstallerForm : Form
     private ReleaseInfo? _release;
     private CancellationTokenSource? _downloadCancellation;
     private bool _busy;
+    private bool _newerInstalled;
 
     internal InstallerForm()
     {
         _repository = ReadEmbeddedRepository();
-        _client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = true, AutomaticDecompression = DecompressionMethods.All })
+        _client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, AutomaticDecompression = DecompressionMethods.All })
         {
             Timeout = TimeSpan.FromMinutes(10)
         };
@@ -96,14 +79,20 @@ internal sealed class InstallerForm : Form
         _refresh.Click += async (_, _) => await CheckLatestAsync();
         ConfigureButton(_open, "Open LaunchFlow", 392, 261, 143);
         _open.Click += (_, _) => OpenInstalledApp();
-        ConfigureButton(_cancel, "Cancel download", 30, 261, 214);
+        ConfigureButton(_cancel, "Cancel", 30, 261, 214);
         _cancel.Visible = false;
         _cancel.Click += (_, _) => _downloadCancellation?.Cancel();
 
         Controls.AddRange(new Control[] { _heading, _status, _details, _progress, _install, _refresh, _open, _cancel });
         RefreshButtons();
         Shown += async (_, _) => await CheckLatestAsync();
-        FormClosed += (_, _) => { _downloadCancellation?.Cancel(); _client.Dispose(); };
+        FormClosing += (_, e) =>
+        {
+            if (!_busy) return;
+            e.Cancel = true;
+            _downloadCancellation?.Cancel();
+        };
+        FormClosed += (_, _) => _client.Dispose();
     }
 
     private static void ConfigureButton(Button button, string label, int x, int y, int width)
@@ -119,7 +108,7 @@ internal sealed class InstallerForm : Form
 
     private void RefreshButtons()
     {
-        _install.Enabled = !_busy && _release is not null;
+        _install.Enabled = !_busy && _release is not null && !_newerInstalled;
         _refresh.Enabled = !_busy;
         _open.Enabled = !_busy && FindInstalledExecutable() is not null;
         _cancel.Visible = _busy && _downloadCancellation is not null;
@@ -131,49 +120,23 @@ internal sealed class InstallerForm : Form
         if (_busy) return;
         _busy = true;
         _release = null;
+        _newerInstalled = false;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+        _downloadCancellation = cts;
         _status.Text = "Checking the newest published release…";
         _details.Text = "Connecting securely to GitHub Releases.";
         RefreshButtons();
         try
         {
-            if (!Regex.IsMatch(_repository, @"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$") ||
-                _repository.StartsWith("SET-YOUR-", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("The publisher has not configured a GitHub release repository. The developer must set the repository once before distributing this universal installer.");
-
-            using var response = await _client.GetAsync($"https://api.github.com/repos/{_repository}/releases/latest", HttpCompletionOption.ResponseHeadersRead);
+            ReleasePolicy.ValidateRepository(_repository);
+            using var response = await _client.GetAsync($"https://api.github.com/repos/{_repository}/releases/latest", HttpCompletionOption.ResponseHeadersRead, cts.Token);
             if (response.StatusCode == HttpStatusCode.NotFound)
-                throw new InvalidOperationException($"No published stable release was found for {_repository}. Publish LaunchFlow as a GitHub Release first.");
+                throw new InvalidOperationException($"No published stable release was found for {_repository}.");
             response.EnsureSuccessStatusCode();
-            await using var stream = await response.Content.ReadAsStreamAsync();
-            using var document = await JsonDocument.ParseAsync(stream);
-            var root = document.RootElement;
-            var tag = root.GetProperty("tag_name").GetString() ?? throw new InvalidOperationException("Release has no version tag.");
-            var version = tag.TrimStart('v', 'V');
-            if (!Version.TryParse(version, out _)) throw new InvalidOperationException("The release tag must be a version like v0.7.9.");
-
-            ReleaseInfo? selected = null;
-            foreach (var asset in root.GetProperty("assets").EnumerateArray())
-            {
-                var name = asset.GetProperty("name").GetString() ?? "";
-                if (!name.Equals($"LaunchFlow-Setup-v{version}-x64.exe", StringComparison.OrdinalIgnoreCase))
-                    continue;
-                var rawUrl = asset.GetProperty("browser_download_url").GetString();
-                if (rawUrl is null || !Uri.TryCreate(rawUrl, UriKind.Absolute, out var url) ||
-                    url.Scheme != Uri.UriSchemeHttps || !url.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) ||
-                    !url.AbsolutePath.StartsWith($"/{_repository}/releases/download/", StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidOperationException("GitHub returned an unexpected download URL. Download cancelled.");
-                var digest = asset.TryGetProperty("digest", out var digestElement) ? digestElement.GetString() ?? "" : "";
-                if (!digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase) ||
-                    !Regex.IsMatch(digest[7..], "^[0-9a-fA-F]{64}$"))
-                    throw new InvalidOperationException("The release has no valid GitHub SHA-256 digest. For safety, installation is blocked.");
-                var size = asset.GetProperty("size").GetInt64();
-                if (size <= 0 || size > MaxDownloadBytes)
-                    throw new InvalidOperationException("The installer has an unexpected file size. Installation is blocked.");
-                selected = new ReleaseInfo(tag, version, name, url, digest[7..].ToUpperInvariant(), size);
-                break;
-            }
-            if (selected is null) throw new InvalidOperationException($"Release {tag} does not contain the expected LaunchFlow x64 setup executable.");
-            _release = selected;
+            await using var stream = await response.Content.ReadAsStreamAsync(cts.Token);
+            using var document = await ReleaseHttp.ReadMetadataAsync(stream, cts.Token);
+            _release = ReleasePolicy.Parse(document.RootElement, _repository);
+            var version = _release.Version;
             var installed = ReadInstalledVersion();
             if (installed is null)
             {
@@ -183,9 +146,11 @@ internal sealed class InstallerForm : Form
             else if (Version.TryParse(installed, out var installedVersion) &&
                      Version.TryParse(version, out var availableVersion) && installedVersion >= availableVersion)
             {
-                _status.Text = $"LaunchFlow {installed} is up to date";
-                _details.Text = $"Latest published version: {version}. You can open LaunchFlow or reinstall this version if needed.";
-                _install.Text = "Reinstall latest";
+                _newerInstalled = installedVersion > availableVersion;
+                _status.Text = _newerInstalled ? $"Newer version {installed} is installed" : $"LaunchFlow {installed} is up to date";
+                _details.Text = _newerInstalled
+                    ? $"Published version: {version}. Downgrade is blocked to protect newer data formats."
+                    : $"Latest published version: {version}. You can open LaunchFlow or reinstall this version if needed.";
             }
             else
             {
@@ -193,13 +158,21 @@ internal sealed class InstallerForm : Form
                 _details.Text = "The update installs over the existing version. Your encrypted database and workflows stay in their user-data folder.";
             }
         }
+        catch (OperationCanceledException)
+        {
+            _release = null;
+            _status.Text = "Update check cancelled or timed out";
+            _details.Text = "No installer was downloaded. Check again when ready.";
+        }
         catch (Exception ex)
         {
+            _release = null;
             _status.Text = "Couldn't check for updates";
             _details.Text = ex.Message;
         }
         finally
         {
+            _downloadCancellation = null;
             _busy = false;
             _install.Text = _release is not null && ReadInstalledVersion() == _release.Version ? "Reinstall latest" : "Download and install";
             RefreshButtons();
@@ -208,63 +181,49 @@ internal sealed class InstallerForm : Form
 
     private async Task DownloadAndRunAsync()
     {
-        if (_busy || _release is null) return;
+        if (_busy || _release is null || _newerInstalled) return;
         var release = _release;
         if (MessageBox.Show(this, $"Download LaunchFlow {release.Version} from the configured GitHub Releases repository and run its installer?\n\nRepository: {_repository}",
                 "Confirm installation", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
             return;
 
         _busy = true;
-        using var cts = new CancellationTokenSource();
+        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         _downloadCancellation = cts;
         _progress.Value = 0;
         _progress.Visible = true;
         _status.Text = "Downloading verified installer…";
         _details.Text = "The SHA-256 digest will be checked before the setup file is allowed to run.";
         RefreshButtons();
-        string? pendingPath = null;
+        string? stagingDirectory = null;
         try
         {
-            var downloads = Path.Combine(Path.GetTempPath(), "LaunchFlow-VerifiedInstallers");
-            Directory.CreateDirectory(downloads);
-            pendingPath = Path.Combine(downloads, $"{Guid.NewGuid():N}-{release.AssetName}");
-            using var response = await _client.GetAsync(release.Url, HttpCompletionOption.ResponseHeadersRead, cts.Token);
-            response.EnsureSuccessStatusCode();
-            var responseLength = response.Content.Headers.ContentLength;
-            if (responseLength.HasValue && responseLength.Value > MaxDownloadBytes)
-                throw new InvalidOperationException("The download is unexpectedly large.");
-
+            stagingDirectory = Directory.CreateTempSubdirectory("LaunchFlow-Setup-").FullName;
+            var pendingPath = Path.Combine(stagingDirectory, release.AssetName);
+            using var response = await ReleaseHttp.GetSetupAsync(_client, release.Url, cts.Token);
             await using var input = await response.Content.ReadAsStreamAsync(cts.Token);
-            await using var output = new FileStream(pendingPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 128 * 1024, useAsync: true);
-            using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            var buffer = new byte[128 * 1024];
-            long copied = 0;
-            int bytes;
-            while ((bytes = await input.ReadAsync(buffer, cts.Token)) > 0)
+            await using (var output = new FileStream(pendingPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 128 * 1024, useAsync: true))
             {
-                copied += bytes;
-                if (copied > MaxDownloadBytes) throw new InvalidOperationException("Maximum download size exceeded.");
-                hash.AppendData(buffer, 0, bytes);
-                await output.WriteAsync(buffer.AsMemory(0, bytes), cts.Token);
-                _progress.Value = Math.Clamp((int)(copied * 100L / release.Size), 0, 100);
-                _status.Text = $"Downloading… {_progress.Value}%";
+                await VerifiedDownload.CopyAsync(input, output, release, response.Content.Headers.ContentLength,
+                    value => { _progress.Value = value; _status.Text = $"Downloading… {value}%"; }, cts.Token);
             }
-            await output.FlushAsync(cts.Token);
-            if (copied != release.Size) throw new InvalidOperationException("The downloaded file is incomplete.");
-            var actualHash = Convert.ToHexString(hash.GetHashAndReset());
-            if (!CryptographicOperations.FixedTimeEquals(Convert.FromHexString(actualHash), Convert.FromHexString(release.Sha256)))
-                throw new CryptographicException("SHA-256 verification failed. This installer will not run.");
-            // Close the file handle BEFORE executing it; Windows cannot start an EXE
-            // that is still opened with FileShare.None by this downloader.
-            await output.DisposeAsync();
-            _status.Text = "Verified — opening setup";
-            _details.Text = "Verified against the release's SHA-256 digest. Windows Setup installs LaunchFlow with its bundled runtime and app components.";
-            Process.Start(new ProcessStartInfo(pendingPath) { UseShellExecute = true });
-            pendingPath = null; // setup may still need to read its file; don't delete it now
+            cts.Token.ThrowIfCancellationRequested();
+            _status.Text = "Verified — Windows Setup is running";
+            _details.Text = "Finish or cancel Windows Setup to return here. LaunchFlow includes its runtime and app components; browser setup requires your choice in the app.";
+            _downloadCancellation = null;
+            RefreshButtons();
+            using var setup = Process.Start(new ProcessStartInfo(pendingPath) { UseShellExecute = true })
+                ?? throw new InvalidOperationException("Windows could not launch the verified setup.");
+            // Once launched, cancellation belongs to Windows Setup, not the downloader.
+            await setup.WaitForExitAsync();
+            _status.Text = setup.ExitCode == 0 ? "Windows Setup completed" : "Windows Setup did not complete";
+            _details.Text = setup.ExitCode == 0
+                ? "Open LaunchFlow to continue. No developer SDK or separate .NET install is required."
+                : $"Setup returned exit code {setup.ExitCode}. Your existing user-data folder was not removed by this downloader.";
         }
         catch (OperationCanceledException)
         {
-            _status.Text = "Download cancelled";
+            _status.Text = "Download cancelled or timed out";
             _details.Text = "No installer was launched.";
         }
         catch (Exception ex)
@@ -274,9 +233,11 @@ internal sealed class InstallerForm : Form
         }
         finally
         {
-            if (pendingPath is not null)
+            if (stagingDirectory is not null)
             {
-                try { File.Delete(pendingPath); } catch { /* best effort */ }
+                try { Directory.Delete(stagingDirectory, recursive: true); }
+                catch (IOException) { /* Windows may still hold an installer file. */ }
+                catch (UnauthorizedAccessException) { /* Cleanup must not mask the installation result. */ }
             }
             _downloadCancellation = null;
             _busy = false;
@@ -295,14 +256,23 @@ internal sealed class InstallerForm : Form
 
     private static string? ReadInstalledVersion()
     {
-        using var key = Registry.CurrentUser.OpenSubKey(UninstallKey);
-        return key?.GetValue("DisplayVersion") as string;
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(UninstallKey);
+            return key?.GetValue("DisplayVersion") as string;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException) { return null; }
     }
 
     private static string? FindInstalledExecutable()
     {
-        using var key = Registry.CurrentUser.OpenSubKey(UninstallKey);
-        var raw = key?.GetValue("InstallLocation") as string;
+        string? raw = null;
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(UninstallKey);
+            raw = key?.GetValue("InstallLocation") as string;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException) { }
         if (string.IsNullOrWhiteSpace(raw))
             raw = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "LaunchFlow");
         var exe = Path.Combine(raw, "LaunchFlow.exe");

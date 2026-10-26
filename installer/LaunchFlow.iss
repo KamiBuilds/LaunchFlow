@@ -4,7 +4,7 @@
 AppId={{9B1A7C15-093B-4DBA-BDA7-BF43A2E67320}
 AppName={#AppName}
 AppVersion={#AppVersion}
-VersionInfoVersion=0.7.19.0
+VersionInfoVersion={#AppVersion}.0
 AppPublisher=LaunchFlow
 AppCopyright=LaunchFlow
 AppSupportURL=https://github.com
@@ -39,11 +39,13 @@ SignedUninstaller=yes
 
 [Messages]
 WelcomeLabel1=Welcome to LaunchFlow Setup
-WelcomeLabel2=This installs LaunchFlow on your PC.%n%nLaunchFlow keeps your website workflows and passwords in a local encrypted database. No Microsoft account is required.%n%nClick Next to continue.
+WelcomeLabel2=This installs LaunchFlow on your PC.%n%nLaunchFlow keeps your website workflows and passwords in a local encrypted database. No Microsoft account is required.%n%nThe .NET runtime and Playwright driver are included; no SDK is needed. Browser setup is offered separately in the app and never runs silently.%n%nClick Next to continue.
 FinishedLabel=LaunchFlow is installed.%n%nClick Finish to open it and create your master password. Your data stays on this computer.
 
 [Files]
-Source: "..\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Keep Playwright's private driver tree, including bundled Node and its licenses.
+Source: "..\publish\*"; DestDir: "{app}"; Excludes: ".playwright\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\publish\.playwright\*"; DestDir: "{app}\.playwright"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\LaunchFlow"; Filename: "{app}\LaunchFlow.exe"; Comment: "Website workspace automation"
