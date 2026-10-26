@@ -73,10 +73,7 @@ public partial class NewWorkflowWindow : Window
             MonitorIndex = monitor,
             AutoLogin = autoLogin,
             LoginMode = autoLogin ? "Auto" : "None",
-            Enabled = true,
-            KeepassEntryPath = string.IsNullOrWhiteSpace(KeepassPathBox.Text)
-                ? null
-                : KeepassPathBox.Text.Trim()
+            Enabled = true
         };
 
         NewUsername = UsernameBox.Password.Trim();

@@ -67,9 +67,8 @@
         <TextBlock Text="Password" FontWeight="SemiBold"/>
         <PasswordBox x:Name="PasswordBox" Margin="0,6,0,0" Height="36" Background="#0D1522"
                      Foreground="White" BorderBrush="#354358" Padding="10,8"/>
-        <TextBlock Text="Advanced: KeePassXC entry (optional)"
-                   FontWeight="SemiBold" Margin="0,12,0,0" Foreground="#A8BED6"/>
-        <TextBox x:Name="KeepassPathBox" Margin="0,6,0,0"/>
+        <TextBlock Text="Using KeePassXC? After creating this website, open Passwords and choose your KeePassXC login. No paths to type."
+                   Foreground="#A8BED6" Margin="0,12,0,0" TextWrapping="Wrap"/>
       </StackPanel>
     </ScrollViewer>
     <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">

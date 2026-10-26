@@ -71,5 +71,18 @@ check('System.Windows.Clipboard.GetText()' in new_workflow,
       'WPF Clipboard namespace is unambiguous')
 check('Stop-RunningLaunchFlow' in build_script and 'EXIT_FOR_BUILD' in app,
       'builder requests LaunchFlow shutdown through session IPC')
+main_xaml=(root/'LaunchFlow/MainWindow.xaml').read_text(encoding='utf-8')
+keepass_code=(root/'LaunchFlow/Services/KeePassXcService.cs').read_text(encoding='utf-8')
+picker_code=(root/'LaunchFlow/KeePassEntryPickerWindow.xaml.cs').read_text(encoding='utf-8')
+check('WorkflowEnabledToggle' in main_xaml and 'x:Name="EnabledCheck"' in main_xaml,
+      'workflow enabled toggle retains existing binding')
+check('FindDatabases()' in keepass_code and 'SearchOption.TopDirectoryOnly' in keepass_code,
+      'KeePassXC database discovery uses familiar folders')
+check('ListEntriesAsync' in keepass_code and 'ArgumentList.Add("ls")' in keepass_code,
+      'KeePassXC login picker lists entry names')
+check('ChooseKeePassEntry_Click' in main_code and 'FirstOrDefault(w => w.Id == workflowId)' in main_code,
+      'selected KeePassXC login belongs to the original workflow')
+check('ArgumentList.Add("show")' not in keepass_code and (root/'LaunchFlow/KeePassEntryPickerWindow.xaml').exists(),
+      'entry picker does not display KeePassXC secrets')
 print('\n'+ ('FAILED: ', '.join(errors) if errors else 'Source/configuration checks PASS. Native Windows build remains required.'))
 sys.exit(bool(errors))

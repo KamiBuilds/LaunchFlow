@@ -1,3 +1,14 @@
+# v0.7.17 — KeePassXC setup and workflow toggle
+
+- Replaced the Enabled badge with a compact switch.
+- KeePassXC databases can be detected from familiar Windows folders, chosen from a list, or browsed.
+- Added a searchable KeePassXC login picker in Passwords, without manually entering paths.
+- Moved key file and manual entry path settings to Advanced.
+- Only login names are displayed; no KeePassXC passwords are imported.
+- Removed the manual KeePassXC path field from the New Workflow wizard.
+
+**Status:** Source verification only. Test native Windows compilation and KeePassXC workflows before release.
+
 # v0.7.16 — Independent website setup and local network URLs
 
 - New Workflow remains visible when the main window is minimized.

@@ -41,6 +41,31 @@
         </ControlTemplate>
       </Setter.Value></Setter>
     </Style>
+    <Style x:Key="WorkflowEnabledToggle" TargetType="CheckBox">
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template"><Setter.Value>
+        <ControlTemplate TargetType="CheckBox">
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <Border x:Name="Track" Width="38" Height="21" CornerRadius="11" Background="#435369">
+              <Ellipse x:Name="Thumb" Width="15" Height="15" Fill="#E1E9F3"
+                       HorizontalAlignment="Left" VerticalAlignment="Center" Margin="3,0,0,0"/>
+            </Border>
+            <TextBlock x:Name="SwitchLabel" Text="Disabled" Foreground="#9DAFC6"
+                       FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center"/>
+          </StackPanel>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsChecked" Value="True">
+              <Setter TargetName="Track" Property="Background" Value="#4FD4C4"/>
+              <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/>
+              <Setter TargetName="Thumb" Property="Margin" Value="0,0,3,0"/>
+              <Setter TargetName="Thumb" Property="Fill" Value="#0A1B26"/>
+              <Setter TargetName="SwitchLabel" Property="Text" Value="Enabled"/>
+              <Setter TargetName="SwitchLabel" Property="Foreground" Value="#E9F5F5"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value></Setter>
+    </Style>
     <Style x:Key="TitleBarButton" TargetType="Button">
       <Setter Property="Width" Value="44"/>
       <Setter Property="Height" Value="42"/>
@@ -162,10 +187,9 @@
             <Grid Height="40" Margin="0,0,0,10">
               <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
               <TextBlock Text="Workflow editor" FontWeight="Bold" FontSize="18" VerticalAlignment="Center"/>
-              <Border Grid.Column="1" Background="#203247" CornerRadius="9" Padding="11,2" VerticalAlignment="Center">
-                <CheckBox x:Name="EnabledCheck" Content="Enabled" VerticalAlignment="Center"
-                          VerticalContentAlignment="Center" HorizontalAlignment="Center" Margin="0"/>
-              </Border>
+              <CheckBox Grid.Column="1" x:Name="EnabledCheck" Style="{StaticResource WorkflowEnabledToggle}"
+                        AutomationProperties.Name="Enable or disable this workflow"
+                        ToolTip="Choose whether this website runs with Run all" VerticalAlignment="Center" Margin="0,0,2,0"/>
             </Grid>
             <TextBlock Text="Name" Style="{StaticResource FieldLabel}"/>
             <TextBox x:Name="NameBox" Margin="0,0,0,10"/>
@@ -235,8 +259,19 @@
                 </DockPanel>
                 <TextBlock Text="Saved credentials are encrypted in your local vault. Both fields always stay masked. Leave either field blank to keep its saved value; enter a replacement and click Save credentials to update it." TextWrapping="Wrap" Foreground="#A7B8CB" Margin="0,0,0,11"/>
                 <CheckBox x:Name="AutoLoginCheck" Content="Automatically sign in using my saved password"/>
-                <TextBlock Text="Optional KeePassXC entry path (group/title)" Style="{StaticResource FieldLabel}" Margin="0,12,0,6"/>
-                <TextBox x:Name="KeepassEntryBox" ToolTip="Example: Internet/Work Portal — uses Settings → Security KeePass database when local vault has no password for this workflow"/>
+                <TextBlock Text="Use a KeePassXC login (optional)" Style="{StaticResource FieldLabel}" Margin="0,14,0,6"/>
+                <StackPanel Orientation="Horizontal">
+                  <Button Content="Choose KeePassXC login…" Click="ChooseKeePassEntry_Click"
+                          Padding="12,7" Margin="0,0,10,0"/>
+                  <TextBlock x:Name="SelectedKeePassEntryLabel" Text="No KeePassXC login selected"
+                             Foreground="#A9C4D9" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                             MaxWidth="310"/>
+                </StackPanel>
+                <Expander Header="Advanced: edit entry path manually" Foreground="#9FB6CC" Margin="0,8,0,0">
+                  <TextBox x:Name="KeepassEntryBox" Margin="0,7,0,4"
+                           TextChanged="KeePassEntryTextChanged"
+                           ToolTip="Only needed for unusual KeePassXC database layouts"/>
+                </Expander>
                 <TextBlock Text="Login type is detected automatically (email first, Next, password, SSO or MFA)." Style="{StaticResource FieldLabel}" Margin="0,9,0,6" TextWrapping="Wrap" Visibility="Collapsed"/>
                 <ComboBox x:Name="LoginModeCombo" SelectedIndex="0" Visibility="Collapsed">
                   <ComboBoxItem Content="Automatic"/>
@@ -325,18 +360,27 @@
       </Border>
       <TextBlock Text="Windows session unlock triggers work when Windows reports a real unlock. An organization-specific transparent overlay may not send this event; LaunchFlow does not bypass it." Foreground="#9CAFC8" TextWrapping="Wrap" Margin="0,12,0,0"/></StackPanel></ScrollViewer></TabItem><TabItem Header="Security"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="28" MaxWidth="730" HorizontalAlignment="Left"><TextBlock Text="Encrypted vault" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,10"/><TextBlock Text="Workflows and credentials are stored as AES-256-GCM encrypted records inside the local SQLite database. Your master password is required at each application start. It is not stored by Windows DPAPI." TextWrapping="Wrap" Foreground="#BACCE0" Margin="0,0,0,20"/><TextBlock Text="Lock the vault after Windows stays locked for this many minutes:" TextWrapping="Wrap" Foreground="White" FontWeight="SemiBold"/><StackPanel Orientation="Horizontal" Margin="0,10,0,10"><TextBox x:Name="VaultTimeoutBox" Width="72" Text="10" ToolTip="Choose 1 to 120 minutes"/><TextBlock Text="minutes (default 10)" Foreground="#D5E9F3" Margin="12,0,0,0" VerticalAlignment="Center"/></StackPanel><TextBlock Text="For a shorter Windows lock: keep the vault unlocked. At or beyond the threshold: discard the encryption key and ask for the master password after Windows unlocks. While Windows is locked, automation is paused. This does not log out already-open browser sessions." TextWrapping="Wrap" Foreground="#A2BAD1" Margin="0,6,0,12"/><TextBlock Text="New database: %LOCALAPPDATA%\LaunchFlow\launchflow.db. Previous settings.json/vault.json/security.json files are retained as migration backups. Use Import / Export to move encrypted configuration to another PC." TextWrapping="Wrap" Foreground="#A2BAD1" Margin="0,0,0,22"/>
                   <TextBlock Text="KeePassXC (optional)" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,8"/>
-                  <TextBlock Text="Point LaunchFlow at your .kdbx file. Workflows can use an entry path instead of (or as fallback for) the local vault. Requires KeePassXC installed so keepassxc-cli is available. The KeePass master password is prompted when a run needs it and is not stored." TextWrapping="Wrap" Foreground="#BACCE0" Margin="0,0,0,12"/>
-                  <TextBlock Text="Database path (.kdbx)" Style="{StaticResource FieldLabel}"/>
-                  <DockPanel Margin="0,0,0,10">
-                    <Button DockPanel.Dock="Right" Content="Browse…" Margin="10,0,0,0" Click="BrowseKeePassDb_Click" Padding="12,6"/>
-                    <TextBox x:Name="KeePassDbBox"/>
-                  </DockPanel>
-                  <TextBlock Text="Key file (optional)" Style="{StaticResource FieldLabel}"/>
-                  <DockPanel Margin="0,0,0,8">
-                    <Button DockPanel.Dock="Right" Content="Browse…" Margin="10,0,0,0" Click="BrowseKeePassKey_Click" Padding="12,6"/>
-                    <TextBox x:Name="KeePassKeyBox"/>
-                  </DockPanel>
-                  <TextBlock x:Name="KeePassStatusLabel" Text="KeePassXC: not configured" Foreground="#6EE7D7" Margin="0,4,0,0"/>
+                  <TextBlock Text="Use your KeePassXC logins without copying passwords into LaunchFlow. Find your password database here, then choose a login in Passwords." TextWrapping="Wrap" Foreground="#BACCE0" Margin="0,0,0,12"/>
+                  <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                    <Button Content="Find my database" Click="FindKeePassDb_Click"
+                            Style="{StaticResource PrimaryButton}" Padding="12,7"/>
+                    <Button Content="Choose a file…" Click="BrowseKeePassDb_Click" Padding="12,7" Margin="10,0,0,0"/>
+                  </StackPanel>
+                  <ComboBox x:Name="KeePassDbSuggestions" Visibility="Collapsed" Margin="0,0,0,10"
+                            DisplayMemberPath="Display" SelectionChanged="KeePassDbSuggestion_SelectionChanged"
+                            ToolTip="Choose your KeePassXC database"/>
+                  <TextBlock Text="Selected database" Style="{StaticResource FieldLabel}"/>
+                  <TextBox x:Name="KeePassDbBox" IsReadOnly="True" Margin="0,0,0,10"
+                           ToolTip="Selected KeePassXC .kdbx file"/>
+                  <Expander Header="Advanced: use a key file" Foreground="#A6BCD3" Margin="0,0,0,10">
+                    <DockPanel Margin="0,8,0,4">
+                      <Button DockPanel.Dock="Right" Content="Choose key file…" Margin="10,0,0,0"
+                              Click="BrowseKeePassKey_Click" Padding="12,6"/>
+                      <TextBox x:Name="KeePassKeyBox" ToolTip="Only for a KeePassXC database using a separate key file"/>
+                    </DockPanel>
+                  </Expander>
+                  <TextBlock x:Name="KeePassStatusLabel" Text="KeePassXC is not configured"
+                             Foreground="#6EE7D7" TextWrapping="Wrap" Margin="0,4,0,0"/>
                   <TextBlock Text="What is protected" FontSize="20" FontWeight="SemiBold" Margin="0,28,0,8"/>
                   <TextBlock x:Name="SecurityClarityText" TextWrapping="Wrap" Foreground="#BACCE0" Margin="0,0,0,12"/>
                   <CheckBox x:Name="SealProfilesCheck" Content="Encrypt browser profiles at rest when the vault locks (recommended)" IsChecked="True" Margin="0,0,0,8"/>

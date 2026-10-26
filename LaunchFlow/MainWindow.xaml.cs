@@ -80,6 +80,7 @@ public partial class MainWindow : Window
         VaultTimeoutBox.Text = _configuration.VaultLockMinutes.ToString();
         KeePassDbBox.Text = _configuration.KeePassDatabasePath ?? "";
         KeePassKeyBox.Text = _configuration.KeePassKeyFilePath ?? "";
+        SuggestKeePassDatabase();
         RefreshKeePassStatus();
         RefreshVaultBackupStatus();
         var browsers = BrowserEnvironment.Probe();
@@ -228,6 +229,7 @@ public partial class MainWindow : Window
         DuplicateWorkflowButton.IsEnabled = false;
         DeleteWorkflowButton.IsEnabled = false;
         NameBox.Text = "";
+        KeepassEntryBox.Text = "";
         ClearCredentialEditor();
         StepList.ItemsSource = null;
         CredentialStatus.Text = "No workflow selected";
@@ -256,6 +258,7 @@ public partial class MainWindow : Window
         PasswordOriginBox.Text = w.PasswordCredentialOrigin;
         AutoLoginCheck.IsChecked = w.AutoLogin;
         KeepassEntryBox.Text = w.KeepassEntryPath ?? "";
+        UpdateKeePassEntryLabel();
         UsernameSelectorBox.Text = w.UsernameSelector;
         PasswordSelectorBox.Text = w.PasswordSelector;
         SubmitSelectorBox.Text = w.SubmitSelector;
@@ -1050,12 +1053,14 @@ public partial class MainWindow : Window
     private string DescribeCredentialStatus(WebsiteWorkflow w)
     {
         if (_vault.Has(w.Id))
-            return "Encrypted password saved";
+            return string.IsNullOrWhiteSpace(w.KeepassEntryPath)
+                ? "Encrypted LaunchFlow password saved"
+                : "LaunchFlow's saved password is used first; remove it to use the selected KeePassXC login.";
 
         if (!string.IsNullOrWhiteSpace(w.KeepassEntryPath))
         {
             if (string.IsNullOrWhiteSpace(_configuration.KeePassDatabasePath))
-                return $"KeePass entry “{w.KeepassEntryPath}” — set the database path in Security";
+                return $"KeePassXC login selected — choose its database in Settings → Security";
             return $"Will use KeePassXC entry “{w.KeepassEntryPath}” (prompted at run)";
         }
 
@@ -1064,26 +1069,161 @@ public partial class MainWindow : Window
 
     private void RefreshKeePassStatus()
     {
-        var db = KeePassDbBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(db))
+        var database = KeePassDbBox.Text.Trim();
+        if (!KeePassXcService.IsCliAvailable())
         {
-            KeePassStatusLabel.Text = "KeePassXC: not configured";
+            KeePassStatusLabel.Text = "KeePassXC was not found. Install KeePassXC, then click Find my database.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(database))
+        {
+            KeePassStatusLabel.Text = "KeePassXC found. Choose a password database to continue.";
+            return;
+        }
+        if (!File.Exists(database))
+        {
+            KeePassStatusLabel.Text = "The selected database is missing. Choose it again.";
+            return;
+        }
+        KeePassStatusLabel.Text = $"KeePassXC found · {Path.GetFileName(database)} selected.";
+    }
+
+    private void SuggestKeePassDatabase()
+    {
+        if (!string.IsNullOrWhiteSpace(KeePassDbBox.Text)) return;
+        var found = KeePassXcService.FindDatabases();
+        if (found.Count == 1) KeePassDbBox.Text = found[0].Path;
+    }
+
+    private void FindKeePassDb_Click(object sender, RoutedEventArgs e)
+    {
+        var found = KeePassXcService.FindDatabases();
+        if (found.Count == 0)
+        {
+            KeePassDbSuggestions.Visibility = Visibility.Collapsed;
+            MessageBox.Show(this,
+                "No KeePassXC database was found in the usual folders. Click Choose a file and select the .kdbx database you open in KeePassXC.",
+                "Find KeePassXC database", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        if (found.Count == 1)
+        {
+            SetKeePassDatabase(found[0].Path);
+            KeePassDbSuggestions.Visibility = Visibility.Collapsed;
             return;
         }
 
-        if (!File.Exists(db))
+        KeePassDbSuggestions.ItemsSource = found;
+        KeePassDbSuggestions.SelectedIndex = -1;
+        KeePassDbSuggestions.Visibility = Visibility.Visible;
+        KeePassStatusLabel.Text = $"Found {found.Count} databases. Choose the one you normally use.";
+        KeePassDbSuggestions.Focus();
+        KeePassDbSuggestions.IsDropDownOpen = true;
+    }
+
+    private void KeePassDbSuggestion_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (KeePassDbSuggestions.SelectedItem is KeePassXcService.DatabaseChoice selected)
         {
-            KeePassStatusLabel.Text = "KeePassXC: database path not found";
+            SetKeePassDatabase(selected.Path);
+            KeePassDbSuggestions.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void SetKeePassDatabase(string path)
+    {
+        KeePassDbBox.Text = path;
+        _keepassMasterPassword = null;
+        RefreshKeePassStatus();
+    }
+
+    private void UpdateKeePassEntryLabel()
+    {
+        var path = KeepassEntryBox.Text.Trim();
+        SelectedKeePassEntryLabel.Text = string.IsNullOrWhiteSpace(path)
+            ? "No KeePassXC login selected" : path;
+    }
+
+    private void KeePassEntryTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (SelectedKeePassEntryLabel is not null) UpdateKeePassEntryLabel();
+    }
+
+    private async void ChooseKeePassEntry_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selected is null) return;
+        var workflowId = _selected.Id;
+        if (!KeePassXcService.IsCliAvailable())
+        {
+            MessageBox.Show(this, "KeePassXC could not be found. Install it and try again.",
+                "KeePassXC unavailable", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        var cli = KeePassXcService.IsCliAvailable()
-            ? "keepassxc-cli found"
-            : "keepassxc-cli not found (install KeePassXC)";
-        var key = string.IsNullOrWhiteSpace(KeePassKeyBox.Text)
-            ? "no key file"
-            : "key file set";
-        KeePassStatusLabel.Text = $"KeePassXC: ready · {cli} · {key}";
+        var database = KeePassDbBox.Text.Trim();
+        if (!File.Exists(database))
+        {
+            var found = KeePassXcService.FindDatabases();
+            if (found.Count == 1)
+            {
+                SetKeePassDatabase(found[0].Path);
+                database = found[0].Path;
+            }
+            else
+            {
+                MainTabs.SelectedIndex = 2;
+                SettingsTabs.SelectedIndex = 2;
+                MessageBox.Show(this,
+                    "First choose your KeePassXC database in Settings → Security. Then return to Passwords and click Choose KeePassXC login.",
+                    "Connect KeePassXC", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+        }
+
+        var secret = _keepassMasterPassword;
+        if (secret is null)
+        {
+            var prompt = new SecretPromptWindow("Unlock KeePassXC",
+                "Enter the KeePassXC master password to list your login names. Your saved passwords will not be displayed or copied into LaunchFlow.")
+            { Owner = this };
+            if (prompt.ShowDialog() != true) return;
+            secret = prompt.Secret ?? "";
+        }
+
+        try
+        {
+            var entries = await KeePassXcService.ListEntriesAsync(
+                database, KeePassKeyBox.Text.Trim(), secret);
+            if (entries.Count == 0)
+            {
+                MessageBox.Show(this, "No login entries were found in this KeePassXC database.",
+                    "No logins found", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var picker = new KeePassEntryPickerWindow(entries) { Owner = this };
+            if (picker.ShowDialog() != true || string.IsNullOrEmpty(picker.SelectedPath)) return;
+            var workflow = _configuration.Workflows.FirstOrDefault(w => w.Id == workflowId);
+            if (workflow is null) return;
+
+            _keepassMasterPassword = secret;
+            workflow.KeepassEntryPath = picker.SelectedPath;
+            _configuration.KeePassDatabasePath = database;
+            _configuration.KeePassKeyFilePath = KeePassKeyBox.Text.Trim();
+            if (_selected?.Id == workflowId)
+                KeepassEntryBox.Text = picker.SelectedPath;
+            _store.Save(_configuration);
+            CredentialStatus.Text = DescribeCredentialStatus(workflow);
+            if (_vault.Has(workflow.Id))
+                MessageBox.Show(this,
+                    "Login selected. This website already has a password saved in LaunchFlow, which takes priority. To use KeePassXC, click Remove saved credentials in Passwords.",
+                    "KeePassXC login selected", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "Couldn't read KeePassXC",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private void BrowseKeePassDb_Click(object sender, RoutedEventArgs e)
@@ -1105,8 +1245,7 @@ public partial class MainWindow : Window
         }
         if (dialog.ShowDialog(this) == true)
         {
-            KeePassDbBox.Text = dialog.FileName;
-            RefreshKeePassStatus();
+            SetKeePassDatabase(dialog.FileName);
         }
     }
 
@@ -1120,6 +1259,7 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog(this) == true)
         {
             KeePassKeyBox.Text = dialog.FileName;
+            _keepassMasterPassword = null;
             RefreshKeePassStatus();
         }
     }
