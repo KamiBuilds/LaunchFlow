@@ -19,6 +19,7 @@ public static class MonitorService
             {
                 Index = i,
                 Name = label,
+                DeviceName = screen.DeviceName,
                 Bounds = screen.Bounds
             });
         }
