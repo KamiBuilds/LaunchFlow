@@ -4,6 +4,8 @@ using LaunchFlow.Services;
 using Microsoft.Playwright;
 
 using var playwright = await Playwright.CreateAsync();
+await DocumentBoundCredentialTests.RunAsync(playwright, args);
+if (args.Contains("--document-bound-only")) return;
 await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
 await using var context = await browser.NewContextAsync();
 await context.RouteAsync("**/*", route => route.FulfillAsync(new()

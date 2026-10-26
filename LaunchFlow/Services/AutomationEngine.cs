@@ -176,8 +176,10 @@ public sealed class AutomationEngine : IAsyncDisposable
         if (workflow.AutoLogin &&
             !string.Equals(workflow.LoginMode, "None", StringComparison.OrdinalIgnoreCase))
         {
-            await TryAutoLoginAsync(workflow, page, ct, configuration, keepassMasterPassword)
-                .ConfigureAwait(false);
+            if (!await TryAutoLoginAsync(workflow, page, ct, configuration, keepassMasterPassword)
+                .ConfigureAwait(false))
+                return new LoginAttention(workflow.Id, workflow.Name,
+                    "Auto-login was interrupted or its credential field was not approved/ready. Retry sign-in manually before continuing.");
             var health = await LoginHealth.InspectAsync(page, ct).ConfigureAwait(false);
             if (health.NeedsAttention)
             {
@@ -212,7 +214,7 @@ public sealed class AutomationEngine : IAsyncDisposable
         return null;
     }
 
-    private async Task TryAutoLoginAsync(
+    private async Task<bool> TryAutoLoginAsync(
         WebsiteWorkflow workflow,
         IPage page,
         CancellationToken ct,
@@ -223,14 +225,7 @@ public sealed class AutomationEngine : IAsyncDisposable
         if (credential is null)
         {
             Log($"No saved credential for '{workflow.Name}'. Leaving the page open so you can sign in manually.");
-            return;
-        }
-
-        var origin = GetOrigin(page.Url);
-        if (!await IsOriginAllowedAsync(workflow, origin).ConfigureAwait(false))
-        {
-            Log($"Login origin {origin} is not approved for '{workflow.Name}'. Page left open for manual sign-in.");
-            return;
+            return true;
         }
 
         try
@@ -240,10 +235,8 @@ public sealed class AutomationEngine : IAsyncDisposable
 
             if (!string.IsNullOrWhiteSpace(workflow.UsernameSelector))
             {
-                var user = page.Locator(workflow.UsernameSelector).First;
-                if (await user.CountAsync().ConfigureAwait(false) > 0)
+                if (await FillCredentialAsync(workflow, page, workflow.UsernameSelector, credential.Username, ct).ConfigureAwait(false))
                 {
-                    await user.FillAsync(credential.Username).ConfigureAwait(false);
                     filledUser = true;
                     if (!string.IsNullOrWhiteSpace(workflow.UsernameContinueSelector))
                     {
@@ -258,20 +251,10 @@ public sealed class AutomationEngine : IAsyncDisposable
                 }
             }
 
-            var afterContinueOrigin = GetOrigin(page.Url);
-            // A username step may leave the trusted origin even when no separate password origin was configured.
-            if (!await IsOriginAllowedAsync(workflow, afterContinueOrigin).ConfigureAwait(false))
-            {
-                Log($"Password page origin {afterContinueOrigin} was not approved. Complete sign-in manually if needed.");
-                return;
-            }
-
             if (!string.IsNullOrWhiteSpace(workflow.PasswordSelector))
             {
-                var pass = page.Locator(workflow.PasswordSelector).First;
-                if (await pass.CountAsync().ConfigureAwait(false) > 0)
+                if (await FillCredentialAsync(workflow, page, workflow.PasswordSelector, credential.Password, ct).ConfigureAwait(false))
                 {
-                    await pass.FillAsync(credential.Password).ConfigureAwait(false);
                     filledPass = true;
                 }
                 else
@@ -315,11 +298,81 @@ public sealed class AutomationEngine : IAsyncDisposable
             {
                 Log($"Auto-login attempted for '{workflow.Name}'.");
             }
+            return true;
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
             Log($"Auto-login for '{workflow.Name}' incomplete: {ex.Message}. " +
                 "Leaving the browser open for manual sign-in / MFA.");
+            return false;
+        }
+    }
+
+    private async Task<bool> FillCredentialAsync(
+        WebsiteWorkflow workflow, IPage page, string selector, string value, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        // A locator can re-resolve in another document during auto-wait. Approval belongs only to this handle.
+        await using var element = await page.QuerySelectorAsync(selector).ConfigureAwait(false);
+        if (element is null) return false;
+        var frame = await element.OwnerFrameAsync().ConfigureAwait(false);
+        if (frame is null) throw new InvalidOperationException("Credential field has no owning frame. Retry sign-in manually.");
+        var navigated = 0;
+        void Invalidate(object? sender, IFrame changed)
+        {
+            if (ReferenceEquals(changed, frame)) Interlocked.Exchange(ref navigated, 1);
+        }
+        page.FrameNavigated += Invalidate;
+        page.FrameDetached += Invalidate;
+        try
+        {
+            await using var document = await element.EvaluateHandleAsync("element => element.ownerDocument").ConfigureAwait(false);
+            async Task<string> VerifyAsync()
+            {
+                ct.ThrowIfCancellationRequested();
+                if (Volatile.Read(ref navigated) != 0 || frame.IsDetached ||
+                    !ReferenceEquals(await element.OwnerFrameAsync().ConfigureAwait(false), frame))
+                    throw new InvalidOperationException("Credential document changed. Retry sign-in manually.");
+                var origin = await element.EvaluateAsync<string>("""
+                    (element, document) => {
+                        if (!element.isConnected || element.ownerDocument !== document ||
+                            document.defaultView?.document !== document)
+                            throw new Error('Credential document changed');
+                        return document.location.origin;
+                    }
+                    """, document).ConfigureAwait(false);
+                ValidateUrl(origin);
+                if (Volatile.Read(ref navigated) != 0)
+                    throw new InvalidOperationException("Credential document changed. Retry sign-in manually.");
+                return origin;
+            }
+
+            var origin = await VerifyAsync().ConfigureAwait(false);
+            await element.WaitForElementStateAsync(ElementState.Visible).WaitAsync(ct).ConfigureAwait(false);
+            await element.WaitForElementStateAsync(ElementState.Editable).WaitAsync(ct).ConfigureAwait(false);
+            if (!OriginsMatch(origin, await VerifyAsync().ConfigureAwait(false)))
+                throw new InvalidOperationException("Credential origin changed. Retry sign-in manually.");
+            if (!await IsOriginAllowedAsync(workflow, origin).WaitAsync(ct).ConfigureAwait(false))
+                throw new InvalidOperationException("Credential origin was not approved. Complete sign-in manually.");
+            // Approval can await a dialog while the page navigates or the bound field becomes unavailable.
+            await element.WaitForElementStateAsync(ElementState.Visible).WaitAsync(ct).ConfigureAwait(false);
+            await element.WaitForElementStateAsync(ElementState.Editable).WaitAsync(ct).ConfigureAwait(false);
+            if (!OriginsMatch(origin, await VerifyAsync().ConfigureAwait(false)))
+                throw new InvalidOperationException("Credential origin changed. Retry sign-in manually.");
+            ct.ThrowIfCancellationRequested();
+            await element.FillAsync(value).ConfigureAwait(false);
+            return true;
+        }
+        catch (PlaywrightException)
+        {
+            // Playwright fill diagnostics can contain the value; only a non-secret retry reason may leave this boundary.
+            throw new InvalidOperationException("Credential field changed or was not ready. Retry sign-in manually.");
+        }
+        finally
+        {
+            page.FrameNavigated -= Invalidate;
+            page.FrameDetached -= Invalidate;
         }
     }
 
