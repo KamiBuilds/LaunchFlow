@@ -21,6 +21,8 @@ public static class SecureTransferService
         CredentialVault vault,
         bool includePasswords)
     {
+        if (EnterprisePolicy.Load().DisableExport)
+            throw new InvalidOperationException("Portable exports are disabled by your organization's policy.");
         var package = new PortableExport.PortablePackage
         {
             Config = Clone(configuration),
@@ -31,8 +33,12 @@ public static class SecureTransferService
         PortableExport.Write(path, exportPassword, package);
     }
 
-    public static PortableExport.PortablePackage Read(string path, string exportPassword) =>
-        PortableExport.Read(path, exportPassword);
+    public static PortableExport.PortablePackage Read(string path, string exportPassword)
+    {
+        if (EnterprisePolicy.Load().DisableExport)
+            throw new InvalidOperationException("Portable imports are disabled by your organization's policy.");
+        return PortableExport.Read(path, exportPassword);
+    }
 
     private static Configuration Clone(Configuration source) =>
         JsonSerializer.Deserialize<Configuration>(
