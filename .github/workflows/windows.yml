@@ -2,7 +2,7 @@ name: Windows installer — build and gated draft release
 
 on:
   push:
-    branches: [hermes, chatgpt]
+    branches: [hermes, chatgpt, both]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -30,7 +30,33 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  portable-regressions:
+    name: Linux browser regressions (Windows platform seams simulated)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+      - name: Install .NET 8 SDK (builder only)
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build runtime harness
+        run: dotnet build tests/runtime/RuntimeTests.csproj -c Release -warnaserror
+      - name: Install isolated development Chromium
+        shell: pwsh
+        run: |
+          ./tests/runtime/bin/Release/net8.0/playwright.ps1 install --with-deps chromium
+          if ($LASTEXITCODE -ne 0) { throw 'Development Chromium installation failed' }
+      - name: Exercise production automation with synthetic browser fixtures
+        run: dotnet run --project tests/runtime/RuntimeTests.csproj -c Release --no-build
+      - name: Exercise profile recovery with simulated DPAPI
+        run: dotnet run --project tests/profiles/ProfileTests.csproj -c Release -p:TreatWarningsAsErrors=true
+      - name: Exercise recorder capture and production replay
+        run: dotnet run --project tests/recorder/RecorderTests.csproj -c Release -p:TreatWarningsAsErrors=true
+
   windows:
+    needs: portable-regressions
     runs-on: windows-latest
     timeout-minutes: 30
     outputs:

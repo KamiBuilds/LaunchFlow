@@ -1,6 +1,6 @@
 # LaunchFlow
 
-> **`hermes` development checkpoint — not release-approved.** Core, recorder and installer repairs are being integrated. Review reproduced a credential-fill/navigation race; its document-bound repair is still in progress. Do not use this checkpoint with real credentials. Native Windows app/DPAPI/setup verification and missing-browser consent/setup remain pending. No stable release is authorized by this branch.
+> **`both` integration checkpoint — not release-approved.** This branch is being built from `hermes` repairs and selected `smartest-app-developer` features. The document-bound credential repair has passed local browser regressions but still needs independent review of the final combined code. Do not use this checkpoint with real credentials. Native Windows app/DPAPI/setup verification and missing-browser consent/setup remain pending. No stable release is authorized by this branch. See [the integration checklist](docs/BOTH-INTEGRATION.md).
 
 LaunchFlow is a Windows desktop application for automated website workflows, secure local credential storage, and multi-monitor browser sessions.
 
@@ -40,7 +40,9 @@ Teach never records typed text or passwords. Some websites need you to complete 
 
 The core application is in `LaunchFlow/`. The standalone updater is in `bootstrapper/`; Windows setup definitions are in `installer/`; build support is in `tools/`.
 
-For a controlled build, open [Windows installer — manual build and release](https://github.com/KamiBuilds/LaunchFlow/actions/workflows/windows.yml), choose **Run workflow**, and leave **Publish stable release** unchecked. After installing and testing the resulting executables on Windows, run the workflow with **Publish stable release** checked to publish an update. Source changes do not start builds automatically.
+Pushes to `both`, `hermes` and `chatgpt`, plus pull requests, run automated checks and Windows installer builds. The [Windows workflow](https://github.com/KamiBuilds/LaunchFlow/actions/workflows/windows.yml) uploads build artifacts; it does not publish a stable release. Its Linux browser job tests linked production logic with explicit Windows platform seams, not the native desktop app.
+
+For a manual build, choose **Run workflow** on the intended branch and leave `publish_release` disabled. Optional draft creation requires explicit `DRAFT-v<VERSION>@<full selected commit SHA>` confirmation and native Windows test evidence. That path creates a **draft only**; stable publication is a separate human action after verification. The stable download above does not install this experimental branch.
 
 Developers can use `BUILD-INSTALLER.cmd` to build locally. It checks for the .NET 8 SDK and Inno Setup, and can offer to install missing build tools using WinGet. **These developer tools are never needed on the end user's PC.** See [CHANGELOG.md](CHANGELOG.md) and [CODE-SIGNING.md](CODE-SIGNING.md) for development notes.
 
