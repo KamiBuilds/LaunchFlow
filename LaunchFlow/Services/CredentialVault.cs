@@ -9,12 +9,14 @@ public sealed class CredentialVault
 {
     public bool Has(Guid workflowId)
     {
+        if (EnterprisePolicy.Load().DisableCredentialStorage) return false;
         if (!VaultDatabase.Current.IsUnlocked) return false;
         return VaultDatabase.Current.HasCredential(workflowId);
     }
 
     public SiteCredential? Read(Guid workflowId)
     {
+        if (EnterprisePolicy.Load().DisableCredentialStorage) return null;
         if (!VaultDatabase.Current.IsUnlocked) return null;
         return VaultDatabase.Current.ReadCredential(workflowId);
     }
@@ -28,6 +30,7 @@ public sealed class CredentialVault
         Configuration? configuration = null,
         string? keepassMasterPassword = null)
     {
+        if (EnterprisePolicy.Load().DisableCredentialStorage) return null;
         var local = Read(workflow.Id);
         if (local is not null) return local;
 
@@ -55,6 +58,8 @@ public sealed class CredentialVault
 
     public void Save(Guid workflowId, SiteCredential credential)
     {
+        if (EnterprisePolicy.Load().DisableCredentialStorage)
+            throw new InvalidOperationException("Credential storage is disabled by your organization.\");
         VaultDatabase.Current.SaveCredential(workflowId, credential);
     }
 
@@ -65,7 +70,7 @@ public sealed class CredentialVault
     }
 
     public Dictionary<Guid, SiteCredential> ExportAll() =>
-        VaultDatabase.Current.IsUnlocked
+        !EnterprisePolicy.Load().DisableCredentialStorage && VaultDatabase.Current.IsUnlocked
             ? VaultDatabase.Current.ExportCredentials()
             : new Dictionary<Guid, SiteCredential>();
 
