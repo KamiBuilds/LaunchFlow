@@ -3,6 +3,8 @@ namespace LaunchFlow.Models;
 public sealed class Configuration
 {
     public List<WebsiteWorkflow> Workflows { get; set; } = new();
+    public List<WorkspaceProfile> Workspaces { get; set; } = new();
+    public string UiLanguage { get; set; } = "auto";
     public bool StartWithWindows { get; set; }
     public bool RunOnUnlock { get; set; }
     public bool RunOnAppStart { get; set; }

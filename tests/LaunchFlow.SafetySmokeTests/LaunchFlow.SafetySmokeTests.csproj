@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../LaunchFlow/Services/EnterprisePolicy.cs" Link="EnterprisePolicy.cs" />
+    <Compile Include="../../LaunchFlow/Services/LocalizationService.cs" Link="LocalizationService.cs" />
+    <Compile Include="../../LaunchFlow/Models/Configuration.cs" Link="Configuration.cs" />
+    <Compile Include="../../LaunchFlow/Models/WorkspaceProfile.cs" Link="WorkspaceProfile.cs" />
+    <Compile Include="../../LaunchFlow/Models/WebsiteWorkflow.cs" Link="WebsiteWorkflow.cs" />
+    <Compile Include="../../LaunchFlow/Models/WorkflowStep.cs" Link="WorkflowStep.cs" />
+  </ItemGroup>
+</Project>

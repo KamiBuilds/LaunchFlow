@@ -31,6 +31,7 @@ public partial class MainWindow : Window
     private bool _windowsLocked;
     private DateTimeOffset? _lockedSinceUtc;
     private CancellationTokenSource? _lockTimeoutCancellation;
+    private readonly SemaphoreSlim _vaultLockGate = new(1, 1);
 
     private bool _revertingTab;
     private bool _sidebarCollapsed;
@@ -85,6 +86,9 @@ public partial class MainWindow : Window
         _runner = new AutomationEngine(_vault);
         _runner.ApproveLoginOriginAsync = ConfirmLoginOriginAsync;
         _runner.OnLog += line => Dispatcher.BeginInvoke(new Action(() => AppendLog(line)));
+        _runner.OnWorkflowStatus += (name, state) =>
+            _ = Dispatcher.BeginInvoke(new Action(() =>
+                WorkflowStatusLabel.Text = $"{name}: {state}"));
 
         StartupCheck.IsChecked = _configuration.StartWithWindows;
         UnlockCheck.IsChecked = _configuration.RunOnUnlock;
@@ -100,6 +104,9 @@ public partial class MainWindow : Window
         MonitorCombo.ItemsSource = MonitorService.GetMonitors();
         MonitorCombo.SelectedIndex = 0;
         WorkflowList.ItemsSource = _configuration.Workflows;
+        WorkspaceCombo.ItemsSource = _configuration.Workspaces;
+        LanguageCombo.SelectedIndex = _configuration.UiLanguage switch { "en" => 1, "nl" => 2, _ => 0 };
+        ApplyUiLanguage();
 
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Open LaunchFlow", null, (_, _) => Dispatcher.Invoke(ShowFromTray));
@@ -120,6 +127,18 @@ public partial class MainWindow : Window
         if (_configuration.Workflows.Count > 0) WorkflowList.SelectedIndex = 0;
         else ShowEmptyEditor();
         AppendLog("LaunchFlow is ready. Encrypted SQLite vault unlocked with Argon2id master key.");
+    }
+
+    private void ApplyUiLanguage()
+    {
+        var language = _configuration.UiLanguage;
+        WorkflowsNav.Content = LocalizationService.Text("Workflows", language);
+        PasswordsNav.Content = LocalizationService.Text("Passwords", language);
+        SettingsNav.Content = LocalizationService.Text("Settings", language);
+        SaveWorkspaceButton.Content = LocalizationService.Text("Save workspace", language);
+        RunWorkspaceButton.Content = "▶ " + LocalizationService.Text("Run workspace", language);
+        RunAllButton.Content = "▶ " + LocalizationService.Text("Run all", language);
+        WorkspaceHeading.Text = LocalizationService.Text("Workspace profiles", language).ToUpperInvariant();
     }
 
     private static System.Drawing.Icon CreateTrayIcon()
@@ -241,8 +260,15 @@ public partial class MainWindow : Window
         int index = Enumerable.Range(0, BrowserCombo.Items.Count)
             .FirstOrDefault(i => ((ComboBoxItem)BrowserCombo.Items[i]).Content?.ToString() == w.Browser);
         BrowserCombo.SelectedIndex = index;
-        MonitorCombo.SelectedIndex = Math.Clamp(w.MonitorIndex, 0, Math.Max(0, MonitorCombo.Items.Count - 1));
-        LoginModeCombo.SelectedIndex = w.LoginMode == "None" ? 1 : 0;
+        var savedMonitor = (MonitorCombo.ItemsSource as IEnumerable<MonitorChoice>)?
+            .FirstOrDefault(m => !string.IsNullOrWhiteSpace(w.MonitorDeviceName) &&
+                m.DeviceName.Equals(w.MonitorDeviceName, StringComparison.OrdinalIgnoreCase));
+        MonitorCombo.SelectedItem = savedMonitor;
+        if (savedMonitor is null)
+            MonitorCombo.SelectedIndex = string.IsNullOrWhiteSpace(w.MonitorDeviceName)
+                ? Math.Clamp(w.MonitorIndex, 0, Math.Max(0, MonitorCombo.Items.Count - 1))
+                : MonitorService.GetMonitors().FirstOrDefault(m => m.IsPrimary)?.Index ?? 0; // Use primary display.
+        LoginModeCombo.SelectedIndex = w.LoginMode == "None" ? 1 : w.LoginMode == "SSO" ? 2 : 0;
         UsernameContinueBox.Text = w.UsernameContinueSelector;
         PasswordOriginBox.Text = w.PasswordCredentialOrigin;
         AutoLoginCheck.IsChecked = w.AutoLogin;
@@ -329,6 +355,7 @@ public partial class MainWindow : Window
         w.DestinationUrl = DestinationUrlBox.Text.Trim();
         w.Browser = BrowserSelection(BrowserCombo);
         w.MonitorIndex = (MonitorCombo.SelectedItem as MonitorChoice)?.Index ?? 0;
+        w.MonitorDeviceName = (MonitorCombo.SelectedItem as MonitorChoice)?.DeviceName ?? "";
         w.LoginMode = BrowserSelection(LoginModeCombo);
         w.UsernameContinueSelector = UsernameContinueBox.Text.Trim();
         w.PasswordCredentialOrigin = PasswordOriginBox.Text.Trim();
@@ -352,6 +379,8 @@ public partial class MainWindow : Window
         try
         {
             ApplyCurrentEditor();
+            _configuration.UiLanguage = (LanguageCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "auto";
+            ApplyUiLanguage();
             _configuration.StartWithWindows = StartupCheck.IsChecked == true;
             _configuration.RunOnUnlock = UnlockCheck.IsChecked == true;
             _configuration.RunOnAppStart = LaunchCheck.IsChecked == true;
@@ -744,6 +773,42 @@ public partial class MainWindow : Window
     }
 
     private void Run_Click(object sender, RoutedEventArgs e) => _ = RunEnabledAsync();
+
+    private void SaveWorkspace_Click(object sender, RoutedEventArgs e)
+    {
+        var name = WorkspaceCombo.Text.Trim();
+        if (name.Length is < 1 or > 64)
+        {
+            MessageBox.Show(this, "Enter a workspace name (1–64 characters).");
+            return;
+        }
+        if (!SaveAll()) return;
+        var existing = _configuration.Workspaces.FirstOrDefault(w =>
+            string.Equals(w.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null &&
+            MessageBox.Show(this, "Replace the workflow selection in this workspace?",
+                "Update workspace", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
+            return;
+        var profile = existing ?? new WorkspaceProfile { Name = name };
+        profile.WorkflowIds = _configuration.Workflows
+            .Where(w => w.Enabled).Select(w => w.Id).ToList();
+        if (existing is null) _configuration.Workspaces.Add(profile);
+        _store.Save(_configuration);
+        WorkspaceCombo.ItemsSource = null;
+        WorkspaceCombo.ItemsSource = _configuration.Workspaces;
+        WorkspaceCombo.SelectedItem = profile;
+        AppendLog("Workspace saved.");
+    }
+
+    private void RunWorkspace_Click(object sender, RoutedEventArgs e)
+    {
+        if (WorkspaceCombo.SelectedItem is not WorkspaceProfile profile)
+        {
+            MessageBox.Show(this, "Select a saved workspace first.");
+            return;
+        }
+        _ = RunEnabledAsync(workspace: profile);
+    }
     private void RunSelected_Click(object sender, RoutedEventArgs e) => _ = RunEnabledAsync(onlySelected: true);
 
     private static Task<bool> ShowRecorderAsync(VisualRecorderWindow recorder)
@@ -757,7 +822,7 @@ public partial class MainWindow : Window
 
     private async Task SaveTaughtStepsAsync(WebsiteWorkflow workflow, IPage page)
     {
-        var recorder = new VisualRecorderWindow(page) { Owner = this };
+        var recorder = new VisualRecorderWindow(page, workflow) { Owner = this };
         if (!await ShowRecorderAsync(recorder) || recorder.RecordedSteps.Count == 0) return;
 
         // Teach remains modeless; the selected website may have changed.
@@ -834,9 +899,13 @@ public partial class MainWindow : Window
 
     private void Stop_Click(object sender, RoutedEventArgs e) => _runCancellation?.Cancel();
 
-    private async Task RunEnabledAsync(bool onlySelected = false)
+    private async Task RunEnabledAsync(bool onlySelected = false, WorkspaceProfile? workspace = null)
     {
-        if (_windowsLocked) { AppendLog("Windows is locked; automation was paused."); return; }
+        if (_windowsLocked || _vaultLockGate.CurrentCount == 0)
+        {
+            AppendLog("Workstation vault is locking or Windows is locked; automation was paused.");
+            return;
+        }
         if (!VaultDatabase.Current.IsUnlocked)
         {
             ShowFromTray();
@@ -850,7 +919,9 @@ public partial class MainWindow : Window
         if (!SaveAll()) return;
         var toRun = onlySelected && _selected is not null
             ? new List<WebsiteWorkflow> { _selected }
-            : _configuration.Workflows.Where(w => w.Enabled).ToList();
+            : workspace is not null
+                ? workspace.Resolve(_configuration).ToList()
+                : _configuration.Workflows.Where(w => w.Enabled).ToList();
         if (toRun.Count == 0) { AppendLog("No enabled workflows to run."); return; }
         if (!EnsureKeePassPasswordForRun(toRun))
         {
@@ -880,8 +951,8 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             failed = true;
-            AppendLog("Run error: " + ex.Message);
-            NotifyTray("LaunchFlow", "A workflow failed: " + ex.Message, Forms.ToolTipIcon.Error);
+            AppendLog("Run error: " + ex.GetType().Name);
+            NotifyTray("LaunchFlow", "A workflow failed. Review the workflow and security policy.", Forms.ToolTipIcon.Error);
         }
         finally
         {
@@ -898,6 +969,12 @@ public partial class MainWindow : Window
                             : $"{attention.Count} sites need sign-in attention: {names}",
                         Forms.ToolTipIcon.Warning);
                     await OfferRepairForLoginAttentionAsync(attention);
+                }
+                else if (runResult is { FailedCount: > 0 } failures)
+                {
+                    NotifyTray("LaunchFlow",
+                        $"{failures.FailedCount} workflow(s) failed. Review the website steps before running again.",
+                        Forms.ToolTipIcon.Warning);
                 }
                 else
                 {
@@ -985,29 +1062,31 @@ public partial class MainWindow : Window
         try
         {
             await Task.Delay(LockTimeout, token);
-            await Dispatcher.InvokeAsync(() =>
+            await Dispatcher.InvokeAsync(new Func<Task>(async () =>
             {
-                // Check the actual elapsed lock interval; timers may be late
-                // after laptop sleep/resume and events may arrive out of order.
+                // Check elapsed lock interval after sleep/resume or duplicate events.
                 if (_windowsLocked && _lockedSinceUtc == lockTime &&
                     DateTimeOffset.UtcNow - lockTime >= LockTimeout)
-                    SecureVaultLock("Windows has been locked for the configured timeout: encrypted vault locked.");
-            });
+                    await SecureVaultLockAsync("Windows has been locked for the configured timeout: encrypted vault locked.");
+            })).Task.Unwrap();
         }
         catch (OperationCanceledException) { }
     }
 
-    private void SecureVaultLock(string message)
+    private async Task SecureVaultLockAsync(string message)
     {
+        await _vaultLockGate.WaitAsync();
+        try
+        {
         _runCancellation?.Cancel();
         _keepassMasterPassword = null;
         try
         {
-            _runner.CloseSessionsAsync().GetAwaiter().GetResult();
+            await _runner.CloseSessionsAsync();
         }
         catch (Exception ex)
         {
-            AppendLog("Could not close browser sessions before lock: " + ex.Message);
+            AppendLog("Could not close browser sessions before lock: " + ex.GetType().Name);
             if (_configuration.DiagnosticsLogEnabled) CrashLog.Write("CloseSessions", ex);
         }
 
@@ -1020,7 +1099,7 @@ public partial class MainWindow : Window
             }
             catch (Exception ex)
             {
-                AppendLog("Could not seal browser profiles: " + ex.Message);
+                AppendLog("Could not seal browser profiles: " + ex.GetType().Name);
                 if (_configuration.DiagnosticsLogEnabled) CrashLog.Write("SealProfiles", ex);
             }
         }
@@ -1031,6 +1110,8 @@ public partial class MainWindow : Window
             VaultDatabase.Current.Lock(); // Zero the derived key, don't merely hide a tab.
             ClearCredentialEditor();
         }
+        }
+        finally { _vaultLockGate.Release(); }
     }
 
     private string DescribeCredentialStatus(WebsiteWorkflow w)
@@ -1281,7 +1362,8 @@ public partial class MainWindow : Window
     private bool NeedsKeePassForRun(WebsiteWorkflow w)
     {
         if (!w.AutoLogin) return false;
-        if (string.Equals(w.LoginMode, "None", StringComparison.OrdinalIgnoreCase)) return false;
+        if (string.Equals(w.LoginMode, "None", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(w.LoginMode, "SSO", StringComparison.OrdinalIgnoreCase)) return false;
         if (string.IsNullOrWhiteSpace(w.KeepassEntryPath)) return false;
         if (_vault.Has(w.Id)) return false;
         return true;
@@ -1297,7 +1379,7 @@ public partial class MainWindow : Window
         _lockTimeoutCancellation?.Dispose();
         _lockTimeoutCancellation = null;
         if (interval >= LockTimeout)
-            SecureVaultLock($"Windows was locked for {interval.TotalMinutes:F1} minutes; master password required.");
+            await SecureVaultLockAsync($"Windows was locked for {interval.TotalMinutes:F1} minutes; master password required.");
         if (!VaultDatabase.Current.IsUnlocked)
         {
             ShowFromTray();
@@ -1625,12 +1707,12 @@ public partial class MainWindow : Window
         return false;
     }
 
-    private void LockPasswords_Click(object sender, RoutedEventArgs e)
+    private async void LockPasswords_Click(object sender, RoutedEventArgs e)
     {
-        SecureVaultLock("Vault manually locked; master password required before automation.");
+        await SecureVaultLockAsync("Vault manually locked; master password required before automation.");
     }
 
-    private void ChangeMasterPassword_Click(object sender, RoutedEventArgs e)
+    private async void ChangeMasterPassword_Click(object sender, RoutedEventArgs e)
     {
         var current = new SecretPromptWindow("Change master password", "Enter your current master password.") { Owner = this };
         if (current.ShowDialog() != true) return;
@@ -1651,7 +1733,7 @@ public partial class MainWindow : Window
             _master.Change(current.Secret, next.Secret);
             WindowsHelloService.Disable();
             _configuration.WindowsHelloUnlockEnabled = false;
-            SecureVaultLock("Master password changed; vault locked. Re-enable Windows Hello if you use it.");
+            await SecureVaultLockAsync("Master password changed; vault locked. Re-enable Windows Hello if you use it.");
             AppendLog("Master password changed. Windows Hello unlock was cleared.");
         }
         catch (Exception ex) { MessageBox.Show(this, ex.Message, "Password not changed", MessageBoxButton.OK, MessageBoxImage.Warning); }
@@ -1659,6 +1741,11 @@ public partial class MainWindow : Window
 
     private void Export_Click(object sender, RoutedEventArgs e)
     {
+        if (EnterprisePolicy.Load().DisableExport)
+        {
+            MessageBox.Show(this, "Exports are disabled by your organization's policy.");
+            return;
+        }
         if (!SaveAll()) return;
         if (!RequireMasterPassword(forcePrompt: true)) return;
         var dialog = new Microsoft.Win32.SaveFileDialog
@@ -1684,6 +1771,11 @@ public partial class MainWindow : Window
 
     private void Import_Click(object sender, RoutedEventArgs e)
     {
+        if (EnterprisePolicy.Load().DisableExport)
+        {
+            MessageBox.Show(this, "Portable imports are disabled by your organization's policy.");
+            return;
+        }
         if (_runner.IsRunning) { MessageBox.Show(this, "Stop active workflows before importing."); return; }
         if (!RequireMasterPassword(forcePrompt: true)) return;
         var file = new OpenFileDialog
@@ -1724,6 +1816,17 @@ public partial class MainWindow : Window
             VaultDatabase.Current.ReplaceSnapshot(imported.Config, imported.Credentials);
             _configuration.Workflows.Clear();
             _configuration.Workflows.AddRange(imported.Config.Workflows);
+            _configuration.Workspaces.Clear();
+            _configuration.Workspaces.AddRange(imported.Config.Workspaces ?? new List<WorkspaceProfile>());
+            WorkspaceCombo.ItemsSource = null;
+            WorkspaceCombo.ItemsSource = _configuration.Workspaces;
+            _configuration.UiLanguage = imported.Config.UiLanguage is "en" or "nl"
+                ? imported.Config.UiLanguage : "auto";
+            LanguageCombo.SelectedIndex = _configuration.UiLanguage switch
+            {
+                "en" => 1, "nl" => 2, _ => 0
+            };
+            ApplyUiLanguage();
             _configuration.StartWithWindows = imported.Config.StartWithWindows;
             _configuration.RunOnUnlock = imported.Config.RunOnUnlock;
             _configuration.RunOnAppStart = imported.Config.RunOnAppStart;

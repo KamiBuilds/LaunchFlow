@@ -16,7 +16,7 @@ public sealed class WorkflowStep
         {
             "Navigate" => $"Navigate → {Target}",
             "Click" => $"Click → {Target}",
-            "Fill" => $"Fill → {Target}" + (string.IsNullOrEmpty(Value) ? "" : $" = {Value}"),
+            "Fill" => $"Fill → {Target}" + (string.IsNullOrEmpty(Value) ? "" : " (value hidden)"),
             "Wait" => $"Wait → {Target}",
             "Press" => $"Press → {Target}",
             _ => $"{Type} → {Target}"

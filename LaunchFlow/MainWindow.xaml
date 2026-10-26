@@ -138,7 +138,7 @@
                   Padding="9,7" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
           <Button Content="Save" Click="Save_Click" Padding="9,7"
                   shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
-          <Button Content="▶ Run all" Click="Run_Click" Style="{StaticResource PrimaryButton}"
+          <Button x:Name="RunAllButton" Content="▶ Run all" Click="Run_Click" AutomationProperties.Name="Run all enabled websites" Style="{StaticResource PrimaryButton}"
                   Padding="9,7" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
           <Button x:Name="StopButton" Content="■ Stop" Click="Stop_Click" IsEnabled="False"
                   Padding="9,7" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
@@ -172,6 +172,22 @@
           <StackPanel DockPanel.Dock="Top" Margin="0,0,0,15">
             <TextBlock Text="YOUR WORKFLOWS" FontWeight="SemiBold" FontSize="11" Foreground="#A0B4CC"/>
             <TextBlock Text="Select a site to configure" Foreground="#7D91A8" FontSize="12" Margin="0,7,0,0"/>
+            <TextBlock x:Name="WorkflowStatusLabel" Text="Ready"
+                       FontSize="11" Foreground="#55D8C8" Margin="0,6,0,0"
+                       TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
+                       AutomationProperties.Name="Workflow status"/>
+            <TextBlock x:Name="WorkspaceHeading" Text="WORKSPACES" Margin="0,13,0,5"
+                       FontSize="11" FontWeight="SemiBold" Foreground="#A0B4CC"/>
+            <ComboBox x:Name="WorkspaceCombo" IsEditable="True"
+                      DisplayMemberPath="Name" ToolTip="Choose or type a workspace name"
+                      AutomationProperties.Name="Workspace profiles" />
+            <WrapPanel Margin="0,6,0,0">
+              <Button x:Name="SaveWorkspaceButton" Content="Save workspace" Click="SaveWorkspace_Click"
+                      Padding="6,5" ToolTip="Save enabled websites as a workspace"
+                      AutomationProperties.Name="Save workspace"/>
+              <Button x:Name="RunWorkspaceButton" Content="▶ Run" Click="RunWorkspace_Click" Padding="6,5"
+                      ToolTip="Run the selected workspace" AutomationProperties.Name="Run selected workspace"/>
+            </WrapPanel>
           </StackPanel>
           <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,14,0,0">
             <Button x:Name="DuplicateWorkflowButton" Content="Duplicate" Click="DuplicateWorkflow_Click" IsEnabled="False"/>
@@ -192,11 +208,11 @@
                         ToolTip="Choose whether this website runs with Run all" VerticalAlignment="Center" Margin="0,0,2,0"/>
             </Grid>
             <TextBlock Text="Name" Style="{StaticResource FieldLabel}"/>
-            <TextBox x:Name="NameBox" Margin="0,0,0,10"/>
+            <TextBox x:Name="NameBox" Margin="0,0,0,10" AutomationProperties.Name="Workflow name"/>
             <Grid Margin="0,0,0,10">
               <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="14"/><ColumnDefinition Width="200"/></Grid.ColumnDefinitions>
               <StackPanel Grid.Column="0"><TextBlock Text="Login / start URL" Style="{StaticResource FieldLabel}"/>
-                <TextBox x:Name="StartUrlBox" ToolTip="Full URL, including https://"/></StackPanel>
+                <TextBox x:Name="StartUrlBox" ToolTip="Full URL, including https://" AutomationProperties.Name="Website start URL"/></StackPanel>
               <StackPanel Grid.Column="2"><TextBlock Text="Browser" Style="{StaticResource FieldLabel}"/>
                 <ComboBox x:Name="BrowserCombo" SelectedIndex="0">
                   <ComboBoxItem Content="Edge"/><ComboBoxItem Content="Chrome"/>
@@ -273,9 +289,10 @@
                            ToolTip="Only needed for unusual KeePassXC database layouts"/>
                 </Expander>
                 <TextBlock Text="Login type is detected automatically (email first, Next, password, SSO or MFA)." Style="{StaticResource FieldLabel}" Margin="0,9,0,6" TextWrapping="Wrap" Visibility="Collapsed"/>
-                <ComboBox x:Name="LoginModeCombo" SelectedIndex="0" Visibility="Collapsed">
+                <ComboBox x:Name="LoginModeCombo" SelectedIndex="0" Visibility="Visible" AutomationProperties.Name="Login authentication mode">
                   <ComboBoxItem Content="Automatic"/>
                   <ComboBoxItem Content="None"/>
+                  <ComboBoxItem Content="SSO"/>
                 </ComboBox>
                 <TextBlock Text="LaunchFlow detects username/Next/password steps. If your company uses SSO, you may need to approve its login address once and complete MFA yourself." TextWrapping="Wrap" Foreground="#BED2E5" FontSize="12" Margin="0,8,0,0"/>
                 <Grid Margin="0,12,0,0">
@@ -339,6 +356,15 @@
             <TextBlock Text="Shortcuts, updates and advanced" FontWeight="SemiBold" FontSize="18" Margin="0,0,0,7"/>
             <TextBlock Text="Customize your shortcut, check for new releases and adjust advanced sign-in."
                        Foreground="#A1BCD2" TextWrapping="Wrap" Margin="0,0,0,25"/>
+            <TextBlock Text="Language / Taal" FontWeight="SemiBold" FontSize="18" Margin="0,0,0,7"/>
+            <ComboBox x:Name="LanguageCombo" Width="200" HorizontalAlignment="Left"
+                      AutomationProperties.Name="Application language">
+              <ComboBoxItem Content="System default" Tag="auto"/>
+              <ComboBoxItem Content="English" Tag="en"/>
+              <ComboBoxItem Content="Nederlands" Tag="nl"/>
+            </ComboBox>
+            <TextBlock Text="More translations will be added in future versions."
+                       Foreground="#A1BCD2" Margin="0,7,0,16"/>
             <TextBlock Text="Click Save when finished." Foreground="#6EE7D7"/>
           </StackPanel>
         </ScrollViewer></TabItem>

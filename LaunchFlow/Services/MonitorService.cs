@@ -19,6 +19,8 @@ public static class MonitorService
             {
                 Index = i,
                 Name = label,
+                DeviceName = screen.DeviceName,
+                IsPrimary = screen.Primary,
                 Bounds = screen.Bounds
             });
         }
@@ -29,6 +31,7 @@ public static class MonitorService
             {
                 Index = 0,
                 Name = "Primary monitor",
+                IsPrimary = true,
                 Bounds = new System.Drawing.Rectangle(0, 0, 1920, 1080)
             });
         }

@@ -13,6 +13,7 @@ public partial class VisualRecorderWindow : Window
 {
     private readonly IPage _page;
     private readonly IBrowserContext _context;
+    private readonly HashSet<string> _approvedOrigins = new(StringComparer.OrdinalIgnoreCase);
     private readonly DispatcherTimer _drainTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
     private readonly ConcurrentQueue<CapturedAction> _pending = new();
     private readonly string _bindingName = "__launchFlowTeach_" + Guid.NewGuid().ToString("N");
@@ -26,10 +27,18 @@ public partial class VisualRecorderWindow : Window
     public bool Saved { get; private set; }
     public List<WorkflowStep> RecordedSteps { get; } = new();
 
-    public VisualRecorderWindow(IPage page)
+    public VisualRecorderWindow(IPage page, WebsiteWorkflow workflow)
     {
         _page = page;
         _context = page.Context;
+        foreach (var source in new[] {
+            workflow.StartUrl, workflow.CredentialOrigin, workflow.PasswordCredentialOrigin
+        }.Concat(workflow.ApprovedLoginOrigins))
+        {
+            if (Uri.TryCreate(source, UriKind.Absolute, out var uri) &&
+                (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+                _approvedOrigins.Add($"{uri.Scheme}://{uri.Authority}");
+        }
         InitializeComponent();
         Loaded += async (_, _) =>
         {
@@ -37,6 +46,14 @@ public partial class VisualRecorderWindow : Window
             await StartRecordingAsync();
         };
         _drainTimer.Tick += (_, _) => DrainActions();
+    }
+
+    private bool CaptureAllowed(string url)
+    {
+        if (!EnterprisePolicy.Load().AllowsUrl(url) ||
+            !Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            return false;
+        return _approvedOrigins.Contains($"{uri.Scheme}://{uri.Authority}");
     }
 
     private async Task StartRecordingAsync()
@@ -48,9 +65,11 @@ public partial class VisualRecorderWindow : Window
         try
         {
             // Bind to the browser context so clicks survive redirects and new tabs.
-            _binding = await _context.ExposeBindingAsync<string>(_bindingName, (_, json) =>
+            _binding = await _context.ExposeBindingAsync<string>(_bindingName, (source, json) =>
             {
-                if (!_capturing || _stopping || json.Length > 8192) return;
+                // Recording is restricted to approved hosts, including child frames.
+                if (!_capturing || _stopping || json.Length > 8192 ||
+                    !CaptureAllowed(source.Frame.Url)) return;
                 try
                 {
                     var action = JsonSerializer.Deserialize<CapturedAction>(json,
@@ -103,11 +122,14 @@ public partial class VisualRecorderWindow : Window
 
           const cssPath = (element) => {
             if (!(element instanceof Element)) return '';
-            if (element.id) return '#' + CSS.escape(element.id);
+            const safeId = (s) => typeof s === 'string' && /^[A-Za-z][A-Za-z0-9_-]{0,79}$/.test(s);
+            const testId = element.getAttribute('data-testid');
+            if (safeId(testId)) return '[data-testid="' + testId + '"]';
+            if (safeId(element.id)) return '#' + CSS.escape(element.id);
             const parts = [];
             let el = element;
             for (let i = 0; el && i < 8; i++, el = el.parentElement) {
-              if (el.id) {
+              if (safeId(el.id)) {
                 parts.unshift('#' + CSS.escape(el.id));
                 break;
               }
@@ -131,12 +153,9 @@ public partial class VisualRecorderWindow : Window
             const target = cssPath(element);
             if (!target) return;
 
-            // Store only element selectors, never typed text or field values.
-            const editable = element.matches('input,textarea,[contenteditable]') ||
-                             Boolean(element.closest('[contenteditable]'));
-            const label = editable
-              ? (element.getAttribute('aria-label') || element.tagName.toLowerCase())
-              : (element.getAttribute('aria-label') || element.textContent || '').trim().slice(0, 48);
+            // Labels and textContent can contain names, ticket IDs or secrets.
+            // Record only the HTML element type and a selector, never page text.
+            const label = element.tagName.toLowerCase();
             const send = window[binding];
             if (typeof send === 'function') {
               void send(JSON.stringify({ type: 'Click', target, label })).catch(() => {});
