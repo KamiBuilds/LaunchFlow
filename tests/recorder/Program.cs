@@ -1,0 +1,406 @@
+using System.Reflection;
+using LaunchFlow;
+using LaunchFlow.Services;
+using Microsoft.Playwright;
+
+if (args is ["--binding-api"])
+{
+    foreach (var method in typeof(IPage).GetMethods().Where(m => m.Name == "ExposeBindingAsync"))
+        Console.WriteLine(method);
+    return;
+}
+
+using var playwright = await Playwright.CreateAsync();
+await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+await using var context = await browser.NewContextAsync();
+await context.RouteAsync("https://recorder.test/**", route => route.FulfillAsync(new()
+{
+    ContentType = "text/html",
+    Body = route.Request.Url.Contains("/replay", StringComparison.Ordinal)
+        ? "<button onclick='window.wrong=(window.wrong||0)+1'>Wrong</button><button id='right' onclick='window.rightClicks=(window.rightClicks||0)+1'>Right</button>"
+        : "<button>Local fixture</button>"
+}));
+var page = await context.NewPageAsync();
+if (args is ["--legacy-script", var path])
+{
+    var messages = new List<string>();
+    await page.ExposeBindingAsync("__testRecorder", (BindingSource _, string json) => { messages.Add(json); return true; });
+    await page.SetContentAsync("<button id='typed-private-marker'>typed-private-marker</button>");
+    await page.EvaluateAsync(File.ReadAllText(path));
+    await page.ClickAsync("button");
+    await page.EvaluateAsync("() => window.__testRecorder('{}')");
+    Assert(!string.Join("", messages).Contains("typed-private-marker"), "automatic capture never persists echoed input in IDs or labels");
+    return;
+}
+
+using (var gesture = new TeachRecorder(page))
+{
+    await page.GotoAsync("data:text/html," + Uri.EscapeDataString("<button onclick='window.activations=(window.activations||0)+1'>Target</button>"));
+    await gesture.SynchronizeAsync();
+    await Flush(page);
+    var box = (await page.Locator("button").BoundingBoxAsync())!;
+    await page.Mouse.MoveAsync(box.X + box.Width / 2, box.Y + box.Height / 2);
+    await page.Mouse.DownAsync();
+    await page.Mouse.MoveAsync(700, 500);
+    await page.Mouse.UpAsync();
+    await Flush(page);
+    Assert(await page.EvaluateAsync<int>("window.activations || 0") == 0, "fixture drag away does not activate the button");
+    Assert(gesture.Drain().Count == 0, "canceled pointer gestures never become saved button clicks");
+}
+
+using var first = new TeachRecorder(page);
+await first.SynchronizeAsync();
+await page.GotoAsync("data:text/html,<button id='go'>Go</button>");
+await Flush(page);
+await page.ClickAsync("#go");
+await Flush(page);
+Assert(first.Drain().Count == 1, "navigation installs click listener without reinjection");
+using var second = new TeachRecorder(page);
+await second.SynchronizeAsync();
+await page.ClickAsync("#go");
+await Flush(page);
+Assert(first.Drain().Count == 1 && second.Drain().Count == 1, "independent recorder windows");
+
+await page.EvaluateAsync("""
+    () => {
+      window.__testMessages = [];
+      const dispatch = window.__launchFlowTeachDispatchV1;
+      window.__launchFlowTeachDispatchV1 = json => { window.__testMessages.push(json); return dispatch(json); };
+    }
+    """);
+await page.ClickAsync("#go");
+await Flush(page);
+first.Drain(); second.Drain();
+var stale = await page.EvaluateAsync<string>("() => window.__testMessages.find(json => JSON.parse(json).type === 'Click')");
+first.Pause(); second.Pause();
+await page.ClickAsync("#go");
+await Flush(page);
+Assert(first.Drain().Count == 0 && second.Drain().Count == 0, "pause rejects already installed browser listeners immediately");
+first.Resume(); second.Resume();
+await first.SynchronizeAsync();
+await page.EvaluateAsync("json => window.__launchFlowTeachDispatchV1(json)", stale);
+Assert(first.Drain().Count == 0 && second.Drain().Count == 0, "resume rejects in-flight events from previous capture epoch");
+await page.ClickAsync("#go");
+await Flush(page);
+Assert(first.Drain().Count == 1 && second.Drain().Count == 1, "resume captures once per window");
+
+first.Pause();
+await first.SynchronizeAsync();
+await page.GotoAsync("data:text/html,<button>After navigation</button>");
+await Flush(page);
+await page.ClickAsync("button");
+await Flush(page);
+Assert(first.Drain().Count == 0 && second.Drain().Count == 1, "navigation retains each window's paused state");
+first.Dispose();
+first.Resume();
+await first.SynchronizeAsync();
+await page.ClickAsync("button");
+await Flush(page);
+Assert(!first.IsCapturing && first.Drain().Count == 0 && second.Drain().Count == 1, "closing one window is terminal and does not stop another");
+second.Dispose();
+await second.SynchronizeAsync();
+
+for (var i = 0; i < 12; i++)
+{
+    using var session = new TeachRecorder(page);
+    await session.SynchronizeAsync();
+    await page.ClickAsync("button");
+    await Flush(page);
+    Assert(session.Drain().Count == 1, $"repeated session {i + 1} captures exactly once");
+}
+await second.SynchronizeAsync();
+Assert(await page.EvaluateAsync<int>("Object.keys(window).filter(k => k === '__launchFlowTeachDispatchV1').length") == 1,
+    "repeated sessions reuse a single page binding");
+
+using var privacy = new TeachRecorder(page);
+await privacy.SynchronizeAsync();
+await page.GotoAsync("data:text/html," + Uri.EscapeDataString("""
+    <input id="plain"><input id="password" type="password"><textarea></textarea>
+    <select><option>typed-private-marker</option></select>
+    <div contenteditable="true">typed-private-marker</div>
+    <div role="textbox" tabindex="0">typed-private-marker</div>
+    <button id="typed-private-marker" aria-label="typed-private-marker"><span>typed-private-marker</span></button>
+    """));
+await Flush(page);
+await page.FillAsync("#plain", "typed-private-marker");
+await page.FillAsync("#password", "typed-private-marker");
+await page.FillAsync("textarea", "typed-private-marker");
+foreach (var selector in new[] { "#plain", "#password", "textarea", "select", "[contenteditable]", "[role=textbox]" })
+    await page.ClickAsync(selector);
+await Flush(page);
+Assert(privacy.Drain().Count == 0, "typed input, passwords and editable controls are never captured");
+await page.ClickAsync("button span");
+await Flush(page);
+var targets = privacy.Drain();
+Assert(targets.Count == 1 && !targets[0].Contains("typed-private-marker"), "automatic capture never persists echoed input in IDs or labels");
+Assert(await page.Locator(targets[0]).CountAsync() == 1, "structural selector resolves the intended clickable ancestor");
+await page.EvaluateAsync("() => document.querySelector('button').click()");
+await Flush(page);
+Assert(privacy.Drain().Count == 0, "synthetic page events are ignored");
+foreach (var malformed in new[] { "{", "null", "[]", "{}", "{\"type\":\"Click\",\"epoch\":\"bad\"}", new string('x', 9000) })
+    await page.EvaluateAsync("json => window.__launchFlowTeachDispatchV1(json)", malformed);
+await page.EvaluateAsync("() => window.__launchFlowTeachDispatchV1(null)");
+Assert(privacy.Drain().Count == 0, "null browser binding payload is ignored");
+Assert(privacy.Drain().Count == 0, "untrusted malformed binding payloads are ignored");
+await page.EvaluateAsync("""
+    async () => {
+      const state = JSON.parse(await window.__launchFlowTeachDispatchV1('{"type":"hello"}'));
+      const session = state.sessions[0];
+      for (const target of ['#typed-private-marker', 'text=typed-private-marker', '[aria-label="typed-private-marker"]'])
+        await window.__launchFlowTeachDispatchV1(JSON.stringify({type:'Click',id:session.id,epoch:session.epoch,target}));
+    }
+    """);
+Assert(privacy.Drain().Count == 0, "binding rejects forged text, ID and aria selectors containing private values");
+privacy.Dispose();
+await privacy.SynchronizeAsync();
+
+var saveWindow = new VisualRecorderWindow(page);
+saveWindow.TestLoad();
+await WaitUntil(() => saveWindow.TestToggleEnabled);
+await page.ClickAsync("button");
+await Flush(page);
+saveWindow.TestSave();
+Assert(saveWindow.Saved && saveWindow.RecordedSteps.Count == 1, "save freezes and drains pending clicks synchronously");
+saveWindow.TestCancel();
+Assert(saveWindow.Saved && saveWindow.RecordedSteps.Count == 1, "late close does not mutate an already saved snapshot");
+saveWindow.TestClear();
+Assert(saveWindow.RecordedSteps.Count == 1, "late clear cannot mutate a terminal saved snapshot");
+await Flush(page);
+await page.ClickAsync("button");
+await Flush(page);
+saveWindow.TestTick();
+Assert(saveWindow.RecordedSteps.Count == 1, "closed saved window cannot append late clicks");
+
+var cancelWindow = new VisualRecorderWindow(page);
+cancelWindow.TestLoad();
+cancelWindow.TestCancel();
+await cancelWindow.TestWaitForUpdatesAsync();
+await page.ClickAsync("button");
+await Flush(page);
+cancelWindow.TestTick();
+Assert(!cancelWindow.Saved && cancelWindow.RecordedSteps.Count == 0, "cancel while startup is awaiting cannot resurrect capture");
+
+var emptyWindow = new VisualRecorderWindow(page);
+emptyWindow.TestLoad();
+await WaitUntil(() => emptyWindow.TestToggleEnabled);
+emptyWindow.TestSave();
+Assert(!emptyWindow.Saved, "empty save keeps window open");
+await emptyWindow.TestWaitForUpdatesAsync();
+await page.ClickAsync("button");
+await Flush(page);
+emptyWindow.TestSave();
+Assert(emptyWindow.Saved && emptyWindow.RecordedSteps.Count == 1, "recording resumes after an empty save");
+
+var raceWindow = new VisualRecorderWindow(page);
+raceWindow.TestLoad();
+await WaitUntil(() => raceWindow.TestToggleEnabled);
+await page.ClickAsync("button");
+await Flush(page);
+raceWindow.TestToggle();
+raceWindow.TestCancel();
+await raceWindow.TestWaitForUpdatesAsync();
+raceWindow.TestTick();
+Assert(!raceWindow.Saved && raceWindow.RecordedSteps.Count == 0, "cancel wins over an in-flight toggle and discards pending actions");
+var removeWindow = new VisualRecorderWindow(page);
+removeWindow.TestLoad();
+await WaitUntil(() => removeWindow.TestToggleEnabled);
+await page.ClickAsync("button");
+await Flush(page);
+removeWindow.TestTick();
+removeWindow.TestSelectFirst();
+await page.ClickAsync("button");
+await Flush(page);
+removeWindow.TestRemove();
+Assert(removeWindow.RecordedSteps.Count == 1, "remove retains selection when pending clicks refresh the list");
+removeWindow.TestCancel();
+await removeWindow.TestWaitForUpdatesAsync();
+
+using (var scoped = new TeachRecorder(page))
+{
+    await scoped.SynchronizeAsync();
+    var popup = await context.NewPageAsync();
+    await popup.GotoAsync("data:text/html,<button>Popup</button>");
+    Assert(await popup.EvaluateAsync<bool>("typeof window.__launchFlowTeachDispatchV1 === 'function'"),
+        "shared context bridge is installed in new pages without reinjection");
+    await Flush(popup);
+    await popup.ClickAsync("button");
+    await Flush(popup);
+    Assert(scoped.Drain().Count == 0, "popup clicks never become wrong-target main-page steps");
+    await popup.CloseAsync();
+}
+
+var targetWindow = new VisualRecorderWindow(page);
+targetWindow.TestLoad();
+await WaitUntil(() => targetWindow.TestToggleEnabled);
+var otherPage = await context.NewPageAsync();
+await otherPage.GotoAsync("https://recorder.test/other-tab");
+await Flush(otherPage);
+await otherPage.ClickAsync("button");
+await Flush(otherPage);
+targetWindow.TestTick();
+Assert(targetWindow.TestStatus?.Contains("not recorded") == true,
+    "unsupported target warning is visible even when no action was queued");
+targetWindow.TestCaptureUrl();
+Assert(targetWindow.RecordedSteps.Single().Type == "Navigate" && targetWindow.RecordedSteps.Single().Target == otherPage.Url,
+    "explicit Add current page retains latest-tab URL behavior");
+targetWindow.TestCancel();
+await targetWindow.TestWaitForUpdatesAsync();
+await otherPage.CloseAsync();
+
+using (var shadow = new TeachRecorder(page))
+{
+    await shadow.SynchronizeAsync();
+    await page.GotoAsync("data:text/html,<div id='host'></div>");
+    await Flush(page);
+    await page.EvaluateAsync("() => document.querySelector('#host').attachShadow({mode:'open'}).innerHTML = '<button>Shadow</button>'");
+    await page.ClickAsync("#host button");
+    await Flush(page);
+    Assert(shadow.Drain().Count == 0 && shadow.UnsupportedTargetObserved,
+        "shadow clicks are rejected rather than replaying against a retargeted host");
+}
+
+using (var pointer = new TeachRecorder(page))
+{
+    await pointer.SynchronizeAsync();
+    await page.GotoAsync("data:text/html," + Uri.EscapeDataString("<button onpointerdown='this.remove()'>Navigate</button>"));
+    await Flush(page);
+    await page.ClickAsync("button");
+    await Flush(page);
+    Assert(pointer.Drain().Count == 0, "target removal before a completed click never produces a phantom action");
+    await page.GotoAsync("data:text/html," + Uri.EscapeDataString("<button onclick='this.remove()'>Complete then remove</button>"));
+    await Flush(page);
+    await page.ClickAsync("button");
+    await Flush(page);
+    Assert(pointer.Drain().Count == 1, "completed click is captured before its click handler removes the target");
+}
+
+var pausedWindow = new VisualRecorderWindow(page);
+pausedWindow.TestLoad();
+await WaitUntil(() => pausedWindow.TestToggleEnabled);
+await page.GotoAsync("data:text/html,<button>Pending</button>");
+await Flush(page);
+await page.ClickAsync("button");
+await Flush(page);
+pausedWindow.TestPauseWithoutDrain();
+pausedWindow.TestTick();
+Assert(pausedWindow.RecordedSteps.Count == 1 && pausedWindow.TestStatus?.StartsWith("Paused") == true,
+    "draining an admitted action preserves paused UI state");
+pausedWindow.TestCancel();
+await pausedWindow.TestWaitForUpdatesAsync();
+
+using (var framed = new TeachRecorder(page))
+{
+    await framed.SynchronizeAsync();
+    await page.GotoAsync("data:text/html," + Uri.EscapeDataString("<button>Main</button><iframe srcdoc='<button>Frame</button>'></iframe>"));
+    await Flush(page);
+    var frame = page.Frames.Single(f => f != page.MainFrame);
+    await frame.WaitForSelectorAsync("button");
+    await frame.EvaluateAsync("() => window.__launchFlowTeachDispatchV1('{\"type\":\"hello\"}')");
+    await frame.ClickAsync("button");
+    await frame.EvaluateAsync("() => window.__launchFlowTeachDispatchV1('{\"type\":\"hello\"}')");
+    Assert(framed.Drain().Count == 0 && framed.UnsupportedTargetObserved,
+        "new iframe is instrumented but cannot queue a wrong-main-frame action");
+    await page.ClickAsync("button");
+    await Flush(page);
+    Assert(framed.Drain().Count == 1, "main frame continues recording after rejecting iframe actions");
+}
+
+using (var popupRecorder = new TeachRecorder(page))
+{
+    await popupRecorder.SynchronizeAsync();
+    await page.GotoAsync("data:text/html," + Uri.EscapeDataString("<button onclick=\"window.open('about:blank')\">Open popup</button>"));
+    await Flush(page);
+    var popup = await page.RunAndWaitForPopupAsync(() => page.ClickAsync("button"));
+    await popup.GotoAsync("data:text/html,<button>Popup target</button>");
+    await Flush(popup);
+    Assert(popupRecorder.Drain().Count == 1, "real popup opener is captured once on the original page");
+    await popup.ClickAsync("button");
+    await Flush(popup);
+    Assert(popupRecorder.Drain().Count == 0 && popupRecorder.UnsupportedTargetObserved,
+        "real window.open popup is instrumented and rejected without wrong-target persistence");
+    await popup.CloseAsync();
+}
+
+var concurrent = Enumerable.Range(0, 8).Select(_ => new TeachRecorder(page)).ToArray();
+await Task.WhenAll(concurrent.Select(s => s.SynchronizeAsync()));
+await page.GotoAsync("data:text/html,<button>Keyboard</button>");
+await Flush(page);
+await page.ClickAsync("button");
+await page.FocusAsync("button");
+await page.Keyboard.PressAsync("Enter");
+await Flush(page);
+Assert(concurrent.All(s => s.Drain().Count == 2), "concurrent initialization captures one pointer and one keyboard action per session");
+foreach (var session in concurrent) session.Dispose();
+await Task.WhenAll(concurrent.Select(s => s.SynchronizeAsync()));
+var snapshot = await page.EvaluateAsync<string>("() => window.__launchFlowTeachDispatchV1('{\"type\":\"hello\"}')");
+Assert(System.Text.Json.JsonDocument.Parse(snapshot).RootElement.GetProperty("sessions").GetArrayLength() == 0,
+    "closed sessions are detached from the context-wide bridge");
+
+var closingPage = await context.NewPageAsync();
+using (var closing = new TeachRecorder(closingPage))
+{
+    await closing.SynchronizeAsync();
+    await closingPage.GotoAsync("data:text/html,<button>Before close</button>");
+    await Flush(closingPage);
+    await closingPage.ClickAsync("button");
+    await Flush(closingPage);
+    await closingPage.CloseAsync();
+    closing.Resume();
+    Assert(!closing.IsCapturing && closing.Drain().Count == 1,
+        "closing the original browser page is terminal but preserves admitted actions for Save");
+}
+
+var closedWindowPage = await context.NewPageAsync();
+var closedWindow = new VisualRecorderWindow(closedWindowPage);
+closedWindow.TestLoad();
+await WaitUntil(() => closedWindow.TestToggleEnabled);
+await closedWindowPage.CloseAsync();
+closedWindow.TestTick();
+Assert(closedWindow.TestStatus?.StartsWith("Browser page closed") == true && !closedWindow.TestToggleEnabled,
+    "browser page closure is visible and cannot be resumed through the window");
+closedWindow.TestCancel();
+await closedWindow.TestWaitForUpdatesAsync();
+
+await page.GotoAsync("https://recorder.test/replay");
+var replayWindow = new VisualRecorderWindow(page);
+replayWindow.TestLoad();
+await WaitUntil(() => replayWindow.TestToggleEnabled);
+await page.ClickAsync("#right");
+await Flush(page);
+replayWindow.TestSave();
+Assert(replayWindow.Saved && replayWindow.RecordedSteps.Count == 1, "real window saves a completed click for engine replay");
+await replayWindow.TestWaitForUpdatesAsync();
+await page.ReloadAsync();
+var execute = typeof(AutomationEngine).GetMethod("ExecuteStepAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
+foreach (var step in replayWindow.RecordedSteps)
+    await (Task)execute.Invoke(null, new object[] { page, step, CancellationToken.None })!;
+Assert(await page.EvaluateAsync<int>("window.rightClicks || 0") == 1, "saved click replays through the real engine against the intended element");
+Assert(await page.EvaluateAsync<int>("window.wrong || 0") == 0, "engine replay never clicks the neighboring fixture control");
+
+var weak = CreateDisposedSession(page);
+GC.Collect();
+GC.WaitForPendingFinalizers();
+GC.Collect();
+Assert(!weak.TryGetTarget(out _), "shared context bridge does not retain disposed session objects");
+
+Console.WriteLine("All recorder behavior checks passed.");
+
+[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+static WeakReference<TeachRecorder> CreateDisposedSession(IPage page)
+{
+    var session = new TeachRecorder(page);
+    session.Dispose();
+    return new WeakReference<TeachRecorder>(session);
+}
+
+static Task Flush(IPage page) => page.EvaluateAsync("() => window.__launchFlowTeachDispatchV1('{\"type\":\"hello\"}')");
+static async Task WaitUntil(Func<bool> condition)
+{
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+    while (!condition()) await Task.Delay(10, timeout.Token);
+}
+static void Assert(bool condition, string name)
+{
+    if (!condition) throw new Exception("FAIL " + name);
+    Console.WriteLine("PASS " + name);
+}

@@ -1,5 +1,3 @@
-using System.Collections.Concurrent;
-using System.Text.Json;
 using System.Windows;
 using System.Windows.Threading;
 using LaunchFlow.Models;
@@ -12,16 +10,10 @@ namespace LaunchFlow;
 public partial class VisualRecorderWindow : Window
 {
     private readonly IPage _page;
-    private readonly IBrowserContext _context;
-    private readonly DispatcherTimer _drainTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
-    private readonly ConcurrentQueue<CapturedAction> _pending = new();
-    private readonly string _bindingName = "__launchFlowTeach_" + Guid.NewGuid().ToString("N");
-    private readonly string _stateName = "__launchFlowTeachState_" + Guid.NewGuid().ToString("N");
-    private IAsyncDisposable? _binding;
-    private bool _capturing;
+    private readonly TeachRecorder _recorder;
+    private readonly DispatcherTimer _drainTimer = new() { Interval = TimeSpan.FromMilliseconds(200) };
+    private bool _started;
     private bool _stopping;
-    private bool _initializing;
-    private bool _saving;
 
     public bool Saved { get; private set; }
     public List<WorkflowStep> RecordedSteps { get; } = new();
@@ -29,7 +21,7 @@ public partial class VisualRecorderWindow : Window
     public VisualRecorderWindow(IPage page)
     {
         _page = page;
-        _context = page.Context;
+        _recorder = new TeachRecorder(page);
         InitializeComponent();
         Loaded += async (_, _) =>
         {
@@ -41,164 +33,89 @@ public partial class VisualRecorderWindow : Window
 
     private async Task StartRecordingAsync()
     {
-        if (_stopping || _initializing || _binding is not null) return;
-        _initializing = true;
-        _capturing = true;
-        _drainTimer.Start();
+        if (_stopping || _started) return;
+        _started = true;
+        CaptureToggle.IsEnabled = false;
         try
         {
-            // Bind to the browser context so clicks survive redirects and new tabs.
-            _binding = await _context.ExposeBindingAsync<string>(_bindingName, (_, json) =>
-            {
-                if (!_capturing || _stopping || json.Length > 8192) return;
-                try
-                {
-                    var action = JsonSerializer.Deserialize<CapturedAction>(json,
-                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                    if (action?.Type == "Click" &&
-                        !string.IsNullOrWhiteSpace(action.Target) &&
-                        action.Target.Length <= 2048)
-                        _pending.Enqueue(action);
-                }
-                catch (JsonException) { }
-            });
-
-            await _context.AddInitScriptAsync(BuildRecorderScript());
-            var script = BuildRecorderScript();
-
-            // Attach immediately to already-open pages and frames as well.
-            foreach (var page in _context.Pages)
-            {
-                if (page.IsClosed) continue;
-                foreach (var frame in page.Frames)
-                {
-                    try { await frame.EvaluateAsync(script); }
-                    catch (PlaywrightException) { }
-                }
-            }
-
-            CaptureToggle.Content = "Pause recording";
-            CaptureStatus.Text = "Recording every click. Use the browser, then come back to Save clicks.";
+            await _recorder.SynchronizeAsync();
+            if (_stopping) return;
+            _drainTimer.Start();
+            ShowCaptureState();
         }
         catch (Exception ex)
         {
-            _capturing = false;
-            _drainTimer.Stop();
-            CaptureToggle.IsEnabled = false;
-            CaptureStatus.Text = "Click recording could not start. You can still add steps manually.";
-            MessageBox.Show(this, ex.Message, "Teach couldn't start",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            if (_stopping) return;
+            _recorder.Pause();
+            CaptureToggle.Content = "Retry recording";
+            CaptureStatus.Text = "Could not start click recording. You can still add a step manually.";
+            MessageBox.Show(this, ex.Message, "Teach couldn't start", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         finally
         {
-            _initializing = false;
+            if (!_stopping) CaptureToggle.IsEnabled = !_page.IsClosed;
         }
     }
 
-    private string BuildRecorderScript() => $$"""
-        (() => {
-          const binding = '{{_bindingName}}';
-          const stateName = '{{_stateName}}';
-          if (window[stateName] || typeof window[binding] !== 'function') return;
-
-          const cssPath = (element) => {
-            if (!(element instanceof Element)) return '';
-            if (element.id) return '#' + CSS.escape(element.id);
-            const parts = [];
-            let el = element;
-            for (let i = 0; el && i < 8; i++, el = el.parentElement) {
-              if (el.id) {
-                parts.unshift('#' + CSS.escape(el.id));
-                break;
-              }
-              let name = el.tagName.toLowerCase();
-              const parent = el.parentElement;
-              if (parent) {
-                const siblings = Array.from(parent.children).filter(n => n.tagName === el.tagName);
-                if (siblings.length > 1) name += ':nth-of-type(' + (siblings.indexOf(el) + 1) + ')';
-              }
-              parts.unshift(name);
-            }
-            return parts.join(' > ');
-          };
-
-          let lastPointerTime = 0;
-          const record = (event) => {
-            if (!event.isTrusted) return;
-            const node = event.target;
-            if (!(node instanceof Element)) return;
-            const element = node.closest('a,button,input,select,textarea,label,[role="button"],[role="link"]') || node;
-            const target = cssPath(element);
-            if (!target) return;
-
-            // Store only element selectors, never typed text or field values.
-            const editable = element.matches('input,textarea,[contenteditable]') ||
-                             Boolean(element.closest('[contenteditable]'));
-            const label = editable
-              ? (element.getAttribute('aria-label') || element.tagName.toLowerCase())
-              : (element.getAttribute('aria-label') || element.textContent || '').trim().slice(0, 48);
-            const send = window[binding];
-            if (typeof send === 'function') {
-              void send(JSON.stringify({ type: 'Click', target, label })).catch(() => {});
-            }
-          };
-
-          const onPointer = (event) => {
-            if (event.button !== 0 || !event.isPrimary) return;
-            lastPointerTime = Date.now();
-            record(event);
-          };
-          const onClick = (event) => {
-            // Keyboard-activated clicks lack a preceding pointer event.
-            if (Date.now() - lastPointerTime >= 700) record(event);
-          };
-          document.addEventListener('pointerdown', onPointer, true);
-          document.addEventListener('click', onClick, true);
-          window[stateName] = () => {
-            document.removeEventListener('pointerdown', onPointer, true);
-            document.removeEventListener('click', onClick, true);
-            delete window[stateName];
-          };
-        })()
-        """;
-
-    private void ToggleCapture_Click(object sender, RoutedEventArgs e)
+    private async void ToggleCapture_Click(object sender, RoutedEventArgs e)
     {
-        if (_stopping || _initializing || _saving || _binding is null) return;
-        _capturing = !_capturing;
-        CaptureToggle.Content = _capturing ? "Pause recording" : "Resume recording";
+        if (_stopping) return;
+        CaptureToggle.IsEnabled = false;
+        if (_recorder.IsCapturing) _recorder.Pause();
+        else _recorder.Resume();
         DrainActions();
-        CaptureStatus.Text = _capturing
-            ? "Recording every click…"
-            : $"Paused — {RecordedSteps.Count} click(s) captured.";
+        try
+        {
+            await _recorder.SynchronizeAsync();
+            if (_stopping) return;
+            _drainTimer.Start();
+            ShowCaptureState();
+        }
+        catch (Exception ex)
+        {
+            if (_stopping) return;
+            _recorder.Pause();
+            CaptureToggle.Content = "Retry recording";
+            CaptureStatus.Text = "Recording is paused. Reopen the browser or try again. " + ex.Message;
+        }
+        finally
+        {
+            if (!_stopping) CaptureToggle.IsEnabled = !_page.IsClosed;
+        }
+    }
+
+    private void ShowCaptureState()
+    {
+        if (_page.IsClosed)
+        {
+            CaptureToggle.IsEnabled = false;
+            CaptureStatus.Text = "Browser page closed — save captured clicks or cancel, then start a new Teach session.";
+            return;
+        }
+        CaptureToggle.Content = _recorder.IsCapturing ? "Pause recording" : "Resume recording";
+        CaptureStatus.Text = _recorder.IsCapturing
+            ? "Recording the original tab's main page — " + RecordedSteps.Count + " click(s) captured."
+            : "Paused — " + RecordedSteps.Count + " click(s) captured.";
+        if (_recorder.UnsupportedTargetObserved)
+            CaptureStatus.Text += " Popup, other-tab, frame or shadow-DOM clicks were not recorded.";
     }
 
     private void DrainActions()
     {
-        var changed = false;
-        while (_pending.TryDequeue(out var item))
-        {
-            if (string.IsNullOrWhiteSpace(item.Target)) continue;
-            var description = string.IsNullOrWhiteSpace(item.Label)
-                ? "Click " + item.Target
-                : "Click “" + item.Label + "”";
-            RecordedSteps.Add(new WorkflowStep
-            {
-                Type = "Click", Target = item.Target, Description = description
-            });
-            changed = true;
-        }
-
-        if (!changed) return;
-        RefreshList();
-        CaptureStatus.Text = $"Recorded {RecordedSteps.Count} click(s). Click Save when you're done.";
+        if (_stopping) return;
+        var actions = _recorder.Drain();
+        foreach (var target in actions)
+            RecordedSteps.Add(new WorkflowStep { Type = "Click", Target = target, Description = "Click " + target });
+        if (actions.Count > 0) RefreshList();
+        if (actions.Count > 0 || _recorder.UnsupportedTargetObserved || _page.IsClosed) ShowCaptureState();
     }
 
     private void CaptureUrl_Click(object sender, RoutedEventArgs e)
     {
+        if (_stopping) return;
         try
         {
-            var page = _context.Pages.LastOrDefault(p => !p.IsClosed) ?? _page;
+            var page = _page.Context.Pages.LastOrDefault(p => !p.IsClosed) ?? _page;
             var url = page.Url;
             AutomationEngine.ValidateUrl(url);
             AddStep("Navigate", url, "Open " + url);
@@ -212,17 +129,16 @@ public partial class VisualRecorderWindow : Window
 
     private void AddNavigate_Click(object sender, RoutedEventArgs e) =>
         EditNew(new WorkflowStep { Type = "Navigate", Target = "https://", Description = "Open a page" });
-
     private void AddClick_Click(object sender, RoutedEventArgs e) =>
         EditNew(new WorkflowStep { Type = "Click", Target = "button", Description = "Click" });
-
     private void AddWait_Click(object sender, RoutedEventArgs e) =>
         EditNew(new WorkflowStep { Type = "Wait", Target = "1500", Description = "Wait" });
 
     private void EditNew(WorkflowStep step)
     {
+        if (_stopping) return;
         var editor = new StepEditorWindow(step) { Owner = this };
-        if (editor.ShowDialog() == true)
+        if (editor.ShowDialog() == true && !_stopping)
             AddStep(editor.Result.Type, editor.Result.Target,
                 editor.Result.Description ?? editor.Result.Type + " " + editor.Result.Target,
                 editor.Result.Value);
@@ -230,85 +146,78 @@ public partial class VisualRecorderWindow : Window
 
     private void Remove_Click(object sender, RoutedEventArgs e)
     {
-        if (StepList.SelectedItem is WorkflowStep step)
+        if (_stopping) return;
+        var selected = StepList.SelectedItem as WorkflowStep;
+        DrainActions();
+        if (selected is not null)
         {
-            RecordedSteps.Remove(step);
+            RecordedSteps.Remove(selected);
             RefreshList();
         }
     }
 
     private void Clear_Click(object sender, RoutedEventArgs e)
     {
+        if (_stopping) return;
         RecordedSteps.Clear();
-        while (_pending.TryDequeue(out _)) { }
+        _recorder.Drain();
         RefreshList();
-        CaptureStatus.Text = "No clicks recorded yet. Try clicking something on the website.";
+        CaptureStatus.Text = "No clicks saved yet. Try clicking something on the website.";
     }
 
-    private async void Save_Click(object sender, RoutedEventArgs e)
+    private void Save_Click(object sender, RoutedEventArgs e)
     {
-        if (_stopping || _saving || _initializing) return;
-        _saving = true;
-        SaveStepsButton.IsEnabled = false;
-        try
+        if (_stopping) return;
+        // Freeze browser callbacks before draining; no delayed continuation may save after Cancel/Close.
+        var wasCapturing = _recorder.IsCapturing;
+        _recorder.Pause();
+        DrainActions();
+        if (RecordedSteps.Count == 0)
         {
-            await Task.Delay(450);
-            DrainActions();
-            if (RecordedSteps.Count == 0)
-            {
-                CaptureStatus.Text = "Nothing was recorded. Click on the website, then try Save again.";
-                return;
-            }
-            Saved = true;
-            Close();
+            if (wasCapturing) _recorder.Resume();
+            CaptureStatus.Text = "Nothing was recorded yet. Click a button on the website, then try Save clicks.";
+            _ = SynchronizeAfterEmptySaveAsync();
+            return;
         }
-        finally
-        {
-            _saving = false;
-            if (!Saved && !_stopping) SaveStepsButton.IsEnabled = true;
-        }
-    }
-
-    private void Cancel_Click(object sender, RoutedEventArgs e)
-    {
-        Saved = false;
-        RecordedSteps.Clear();
+        _stopping = true;
+        _recorder.Dispose();
+        Saved = true;
         Close();
     }
+
+    private async Task SynchronizeAfterEmptySaveAsync()
+    {
+        try { await _recorder.SynchronizeAsync(); }
+        catch (Exception)
+        {
+            if (_stopping) return;
+            _recorder.Pause();
+            ShowCaptureState();
+        }
+    }
+
+    private void Cancel_Click(object sender, RoutedEventArgs e) => Close();
 
     private async void Window_Closed(object? sender, EventArgs e)
     {
         _stopping = true;
-        _capturing = false;
+        _recorder.Dispose();
         _drainTimer.Stop();
-        var cleanup = "() => { const key = '" + _stateName + "'; if (typeof window[key] === 'function') window[key](); }";
-        try
-        {
-            foreach (var page in _context.Pages)
-            {
-                if (page.IsClosed) continue;
-                foreach (var frame in page.Frames)
-                {
-                    try { await frame.EvaluateAsync(cleanup); }
-                    catch (PlaywrightException) { }
-                }
-            }
-        }
-        catch (PlaywrightException) { }
-
-        if (_binding is not null)
-        {
-            try { await _binding.DisposeAsync(); }
-            catch (Exception) { }
-            _binding = null;
-        }
+        if (!Saved) RecordedSteps.Clear();
+        try { await _recorder.SynchronizeAsync(); }
+        catch (PlaywrightException) { /* The browser may already be closed. */ }
     }
 
     private void AddStep(string type, string target, string description, string? value = null)
     {
+        if (_stopping) return;
+        DrainActions();
         RecordedSteps.Add(new WorkflowStep
         {
-            Type = type, Target = target, Value = value ?? "", Description = description
+            Type = type,
+            Target = target,
+            Value = value ?? "",
+            Description = description
         });
         RefreshList();
     }
@@ -318,12 +227,5 @@ public partial class VisualRecorderWindow : Window
         StepList.ItemsSource = null;
         StepList.ItemsSource = RecordedSteps;
         if (RecordedSteps.Count > 0) StepList.ScrollIntoView(RecordedSteps[^1]);
-    }
-
-    private sealed class CapturedAction
-    {
-        public string? Type { get; set; }
-        public string Target { get; set; } = "";
-        public string? Label { get; set; }
     }
 }

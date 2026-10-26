@@ -15,9 +15,9 @@
     </Grid.RowDefinitions>
     <StackPanel>
       <TextBlock Text="Show LaunchFlow what to click" FontSize="20" FontWeight="SemiBold"/>
-      <TextBlock Text="1. Switch to the website.  2. Click everything you want LaunchFlow to repeat.  3. Come back and choose Save clicks."
+      <TextBlock Text="1. Switch to the original browser tab.  2. Click buttons and links to repeat.  3. Return here and choose Save clicks."
                  Margin="0,8,0,0" Foreground="#C3D5E7" TextWrapping="Wrap"/>
-      <TextBlock Text="Every click appears below, including clicks on form fields. Typed text and passwords are never recorded."
+      <TextBlock Text="Only the original tab’s main page is supported. Form fields and typed text are excluded. Popup and frame clicks are not saved."
                  Margin="0,8,0,0" Foreground="#87DCD2" TextWrapping="Wrap"/>
     </StackPanel>
     <WrapPanel Grid.Row="1" Margin="0,14,0,8">
