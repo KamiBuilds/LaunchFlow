@@ -13,6 +13,7 @@ public partial class VisualRecorderWindow : Window
 {
     private readonly IPage _page;
     private readonly IBrowserContext _context;
+    private readonly HashSet<string> _approvedOrigins = new(StringComparer.OrdinalIgnoreCase);
     private readonly DispatcherTimer _drainTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
     private readonly ConcurrentQueue<CapturedAction> _pending = new();
     private readonly string _bindingName = "__launchFlowTeach_" + Guid.NewGuid().ToString("N");
@@ -26,10 +27,18 @@ public partial class VisualRecorderWindow : Window
     public bool Saved { get; private set; }
     public List<WorkflowStep> RecordedSteps { get; } = new();
 
-    public VisualRecorderWindow(IPage page)
+    public VisualRecorderWindow(IPage page, WebsiteWorkflow workflow)
     {
         _page = page;
         _context = page.Context;
+        foreach (var source in new[] {
+            workflow.StartUrl, workflow.CredentialOrigin, workflow.PasswordCredentialOrigin
+        }.Concat(workflow.ApprovedLoginOrigins))
+        {
+            if (Uri.TryCreate(source, UriKind.Absolute, out var uri) &&
+                (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+                _approvedOrigins.Add($"{uri.Scheme}://{uri.Authority}");
+        }
         InitializeComponent();
         Loaded += async (_, _) =>
         {
@@ -37,6 +46,14 @@ public partial class VisualRecorderWindow : Window
             await StartRecordingAsync();
         };
         _drainTimer.Tick += (_, _) => DrainActions();
+    }
+
+    private bool CaptureAllowed(string url)
+    {
+        if (!EnterprisePolicy.Load().AllowsUrl(url) ||
+            !Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            return false;
+        return _approvedOrigins.Contains($"{uri.Scheme}://{uri.Authority}");
     }
 
     private async Task StartRecordingAsync()
@@ -52,7 +69,7 @@ public partial class VisualRecorderWindow : Window
             {
                 // Recording is restricted to approved hosts, including child frames.
                 if (!_capturing || _stopping || json.Length > 8192 ||
-                    !EnterprisePolicy.Load().AllowsUrl(source.Frame.Url)) return;
+                    !CaptureAllowed(source.Frame.Url)) return;
                 try
                 {
                     var action = JsonSerializer.Deserialize<CapturedAction>(json,
