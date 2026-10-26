@@ -82,9 +82,6 @@ public partial class MainWindow : Window
         KeePassKeyBox.Text = _configuration.KeePassKeyFilePath ?? "";
         SuggestKeePassDatabase();
         RefreshKeePassStatus();
-        RefreshVaultBackupStatus();
-        var browsers = BrowserEnvironment.Probe();
-        BrowserReadyLabel.Text = browsers.Summary;
         _runner = new AutomationEngine(_vault);
         _runner.ApproveLoginOriginAsync = ConfirmLoginOriginAsync;
         _runner.OnLog += line => Dispatcher.BeginInvoke(new Action(() => AppendLog(line)));
@@ -98,11 +95,8 @@ public partial class MainWindow : Window
         TrayCheck.IsChecked = _configuration.MinimizeToTray;
         NotifyCheck.IsChecked = _configuration.TrayNotificationsEnabled;
         SealProfilesCheck.IsChecked = _configuration.SealBrowserProfilesOnLock;
-        DiagnosticsCheck.IsChecked = _configuration.DiagnosticsLogEnabled;
         TaskSchedulerCheck.IsChecked = _configuration.PreferTaskSchedulerAutostart;
-        BackupReminderBox.Text = _configuration.BackupReminderDays.ToString();
         UpdateFeedBox.Text = _configuration.UpdateFeedUrl ?? "";
-        RefreshSecurityClarity();
         MonitorCombo.ItemsSource = MonitorService.GetMonitors();
         MonitorCombo.SelectedIndex = 0;
         WorkflowList.ItemsSource = _configuration.Workflows;
@@ -168,19 +162,19 @@ public partial class MainWindow : Window
             {
                 if (!File.Exists(path))
                 {
-                    MessageBox.Show(this, "That backup file was not found:\n" + path,
-                        "Open backup", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBox.Show(this, "That export file was not found:\n" + path,
+                        "Open export", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
                 if (path.EndsWith(".launchflow", StringComparison.OrdinalIgnoreCase))
                     ImportLaunchFlowFile(path);
                 else
-                    MessageBox.Show(this, "LaunchFlow can open portable .launchflow backups from Explorer.",
-                        "Open backup", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show(this, "LaunchFlow can open portable .launchflow exports from Explorer.",
+                        "Open export", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "Open backup", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(this, ex.Message, "Open export", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }));
     }
@@ -199,15 +193,10 @@ public partial class MainWindow : Window
         ExitFromTray();
     }
 
-    private void AppendLog(string message)
+    private static void AppendLog(string message)
     {
-        LogBox.AppendText(message + Environment.NewLine);
-        if (LogBox.LineCount > 250)
-        {
-            var lines = LogBox.Text.Split(Environment.NewLine);
-            LogBox.Text = string.Join(Environment.NewLine, lines.Skip(lines.Length - 175));
-        }
-        LogBox.ScrollToEnd();
+        // Keep developer diagnostics without an on-screen activity log.
+        Debug.WriteLine(message);
     }
 
     private static string BrowserSelection(ComboBox combo) =>
@@ -369,7 +358,7 @@ public partial class MainWindow : Window
             _configuration.MinimizeToTray = TrayCheck.IsChecked == true;
             _configuration.TrayNotificationsEnabled = NotifyCheck.IsChecked == true;
             _configuration.SealBrowserProfilesOnLock = SealProfilesCheck.IsChecked == true;
-            _configuration.DiagnosticsLogEnabled = DiagnosticsCheck.IsChecked == true;
+            _configuration.DiagnosticsLogEnabled = false;
             _configuration.PreferTaskSchedulerAutostart = TaskSchedulerCheck.IsChecked == true;
             _configuration.UpdateFeedUrl = string.IsNullOrWhiteSpace(UpdateFeedBox.Text)
                 ? null
@@ -380,16 +369,11 @@ public partial class MainWindow : Window
             if (!int.TryParse(VaultTimeoutBox.Text, out int vaultMinutes) || vaultMinutes < 1 || vaultMinutes > 120)
                 throw new ArgumentException("Vault lock timeout must be between 1 and 120 minutes.");
             _configuration.VaultLockMinutes = vaultMinutes;
-            if (!int.TryParse(BackupReminderBox.Text, out int backupDays) || backupDays < 0 || backupDays > 365)
-                throw new ArgumentException("Backup reminder days must be between 0 and 365 (0 disables).");
-            _configuration.BackupReminderDays = backupDays;
             _configuration.GlobalShortcut = ShortcutBox.Text;
             _configuration.KeePassDatabasePath = KeePassDbBox.Text.Trim();
             _configuration.KeePassKeyFilePath = KeePassKeyBox.Text.Trim();
             RefreshKeePassStatus();
-            RefreshVaultBackupStatus();
-            RefreshSecurityClarity();
-            foreach (var w in _configuration.Workflows)
+                    foreach (var w in _configuration.Workflows)
             {
                 AutomationEngine.ValidateUrl(w.StartUrl);
                 if (!string.IsNullOrWhiteSpace(w.DestinationUrl)) AutomationEngine.ValidateUrl(w.DestinationUrl);
@@ -429,7 +413,6 @@ public partial class MainWindow : Window
             WorkflowList.SelectedItem = _selected;
             _loadingEditor = false;
             if (showNotification) AppendLog("Settings and workflows saved.");
-            TryDailyVaultBackup();
             if (showNotification && !_configuration.ShortcutTipShown &&
                 _configuration.Workflows.Any(w => w.Enabled && !string.Equals(w.StartUrl, "https://example.com", StringComparison.OrdinalIgnoreCase)))
             {
@@ -639,7 +622,7 @@ public partial class MainWindow : Window
             // Do not include submitted credentials in diagnostics or error messages.
             AppendLog("Credential save failed: " + ex.GetType().Name);
             MessageBox.Show(this, "Could not save credentials. Your existing saved login may still be available. " +
-                "Check the Activity log for the error type.",
+                "Try again or contact support.",
                 "Save failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -876,7 +859,7 @@ public partial class MainWindow : Window
         }
         _runCancellation?.Dispose();
         _runCancellation = new CancellationTokenSource();
-        StatusLabel.Text = "Running";
+        
         StopButton.IsEnabled = true;
         var failed = false;
         AutomationEngine.RunResult? runResult = null;
@@ -902,7 +885,7 @@ public partial class MainWindow : Window
         }
         finally
         {
-            StatusLabel.Text = "Ready";
+            
             StopButton.IsEnabled = false;
             if (!failed && _runCancellation is { IsCancellationRequested: false })
             {
@@ -1409,7 +1392,6 @@ public partial class MainWindow : Window
         // A second launch might have arrived during the first-run setup wizard.
         ((App)System.Windows.Application.Current).NotifyMainWindowReady(this);
         Dispatcher.BeginInvoke(new Action(MaybeShowWelcomeChecklist));
-        Dispatcher.BeginInvoke(new Action(MaybeShowBackupReminder));
         Dispatcher.BeginInvoke(new Action(() => _ = MaybeCheckUpdatesAsync()));
     }
 
@@ -1428,184 +1410,6 @@ public partial class MainWindow : Window
         try { _store.Save(_configuration); } catch { /* ignore */ }
 
         new TutorialWindow { Owner = this }.ShowDialog();
-    }
-
-    private void RefreshVaultBackupStatus()
-    {
-        var backups = VaultBackupService.ListBackups();
-        VaultBackupStatus.Text = backups.Count == 0
-            ? $"No local backups yet. Database: {VaultDatabase.Current.DatabasePath}"
-            : $"Latest backup: {Path.GetFileName(backups[0])} · keeping up to {VaultBackupService.KeepCount} copies in {VaultBackupService.BackupDirectory}";
-    }
-
-    private void TryDailyVaultBackup()
-    {
-        try
-        {
-            var today = DateTime.Now.ToString("yyyyMMdd");
-            var already = VaultBackupService.ListBackups()
-                .Any(path => Path.GetFileName(path).Contains(today, StringComparison.Ordinal));
-            if (already) return;
-            VaultBackupService.CreateBackup(VaultDatabase.Current.DatabasePath);
-            _configuration.LastBackupUtc = DateTimeOffset.UtcNow.ToString("o");
-            try { _store.Save(_configuration); } catch { /* ignore */ }
-            RefreshVaultBackupStatus();
-        }
-        catch (Exception ex)
-        {
-            AppendLog("Daily encrypted backup skipped: " + ex.Message);
-        }
-    }
-
-    private void BackupVault_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            if (VaultDatabase.Current.IsUnlocked) SaveAll();
-            var path = VaultBackupService.CreateBackup(VaultDatabase.Current.DatabasePath);
-            _configuration.LastBackupUtc = DateTimeOffset.UtcNow.ToString("o");
-            _store.Save(_configuration);
-            RefreshVaultBackupStatus();
-            AppendLog("Encrypted vault backup created: " + path);
-            MessageBox.Show(this,
-                "Encrypted database copy saved:\n\n" + path +
-                "\n\nThis file still requires your master password. Store portable exports separately if you need recovery on another PC.",
-                "Backup complete", MessageBoxButton.OK, MessageBoxImage.Information);
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, ex.Message, "Backup failed", MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
-    }
-
-    private async void RestoreVault_Click(object sender, RoutedEventArgs e)
-    {
-        if (_runner.IsRunning)
-        {
-            MessageBox.Show(this, "Stop active workflows before restoring a backup.",
-                "Restore backup", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        var dialog = new OpenFileDialog
-        {
-            Title = "Restore encrypted vault database",
-            Filter = "LaunchFlow vault backup (launchflow-*.db)|launchflow-*.db|SQLite database (*.db)|*.db",
-            InitialDirectory = Directory.Exists(VaultBackupService.BackupDirectory)
-                ? VaultBackupService.BackupDirectory
-                : VaultBackupService.DataDirectory
-        };
-        if (dialog.ShowDialog(this) != true) return;
-
-        var confirm = MessageBox.Show(this,
-            "Replace the current encrypted vault with this backup?\n\n" +
-            dialog.FileName + "\n\n" +
-            "A safety copy of today’s live database is kept in the backups folder first. " +
-            "You will need the master password for the backup you restore.\n\nContinue?",
-            "Restore vault backup",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
-        if (confirm != MessageBoxResult.Yes) return;
-
-        try
-        {
-            if (VaultDatabase.Current.IsUnlocked)
-            {
-                SaveAll();
-                try { await _runner.CloseSessionsAsync(); } catch { /* best effort */ }
-                try { ProfileVaultService.SealAll(); } catch { /* best effort */ }
-                VaultDatabase.Current.Lock();
-            }
-
-            var safety = VaultBackupService.RestoreEncryptedDatabase(
-                dialog.FileName, VaultDatabase.Current.DatabasePath);
-
-            MessageBox.Show(this,
-                "Backup file copied into place.\n\n" +
-                (safety is null ? "" : "Previous live vault saved as:\n" + safety + "\n\n") +
-                "Enter the master password for the restored vault.",
-                "Vault restored — unlock required",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-
-            if (!RequireMasterPassword(forcePrompt: true))
-            {
-                MessageBox.Show(this,
-                    "The vault is locked. LaunchFlow will close so you can reopen and unlock, or restore a different backup.",
-                    "Vault locked", MessageBoxButton.OK, MessageBoxImage.Warning);
-                _exiting = true;
-                Close();
-                return;
-            }
-
-            try { ProfileVaultService.UnsealAll(); } catch (Exception ex) { CrashLog.Write("ProfileUnseal", ex); }
-            ReloadConfigurationFromVault();
-            RefreshVaultBackupStatus();
-            AppendLog("Restored encrypted vault from " + dialog.FileName);
-            MessageBox.Show(this, "Vault restored and unlocked.", "Restore complete");
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, ex.Message, "Restore failed", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    private void ReloadConfigurationFromVault()
-    {
-        var loaded = _store.Load();
-        _configuration.Workflows.Clear();
-        _configuration.Workflows.AddRange(loaded.Workflows);
-        _configuration.StartWithWindows = loaded.StartWithWindows;
-        _configuration.RunOnUnlock = loaded.RunOnUnlock;
-        _configuration.RunOnAppStart = loaded.RunOnAppStart;
-        _configuration.MinimizeToTray = loaded.MinimizeToTray;
-        _configuration.TrayNotificationsEnabled = loaded.TrayNotificationsEnabled;
-        _configuration.UnlockDelaySeconds = loaded.UnlockDelaySeconds;
-        _configuration.GlobalShortcut = loaded.GlobalShortcut;
-        _configuration.VaultLockMinutes = Math.Clamp(loaded.VaultLockMinutes, 1, 120);
-        _configuration.KeePassDatabasePath = loaded.KeePassDatabasePath;
-        _configuration.KeePassKeyFilePath = loaded.KeePassKeyFilePath;
-        _configuration.SealBrowserProfilesOnLock = loaded.SealBrowserProfilesOnLock;
-        _configuration.DiagnosticsLogEnabled = loaded.DiagnosticsLogEnabled;
-        _configuration.PreferTaskSchedulerAutostart = loaded.PreferTaskSchedulerAutostart;
-        _configuration.BackupReminderDays = loaded.BackupReminderDays;
-        _configuration.UpdateFeedUrl = loaded.UpdateFeedUrl;
-        _configuration.WindowsHelloUnlockEnabled = loaded.WindowsHelloUnlockEnabled;
-        _configuration.LastBackupUtc = loaded.LastBackupUtc;
-        _configuration.WelcomeChecklistShown = loaded.WelcomeChecklistShown;
-        _configuration.ShortcutTipShown = loaded.ShortcutTipShown;
-
-        VaultTimeoutBox.Text = _configuration.VaultLockMinutes.ToString();
-        KeePassDbBox.Text = _configuration.KeePassDatabasePath ?? "";
-        KeePassKeyBox.Text = _configuration.KeePassKeyFilePath ?? "";
-        StartupCheck.IsChecked = _configuration.StartWithWindows;
-        UnlockCheck.IsChecked = _configuration.RunOnUnlock;
-        LaunchCheck.IsChecked = _configuration.RunOnAppStart;
-        TrayCheck.IsChecked = _configuration.MinimizeToTray;
-        NotifyCheck.IsChecked = _configuration.TrayNotificationsEnabled;
-        DelayBox.Text = _configuration.UnlockDelaySeconds.ToString();
-        SealProfilesCheck.IsChecked = _configuration.SealBrowserProfilesOnLock;
-        DiagnosticsCheck.IsChecked = _configuration.DiagnosticsLogEnabled;
-        TaskSchedulerCheck.IsChecked = _configuration.PreferTaskSchedulerAutostart;
-        BackupReminderBox.Text = _configuration.BackupReminderDays.ToString();
-        UpdateFeedBox.Text = _configuration.UpdateFeedUrl ?? "";
-        ShortcutBox.Text = string.IsNullOrWhiteSpace(_configuration.GlobalShortcut) ? "Ctrl+M" : _configuration.GlobalShortcut;
-        RefreshKeePassStatus();
-        RefreshSecurityClarity();
-        RefreshWorkflowList(_configuration.Workflows.FirstOrDefault());
-        _passwordsUnlocked = true;
-        _passwordSessionExpiresUtc = DateTimeOffset.UtcNow.Add(PasswordSessionDuration);
-        _keepassMasterPassword = null;
-    }
-
-    private void RefreshSecurityClarity()
-    {
-        var hello = WindowsHelloService.IsEnabled ? "on" : "off";
-        SecurityClarityText.Text =
-            "Encrypted in the vault: workflows + saved site passwords (Argon2id → AES-256-GCM).\n" +
-            $"Browser profiles: {(SealProfilesCheck.IsChecked == true ? "sealed (encrypted at rest) when the vault locks" : "left on disk while locked — not recommended")}.\n" +
-            "Not encrypted by LaunchFlow: your Windows user account, and KeePassXC .kdbx files (those use KeePass).\n" +
-            $"Windows Hello unlock: {hello}.";
     }
 
     private async void EnableHello_Click(object sender, RoutedEventArgs e)
@@ -1630,8 +1434,7 @@ public partial class MainWindow : Window
         {
             _configuration.WindowsHelloUnlockEnabled = true;
             _store.Save(_configuration);
-            RefreshSecurityClarity();
-            AppendLog("Windows Hello unlock enabled for this Windows account.");
+                AppendLog("Windows Hello unlock enabled for this Windows account.");
             MessageBox.Show(this, "Windows Hello unlock is on for this PC.", "Windows Hello");
         }
     }
@@ -1641,7 +1444,6 @@ public partial class MainWindow : Window
         WindowsHelloService.Disable();
         _configuration.WindowsHelloUnlockEnabled = false;
         _store.Save(_configuration);
-        RefreshSecurityClarity();
         AppendLog("Windows Hello unlock disabled.");
     }
 
@@ -1667,41 +1469,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void MaybeShowBackupReminder()
-    {
-        if (_configuration.BackupReminderDays <= 0) return;
-        DateTimeOffset last = DateTimeOffset.MinValue;
-        if (!string.IsNullOrWhiteSpace(_configuration.LastBackupUtc))
-            DateTimeOffset.TryParse(_configuration.LastBackupUtc, out last);
-        if (last != DateTimeOffset.MinValue &&
-            DateTimeOffset.UtcNow - last < TimeSpan.FromDays(_configuration.BackupReminderDays))
-            return;
-
-        var answer = MessageBox.Show(this,
-            $"It has been a while since the last encrypted vault backup.\n\nCreate a local backup now? (Settings → Security)",
-            "Backup reminder", MessageBoxButton.YesNo, MessageBoxImage.Question);
-        if (answer == MessageBoxResult.Yes)
-            BackupVault_Click(this, new RoutedEventArgs());
-    }
-
     private void CheckUpdates_Click(object sender, RoutedEventArgs e) => _ = MaybeCheckUpdatesAsync();
-
-    private void OpenDataFolder_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            Directory.CreateDirectory(VaultBackupService.DataDirectory);
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = VaultBackupService.DataDirectory,
-                UseShellExecute = true
-            });
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, ex.Message, "Cannot open folder", MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
-    }
 
     private static bool ParseShortcut(string shortcut, out uint flags, out uint key)
     {
@@ -1883,7 +1651,6 @@ public partial class MainWindow : Window
             _master.Change(current.Secret, next.Secret);
             WindowsHelloService.Disable();
             _configuration.WindowsHelloUnlockEnabled = false;
-            try { VaultBackupService.CreateBackup(VaultDatabase.Current.DatabasePath); } catch { /* best-effort */ }
             SecureVaultLock("Master password changed; vault locked. Re-enable Windows Hello if you use it.");
             AppendLog("Master password changed. Windows Hello unlock was cleared.");
         }
@@ -1896,21 +1663,21 @@ public partial class MainWindow : Window
         if (!RequireMasterPassword(forcePrompt: true)) return;
         var dialog = new Microsoft.Win32.SaveFileDialog
         {
-            Title = "Export LaunchFlow configuration", Filter = "LaunchFlow encrypted backup (*.launchflow)|*.launchflow",
-            DefaultExt = ".launchflow", FileName = "My-LaunchFlow-Backup.launchflow"
+            Title = "Export LaunchFlow", Filter = "LaunchFlow file (*.launchflow)|*.launchflow",
+            DefaultExt = ".launchflow", FileName = "My-LaunchFlow.launchflow"
         };
         if (dialog.ShowDialog(this) != true) return;
-        var first = new SecretPromptWindow("Encrypt backup",
+        var first = new SecretPromptWindow("Protect your export",
             $"Set an export password ({PasswordStrength.MinimumLength}+ characters). You'll need it on the new PC.") { Owner = this };
         if (first.ShowDialog() != true) return;
-        var second = new SecretPromptWindow("Confirm export password", "Enter the export password again to avoid losing access to the backup.") { Owner = this };
+        var second = new SecretPromptWindow("Confirm export password", "Enter your export password again.") { Owner = this };
         if (second.ShowDialog() != true) return;
         if (first.Secret != second.Secret) { MessageBox.Show(this, "Export passwords did not match."); return; }
         try
         {
             SecureTransferService.Export(dialog.FileName, first.Secret, _configuration, _vault, IncludePasswordsCheck.IsChecked == true);
             AppendLog("Encrypted portable configuration exported.");
-            MessageBox.Show(this, "Encrypted backup saved. Store the file and its password securely.", "Export complete");
+            MessageBox.Show(this, "Export saved. Keep the file and password safe.", "Export complete");
         }
         catch (Exception ex) { MessageBox.Show(this, ex.Message, "Export failed", MessageBoxButton.OK, MessageBoxImage.Error); }
     }
@@ -1921,7 +1688,7 @@ public partial class MainWindow : Window
         if (!RequireMasterPassword(forcePrompt: true)) return;
         var file = new OpenFileDialog
         {
-            Title = "Import a LaunchFlow encrypted backup", Filter = "LaunchFlow encrypted backup (*.launchflow)|*.launchflow"
+            Title = "Import LaunchFlow", Filter = "LaunchFlow file (*.launchflow)|*.launchflow"
         };
         if (file.ShowDialog(this) != true) return;
         ImportLaunchFlowFile(file.FileName);
@@ -1939,8 +1706,8 @@ public partial class MainWindow : Window
 
         MainTabs.SelectedIndex = 2; // Settings
         try { SettingsTabs.SelectedIndex = SettingsTabs.Items.Count - 1; } catch { /* optional */ }
-        var prompt = new SecretPromptWindow("Decrypt backup",
-            "Enter the password used when exporting this .launchflow backup.")
+        var prompt = new SecretPromptWindow("Open your export",
+            "Enter the password used to export this file.")
         { Owner = this };
         if (prompt.ShowDialog() != true) return;
         try
@@ -1977,7 +1744,7 @@ public partial class MainWindow : Window
             RefreshWorkflowList(_configuration.Workflows.FirstOrDefault());
             AppendLog("Imported configuration from " + path);
             MessageBox.Show(this,
-                "Import complete. Imported workflows are disabled for safety until you review and enable them. Check Settings → General and save to apply startup preferences.",
+                "Import complete. Review your websites, enable the ones you need and click Save.",
                 "Import complete");
         }
         catch (Exception ex)

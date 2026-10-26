@@ -13,10 +13,10 @@ namespace LaunchFlow.Services;
 public static class WindowsHelloService
 {
     private static string SecretPath =>
-        Path.Combine(VaultBackupService.DataDirectory, "hello-unlock.bin");
+        Path.Combine(VaultDatabase.Current.DataDirectory, "hello-unlock.bin");
 
     private static string MetaPath =>
-        Path.Combine(VaultBackupService.DataDirectory, "hello-meta.json");
+        Path.Combine(VaultDatabase.Current.DataDirectory, "hello-meta.json");
 
     public static bool IsEnabled => File.Exists(SecretPath);
 
@@ -56,7 +56,7 @@ public static class WindowsHelloService
     {
         try
         {
-            Directory.CreateDirectory(VaultBackupService.DataDirectory);
+            Directory.CreateDirectory(VaultDatabase.Current.DataDirectory);
             var meta = new HelloMeta { LastPasswordVerifiedUtc = DateTimeOffset.UtcNow.ToString("o") };
             File.WriteAllText(MetaPath, JsonSerializer.Serialize(meta));
         }
@@ -73,7 +73,7 @@ public static class WindowsHelloService
             Encoding.UTF8.GetBytes(masterPassword),
             optionalEntropy: Encoding.UTF8.GetBytes("LaunchFlow.Hello.v1"),
             scope: DataProtectionScope.CurrentUser);
-        Directory.CreateDirectory(VaultBackupService.DataDirectory);
+        Directory.CreateDirectory(VaultDatabase.Current.DataDirectory);
         await File.WriteAllBytesAsync(SecretPath, protectedBytes).ConfigureAwait(true);
         MarkPasswordVerified();
         return true;

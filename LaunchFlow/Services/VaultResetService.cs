@@ -8,7 +8,7 @@ namespace LaunchFlow.Services;
 /// </summary>
 public static class VaultResetService
 {
-    public static void ResetLocalVault(bool wipeProfiles, bool wipeBackups)
+    public static void ResetLocalVault(bool wipeProfiles)
     {
         try { VaultDatabase.Current.Lock(); } catch { /* ignore */ }
         WindowsHelloService.Disable();
@@ -20,11 +20,6 @@ public static class VaultResetService
         if (wipeProfiles)
             ProfileVaultService.WipeAllProfiles();
 
-        if (wipeBackups && Directory.Exists(VaultBackupService.BackupDirectory))
-        {
-            try { Directory.Delete(VaultBackupService.BackupDirectory, recursive: true); }
-            catch (Exception ex) { CrashLog.Write("ResetBackups", ex); }
-        }
 
         CrashLog.Write("VaultReset", "Local vault was reset by the user after a lost master password.");
     }

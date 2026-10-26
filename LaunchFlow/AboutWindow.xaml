@@ -21,14 +21,12 @@
     <StackPanel Grid.Row="1" Margin="0,22,0,0">
       <TextBlock TextWrapping="Wrap" Foreground="#C5D5E8" LineHeight="20"
                  Text="Open your websites on the right screens, sign in from a local encrypted vault, and run everything with one shortcut — including after Windows unlock."/>
-      <TextBlock Margin="0,16,0,0" FontWeight="SemiBold" Text="On this PC"/>
-      <TextBlock x:Name="DataPathText" Margin="0,6,0,0" Foreground="#91A1B7" TextWrapping="Wrap"/>
       <TextBlock Margin="0,14,0,0" FontWeight="SemiBold" Text="Privacy"/>
       <TextBlock Margin="0,6,0,0" Foreground="#91A1B7" TextWrapping="Wrap"
-                 Text="Workflows and passwords stay in your encrypted local database. LaunchFlow does not upload your vault or credentials."/>
+                 Text="Your saved logins stay on this computer. LaunchFlow does not upload your passwords."/>
     </StackPanel>
     <DockPanel Grid.Row="2">
-      <Button DockPanel.Dock="Left" Content="Open data folder" Click="OpenData_Click" Padding="14,8"/>
+      
       <Button DockPanel.Dock="Right" Content="Close" IsDefault="True" IsCancel="True" Width="100" Height="36"
               HorizontalAlignment="Right" Click="Close_Click"/>
     </DockPanel>

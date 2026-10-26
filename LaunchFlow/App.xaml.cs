@@ -180,7 +180,7 @@ public partial class App : Application
                 for (int attempt = 0; attempt < 3; attempt++)
                 {
                     var dialog = new SecretPromptWindow("Upgrade your LaunchFlow vault",
-                        "Enter your EXISTING LaunchFlow master password to migrate workflows and DPAPI credentials into the encrypted database. The original files will be preserved.");
+                        "Enter your previous LaunchFlow password to move your saved websites into the updated secure storage. Your existing files will be kept.");
                     if (dialog.ShowDialog() != true) return false;
                     if (!LegacyMigration.VerifyOldMaster(dialog.Secret))
                     {
@@ -204,8 +204,7 @@ public partial class App : Application
                 RunOnAppStart = setup.RunOnAppStart,
                 MinimizeToTray = setup.RunInTray,
                 VaultLockMinutes = 10,
-                SealBrowserProfilesOnLock = true,
-                BackupReminderDays = 14
+                SealBrowserProfilesOnLock = true
             };
             db.Initialize(setup.ChosenPassword, settings);
             try { StartupService.Apply(settings.StartWithWindows); }

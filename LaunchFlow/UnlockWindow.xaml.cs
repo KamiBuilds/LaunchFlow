@@ -68,30 +68,20 @@ public partial class UnlockWindow : Window
     private void Forgot_Click(object sender, RoutedEventArgs e)
     {
         var confirm = MessageBox.Show(this,
-            "LaunchFlow cannot recover your master password.\n\n" +
-            "Reset deletes the encrypted vault on this PC so you can create a new one.\n\n" +
-            "Before resetting: if you still have an encrypted copy in the backups folder, " +
-            "cancel here, unlock somehow, and use Settings → Security → Restore from backup… " +
-            "Or after a fresh setup, import a portable .launchflow export.\n\n" +
-            "Reset the local vault now?",
-            "Reset local vault",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
+            "Forgot your master password?\n\n" +
+            "Resetting permanently deletes the saved websites and passwords on this computer. " +
+            "You can import a previously exported LaunchFlow file after setup.\n\nContinue?",
+            "Reset LaunchFlow", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (confirm != MessageBoxResult.Yes) return;
 
         var again = MessageBox.Show(this,
-            "Also delete sealed browser profiles and local encrypted backups?\n\n" +
-            "Yes = wipe vault + profiles + backups\nNo = wipe vault only (keep backups folder)",
-            "What to delete",
-            MessageBoxButton.YesNoCancel,
-            MessageBoxImage.Question);
-        if (again == MessageBoxResult.Cancel) return;
+            "This cannot be undone. Reset LaunchFlow and remove its saved browser profiles?",
+            "Confirm reset", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (again != MessageBoxResult.Yes) return;
 
         try
         {
-            VaultResetService.ResetLocalVault(
-                wipeProfiles: true,
-                wipeBackups: again == MessageBoxResult.Yes);
+            VaultResetService.ResetLocalVault(wipeProfiles: true);
             ResetRequested = true;
             MessageBox.Show(this,
                 "The local vault was reset. LaunchFlow will open first-time setup next.",

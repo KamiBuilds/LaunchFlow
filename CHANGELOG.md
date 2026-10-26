@@ -1,3 +1,14 @@
+# v0.7.18 — Simpler interface and green enabled controls
+
+- Checked boxes and the workflow on/off switch now use a consistent solid green.
+- Removed the Activity page and hidden developer-only diagnostics from the user interface.
+- Removed manual database backup/restore controls, first-run copies, periodic database backups and backup reminders.
+- Kept password-protected Import and Export for moving websites between computers.
+- Simplified security, update and export descriptions for everyday users.
+- Kept existing encrypted vault data and files untouched during upgrades.
+
+**Status:** Source validation only. Windows compilation and UI testing still required.
+
 # v0.7.17 — KeePassXC setup and workflow toggle
 
 - Replaced the Enabled badge with a compact switch.

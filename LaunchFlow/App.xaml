@@ -271,33 +271,33 @@
             </StackPanel>
             <ControlTemplate.Triggers>
               <Trigger Property="IsChecked" Value="True">
-                <Setter TargetName="Box" Property="Background" Value="#55D8C8"/>
-                <Setter TargetName="Box" Property="BorderBrush" Value="#55D8C8"/>
+                <Setter TargetName="Box" Property="Background" Value="#27C866"/>
+                <Setter TargetName="Box" Property="BorderBrush" Value="#27C866"/>
                 <Setter TargetName="Check" Property="Visibility" Value="Visible"/>
               </Trigger>
               <Trigger Property="IsChecked" Value="{x:Null}">
                 <Setter TargetName="Box" Property="Background" Value="#2A3F55"/>
-                <Setter TargetName="Box" Property="BorderBrush" Value="#55D8C8"/>
+                <Setter TargetName="Box" Property="BorderBrush" Value="#27C866"/>
                 <Setter TargetName="Check" Property="Data" Value="M4,9 L14,9"/>
-                <Setter TargetName="Check" Property="Stroke" Value="#55D8C8"/>
+                <Setter TargetName="Check" Property="Stroke" Value="#27C866"/>
                 <Setter TargetName="Check" Property="Visibility" Value="Visible"/>
               </Trigger>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Box" Property="BorderBrush" Value="#6EE7D7"/>
+                <Setter TargetName="Box" Property="BorderBrush" Value="#3ADC7E"/>
               </Trigger>
               <MultiTrigger>
                 <MultiTrigger.Conditions>
                   <Condition Property="IsMouseOver" Value="True"/>
                   <Condition Property="IsChecked" Value="True"/>
                 </MultiTrigger.Conditions>
-                <Setter TargetName="Box" Property="Background" Value="#6EE7D7"/>
-                <Setter TargetName="Box" Property="BorderBrush" Value="#6EE7D7"/>
+                <Setter TargetName="Box" Property="Background" Value="#3ADC7E"/>
+                <Setter TargetName="Box" Property="BorderBrush" Value="#3ADC7E"/>
               </MultiTrigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Opacity" Value="0.45"/>
               </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="Box" Property="BorderBrush" Value="#6EE7D7"/>
+                <Setter TargetName="Box" Property="BorderBrush" Value="#3ADC7E"/>
                 <Setter TargetName="Box" Property="BorderThickness" Value="2"/>
               </Trigger>
             </ControlTemplate.Triggers>

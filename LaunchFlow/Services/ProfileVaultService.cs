@@ -13,10 +13,10 @@ namespace LaunchFlow.Services;
 public static class ProfileVaultService
 {
     public static string ProfilesRoot =>
-        Path.Combine(VaultBackupService.DataDirectory, "profiles-v2");
+        Path.Combine(VaultDatabase.Current.DataDirectory, "profiles-v2");
 
     public static string SealedRoot =>
-        Path.Combine(VaultBackupService.DataDirectory, "profiles-sealed");
+        Path.Combine(VaultDatabase.Current.DataDirectory, "profiles-sealed");
 
     public static void SealAll()
     {

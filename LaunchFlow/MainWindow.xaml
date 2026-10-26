@@ -55,7 +55,7 @@
           </StackPanel>
           <ControlTemplate.Triggers>
             <Trigger Property="IsChecked" Value="True">
-              <Setter TargetName="Track" Property="Background" Value="#4FD4C4"/>
+              <Setter TargetName="Track" Property="Background" Value="#27C866"/>
               <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/>
               <Setter TargetName="Thumb" Property="Margin" Value="0,0,3,0"/>
               <Setter TargetName="Thumb" Property="Fill" Value="#0A1B26"/>
@@ -234,7 +234,7 @@
               <Button Content="↑ Up" Click="MoveStepUp_Click"/>
               <Button Content="↓ Down" Click="MoveStepDown_Click" Margin="0"/>
             </StackPanel>
-            <TextBlock Text="Teach records clicks (skips passwords). Repair login helps when SSO/MFA breaks. Never put passwords in steps." TextWrapping="Wrap" Foreground="#91A1B7" FontSize="11" Margin="0,8,0,0"/>
+            <TextBlock Text="Teach remembers clicks, not passwords." TextWrapping="Wrap" Foreground="#91A1B7" FontSize="11" Margin="0,8,0,0"/>
           </StackPanel>
         </ScrollViewer>
         <Grid x:Name="WorkflowEmptyState" Visibility="Visible" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="520" Margin="16">
@@ -335,11 +335,11 @@
             <TextBlock Text="Startup and background" FontWeight="SemiBold" FontSize="18" Margin="0,0,0,7"/>
             <TextBlock Text="Windows startup, unlock triggers and system tray behavior." Foreground="#A1BCD2" Margin="0,0,0,22"/>
             <TextBlock Text="Security and passwords" FontWeight="SemiBold" FontSize="18" Margin="0,0,0,7"/>
-            <TextBlock Text="Encryption, vault access and local backups." Foreground="#A1BCD2" Margin="0,0,0,22"/>
+            <TextBlock Text="Passwords and KeePassXC." Foreground="#A1BCD2" Margin="0,0,0,22"/>
             <TextBlock Text="Shortcuts, updates and advanced" FontWeight="SemiBold" FontSize="18" Margin="0,0,0,7"/>
             <TextBlock Text="Customize your shortcut, check for new releases and adjust advanced sign-in."
                        Foreground="#A1BCD2" TextWrapping="Wrap" Margin="0,0,0,25"/>
-            <TextBlock Text="Remember to use Save in the top toolbar after changing settings." Foreground="#6EE7D7"/>
+            <TextBlock Text="Click Save when finished." Foreground="#6EE7D7"/>
           </StackPanel>
         </ScrollViewer></TabItem>
         <TabItem Header="Startup"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="26" MaxWidth="760" HorizontalAlignment="Left"><TextBlock Text="Startup and triggers" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,10"/><Border Background="#141B29" CornerRadius="12" Padding="12" Width="640" Margin="0,0,0,10">
@@ -358,7 +358,7 @@
           </StackPanel>
         </StackPanel></ScrollViewer>
       </Border>
-      <TextBlock Text="Windows session unlock triggers work when Windows reports a real unlock. An organization-specific transparent overlay may not send this event; LaunchFlow does not bypass it." Foreground="#9CAFC8" TextWrapping="Wrap" Margin="0,12,0,0"/></StackPanel></ScrollViewer></TabItem><TabItem Header="Security"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="28" MaxWidth="730" HorizontalAlignment="Left"><TextBlock Text="Encrypted vault" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,10"/><TextBlock Text="Workflows and credentials are stored as AES-256-GCM encrypted records inside the local SQLite database. Your master password is required at each application start. It is not stored by Windows DPAPI." TextWrapping="Wrap" Foreground="#BACCE0" Margin="0,0,0,20"/><TextBlock Text="Lock the vault after Windows stays locked for this many minutes:" TextWrapping="Wrap" Foreground="White" FontWeight="SemiBold"/><StackPanel Orientation="Horizontal" Margin="0,10,0,10"><TextBox x:Name="VaultTimeoutBox" Width="72" Text="10" ToolTip="Choose 1 to 120 minutes"/><TextBlock Text="minutes (default 10)" Foreground="#D5E9F3" Margin="12,0,0,0" VerticalAlignment="Center"/></StackPanel><TextBlock Text="For a shorter Windows lock: keep the vault unlocked. At or beyond the threshold: discard the encryption key and ask for the master password after Windows unlocks. While Windows is locked, automation is paused. This does not log out already-open browser sessions." TextWrapping="Wrap" Foreground="#A2BAD1" Margin="0,6,0,12"/><TextBlock Text="New database: %LOCALAPPDATA%\LaunchFlow\launchflow.db. Previous settings.json/vault.json/security.json files are retained as migration backups. Use Import / Export to move encrypted configuration to another PC." TextWrapping="Wrap" Foreground="#A2BAD1" Margin="0,0,0,22"/>
+      <TextBlock Text="Some work computers may not support running after unlock." Foreground="#9CAFC8" TextWrapping="Wrap" Margin="0,12,0,0"/></StackPanel></ScrollViewer></TabItem><TabItem Header="Security"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="28" MaxWidth="730" HorizontalAlignment="Left"><TextBlock Text="Encrypted vault" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,10"/><TextBlock Text="Your passwords and settings are encrypted. Only you can unlock them." TextWrapping="Wrap" Foreground="#BACCE0" Margin="0,0,0,20"/><TextBlock Text="Lock the vault after Windows stays locked for this many minutes:" TextWrapping="Wrap" Foreground="White" FontWeight="SemiBold"/><StackPanel Orientation="Horizontal" Margin="0,10,0,10"><TextBox x:Name="VaultTimeoutBox" Width="72" Text="10" ToolTip="Choose 1 to 120 minutes"/><TextBlock Text="minutes (default 10)" Foreground="#D5E9F3" Margin="12,0,0,0" VerticalAlignment="Center"/></StackPanel><TextBlock Text="If Windows stays locked longer than this, LaunchFlow will ask for your password again." TextWrapping="Wrap" Foreground="#A2BAD1" Margin="0,6,0,12"/>
                   <TextBlock Text="KeePassXC (optional)" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,8"/>
                   <TextBlock Text="Use your KeePassXC logins without copying passwords into LaunchFlow. Find your password database here, then choose a login in Passwords." TextWrapping="Wrap" Foreground="#BACCE0" Margin="0,0,0,12"/>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
@@ -381,30 +381,13 @@
                   </Expander>
                   <TextBlock x:Name="KeePassStatusLabel" Text="KeePassXC is not configured"
                              Foreground="#6EE7D7" TextWrapping="Wrap" Margin="0,4,0,0"/>
-                  <TextBlock Text="What is protected" FontSize="20" FontWeight="SemiBold" Margin="0,28,0,8"/>
-                  <TextBlock x:Name="SecurityClarityText" TextWrapping="Wrap" Foreground="#BACCE0" Margin="0,0,0,12"/>
                   <CheckBox x:Name="SealProfilesCheck" Content="Encrypt browser profiles at rest when the vault locks (recommended)" IsChecked="True" Margin="0,0,0,8"/>
-                  <CheckBox x:Name="DiagnosticsCheck" Content="Write a local diagnostics.log (never uploaded)" Margin="0,0,0,12"/>
                   <TextBlock Text="Windows Hello" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,8"/>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                     <Button Content="Enable Windows Hello unlock" Click="EnableHello_Click" Padding="14,8" Margin="0,0,10,0"/>
                     <Button Content="Disable Windows Hello" Click="DisableHello_Click" Padding="14,8"/>
                   </StackPanel>
-                  <TextBlock Text="Local backups" FontSize="20" FontWeight="SemiBold" Margin="0,8,0,8"/>
-                  <TextBlock Text="LaunchFlow can copy your already-encrypted database into a backups folder. These copies still need your master password. Use Restore to put a backup back, or double-click a portable .launchflow export to import it. Keep an export somewhere safe as well." TextWrapping="Wrap" Foreground="#BACCE0" Margin="0,0,0,12"/>
-                  <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                    <TextBlock Text="Remind me every" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                    <TextBox x:Name="BackupReminderBox" Width="48" Text="14"/>
-                    <TextBlock Text="days (0 = off)" VerticalAlignment="Center" Margin="8,0,0,0"/>
-                  </StackPanel>
-                  <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                    <Button Content="Backup encrypted database now" Click="BackupVault_Click" Padding="14,8" Margin="0,0,10,0"/>
-                    <Button Content="Restore from backup…" Click="RestoreVault_Click" Padding="14,8" Margin="0,0,10,0"
-                            ToolTip="Replace the live vault with an encrypted launchflow-*.db copy from the backups folder"/>
-                    <Button Content="Open data folder" Click="OpenDataFolder_Click" Padding="14,8"/>
-                  </StackPanel>
-                  <TextBlock x:Name="VaultBackupStatus" Text="" Foreground="#6EE7D7" TextWrapping="Wrap"/>
-                  <TextBlock x:Name="BrowserReadyLabel" Text="" Foreground="#A2BAD1" TextWrapping="Wrap" Margin="0,16,0,0"/>
+
                   
                 </StackPanel></ScrollViewer></TabItem><TabItem Header="Updates"><ScrollViewer VerticalScrollBarVisibility="Auto">
           <StackPanel Margin="28" MaxWidth="760" HorizontalAlignment="Left">
@@ -412,8 +395,8 @@
             <TextBlock Text="Find the latest stable LaunchFlow release. Use the Universal Installer to install updates."
                        TextWrapping="Wrap" Foreground="#BACCE0" Margin="0,0,0,16"/>
             <TextBlock Text="Updates" FontSize="20" FontWeight="SemiBold" Margin="0,24,0,8"/>
-                  <TextBlock Text="Enter an optional custom release feed, or leave blank to use the official LaunchFlow GitHub Releases feed." TextWrapping="Wrap" Foreground="#BACCE0" Margin="0,0,0,8"/>
-                  <TextBox x:Name="UpdateFeedBox" Margin="0,0,0,8"/>
+                  <TextBlock Text="Check whether a new version is available." TextWrapping="Wrap" Foreground="#BACCE0" Margin="0,0,0,8"/>
+                  <TextBox x:Name="UpdateFeedBox" Visibility="Collapsed"/>
                   <Button Content="Check for updates" Click="CheckUpdates_Click" Padding="14,8" HorizontalAlignment="Left"/>
                   <TextBlock x:Name="UpdateStatusLabel" Foreground="#6EE7D7" TextWrapping="Wrap" Margin="0,8,0,0"/>
           </StackPanel>
@@ -443,13 +426,4 @@
                   <TextBox x:Name="LoginWaitBox" Width="75" Text="60"/>
                   <TextBlock Text="MFA always stays under your control." Foreground="#91A1B7" VerticalAlignment="Center" Margin="14,0,0,0"/>
                 </StackPanel>
-              </StackPanel></ScrollViewer></TabItem><TabItem Header="Import / Export"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="28" MaxWidth="790" HorizontalAlignment="Left"><TextBlock Text="Move to another PC" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,14"/><TextBlock Text="Export a portable password-encrypted .launchflow file. Saved website credentials can be included and will be encrypted with your new vault master key when imported. Browser sessions and cookies are not transferred." Foreground="#B3C6DD" TextWrapping="Wrap" Margin="0,0,0,16"/><CheckBox x:Name="IncludePasswordsCheck" Content="Include saved login passwords in encrypted export" IsChecked="True"/><Button Content="Export encrypted configuration…" Click="Export_Click" Width="275" HorizontalAlignment="Left" Margin="0,12,0,15"/><Button Content="Import configuration…" Click="Import_Click" Width="275" HorizontalAlignment="Left"/><TextBlock Text="Import replaces existing workflows and saved login credentials after confirmation. Always keep the export password safe; it cannot be recovered." Foreground="#E6B6A0" TextWrapping="Wrap" Margin="0,15,0,0"/></StackPanel></ScrollViewer></TabItem><TabItem Header="Activity"><Grid Margin="18"><Border Background="#141B29" CornerRadius="12" Padding="16">
-        <DockPanel>
-          <DockPanel DockPanel.Dock="Top" Margin="0,0,0,9">
-            <TextBlock Text="ACTIVITY LOG" Foreground="#A0B4CC" FontWeight="SemiBold" FontSize="11" DockPanel.Dock="Left"/>
-            <TextBlock x:Name="StatusLabel" Text="Ready" Foreground="#6EE7D7" HorizontalAlignment="Right"/>
-          </DockPanel>
-          <TextBox x:Name="LogBox" IsReadOnly="True" FontFamily="Consolas" FontSize="11" Background="#0D1522" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
-        </DockPanel>
-      </Border>
-    </Grid></TabItem></TabControl></TabItem></TabControl></Grid></Window>
+              </StackPanel></ScrollViewer></TabItem><TabItem Header="Import / Export"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="28" MaxWidth="790" HorizontalAlignment="Left"><TextBlock Text="Move to another PC" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,14"/><TextBlock Text="Transfer websites and saved logins using a password-protected file." Foreground="#B3C6DD" TextWrapping="Wrap" Margin="0,0,0,16"/><CheckBox x:Name="IncludePasswordsCheck" Content="Include saved login passwords in encrypted export" IsChecked="True"/><Button Content="Export encrypted configuration…" Click="Export_Click" Width="275" HorizontalAlignment="Left" Margin="0,12,0,15"/><Button Content="Import configuration…" Click="Import_Click" Width="275" HorizontalAlignment="Left"/><TextBlock Text="Import replaces existing websites after confirmation. Keep your export password safe." Foreground="#E6B6A0" TextWrapping="Wrap" Margin="0,15,0,0"/></StackPanel></ScrollViewer></TabItem></TabControl></TabItem></TabControl></Grid></Window>

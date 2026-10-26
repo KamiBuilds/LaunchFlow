@@ -8,13 +8,13 @@ namespace LaunchFlow.Services;
 public static class CrashLog
 {
     public static string LogPath =>
-        Path.Combine(VaultBackupService.DataDirectory, "diagnostics.log");
+        Path.Combine(VaultDatabase.Current.DataDirectory, "diagnostics.log");
 
     public static void Write(string category, Exception ex)
     {
         try
         {
-            Directory.CreateDirectory(VaultBackupService.DataDirectory);
+            Directory.CreateDirectory(VaultDatabase.Current.DataDirectory);
             var line =
                 $"{DateTimeOffset.Now:u} [{category}] {ex.GetType().Name}: {ex.Message}{Environment.NewLine}" +
                 $"{ex.StackTrace}{Environment.NewLine}---{Environment.NewLine}";
@@ -27,7 +27,7 @@ public static class CrashLog
     {
         try
         {
-            Directory.CreateDirectory(VaultBackupService.DataDirectory);
+            Directory.CreateDirectory(VaultDatabase.Current.DataDirectory);
             File.AppendAllText(LogPath,
                 $"{DateTimeOffset.Now:u} [{category}] {message}{Environment.NewLine}");
         }

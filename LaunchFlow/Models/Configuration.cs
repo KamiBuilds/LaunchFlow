@@ -17,8 +17,6 @@ public sealed class Configuration
     public bool SealBrowserProfilesOnLock { get; set; } = true;
     public bool PreferTaskSchedulerAutostart { get; set; }
     public bool WindowsHelloUnlockEnabled { get; set; }
-    public int BackupReminderDays { get; set; } = 14;
-    public string? LastBackupUtc { get; set; }
     public string? UpdateFeedUrl { get; set; }
     public string? KeePassDatabasePath { get; set; }
     public string? KeePassKeyFilePath { get; set; }

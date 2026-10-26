@@ -132,8 +132,6 @@ public sealed class VaultDatabase
             }
         }
 
-        try { VaultBackupService.CreateBackup(DatabasePath); }
-        catch { /* first backup is best-effort */ }
     }
 
     public void Lock()
@@ -143,26 +141,6 @@ public sealed class VaultDatabase
             ZeroKey();
             _configCache = null;
             _secretsCache = null;
-        }
-    }
-
-    /// <summary>Flush WAL so file copies of the vault are consistent.</summary>
-    public void Checkpoint()
-    {
-        lock (_gate)
-        {
-            if (!File.Exists(DatabasePath)) return;
-            try
-            {
-                using var connection = OpenConnection();
-                using var cmd = connection.CreateCommand();
-                cmd.CommandText = "PRAGMA wal_checkpoint(FULL);";
-                cmd.ExecuteNonQuery();
-            }
-            catch
-            {
-                // Backup can still copy the main db file.
-            }
         }
     }
 

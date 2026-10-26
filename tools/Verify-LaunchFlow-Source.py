@@ -84,5 +84,23 @@ check('ChooseKeePassEntry_Click' in main_code and 'FirstOrDefault(w => w.Id == w
       'selected KeePassXC login belongs to the original workflow')
 check('ArgumentList.Add("show")' not in keepass_code and (root/'LaunchFlow/KeePassEntryPickerWindow.xaml').exists(),
       'entry picker does not display KeePassXC secrets')
-print('\n'+ ('FAILED: ', '.join(errors) if errors else 'Source/configuration checks PASS. Native Windows build remains required.'))
+main_xaml=(root/'LaunchFlow/MainWindow.xaml').read_text(encoding='utf-8')
+styles=(root/'LaunchFlow/App.xaml').read_text(encoding='utf-8')
+db=(root/'LaunchFlow/Services/VaultDatabase.cs').read_text(encoding='utf-8')
+check('Header="Activity"' not in main_xaml and 'LogBox' not in main_xaml,
+      'activity screen removed')
+check('Local backups' not in main_xaml and 'BackupVault_Click' not in main_xaml,
+      'backup controls removed')
+service_sources='\n'.join(file.read_text(encoding='utf-8') for file in (root/'LaunchFlow').rglob('*.cs'))
+check('VaultBackupService' not in service_sources,
+      'no references to removed backup service')
+check('VaultBackupService' not in main_code and 'VaultBackupService' not in db,
+      'automatic database backup calls removed')
+check(not (root/'LaunchFlow/Services/VaultBackupService.cs').exists(),
+      'unused database backup service removed')
+check('Value="#27C866"' in styles and 'Value="#27C866"' in main_xaml,
+      'enabled controls use solid green')
+check('ImportLaunchFlowFile' in main_code and 'SecureTransferService.Export' in main_code,
+      'protected import and export remain available')
+print('\n'+ ('FAILED: '+', '.join(errors) if errors else 'Source/configuration checks PASS. Native Windows build remains required.'))
 sys.exit(bool(errors))
