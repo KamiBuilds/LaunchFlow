@@ -35,6 +35,12 @@ public partial class MainWindow : Window
     private bool _revertingTab;
     private bool _sidebarCollapsed;
     private bool _teachingInProgress;
+    private bool _runInProgress;
+    private bool _vaultLockInProgress;
+    private bool _monitorSelectionChanged;
+    private Task _vaultLockTask = Task.CompletedTask;
+    private Task<AutomationEngine.RunResult>? _activeRunTask;
+    private Task<IPage>? _activeTeachTask;
     private NewWorkflowWindow? _newWorkflowWindow;
     private bool _startupWorkflowViewReady;
     private bool _capturingShortcut;
@@ -100,6 +106,9 @@ public partial class MainWindow : Window
         MonitorCombo.ItemsSource = MonitorService.GetMonitors();
         MonitorCombo.SelectedIndex = 0;
         WorkflowList.ItemsSource = _configuration.Workflows;
+        WorkspaceCombo.ItemsSource = _configuration.Workspaces;
+        LanguageCombo.SelectedIndex = _configuration.UiLanguage switch { "en" => 1, "nl" => 2, _ => 0 };
+        ApplyUiLanguage();
 
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Open LaunchFlow", null, (_, _) => Dispatcher.Invoke(ShowFromTray));
@@ -120,6 +129,51 @@ public partial class MainWindow : Window
         if (_configuration.Workflows.Count > 0) WorkflowList.SelectedIndex = 0;
         else ShowEmptyEditor();
         AppendLog("LaunchFlow is ready. Encrypted SQLite vault unlocked with Argon2id master key.");
+    }
+
+    private void ApplyUiLanguage()
+    {
+        string Text(string english) => LocalizationService.Text(english, _configuration.UiLanguage);
+        WorkflowsNav.Content = Text("Workflows");
+        PasswordsNav.Content = Text("Passwords");
+        SettingsNav.Content = Text("Settings");
+        SaveWorkspaceButton.Content = Text("Save workspace");
+        RunWorkspaceButton.Content = "▶ " + Text("Run workspace");
+        RunAllButton.Content = "▶ " + Text("Run all");
+        StopButton.Content = "■ " + Text("Stop");
+        WorkspaceHeading.Text = Text("Workspace profiles").ToUpperInvariant();
+        Language = System.Windows.Markup.XmlLanguage.GetLanguage(LocalizationService.ResolveLanguage(_configuration.UiLanguage));
+        foreach (var (control, name) in new (DependencyObject Control, string Name)[]
+        {
+            (WorkflowsNav, "Workflows"), (PasswordsNav, "Passwords"), (SettingsNav, "Settings"),
+            (SaveWorkspaceButton, "Save workspace"), (RunWorkspaceButton, "Run selected workspace"),
+            (RunAllButton, "Run all enabled websites"), (StopButton, "Stop"),
+            (WorkspaceCombo, "Workspace profiles"), (LanguageCombo, "Application language"),
+            (NameBox, "Workflow name"), (StartUrlBox, "Website start URL"), (MonitorCombo, "Screen"),
+            (WorkflowStatusLabel, "Workflow status"), (EnabledCheck, "Enable or disable this workflow"),
+            (StepList, "Workflow steps after sign-in")
+        }) System.Windows.Automation.AutomationProperties.SetName(control, Text(name));
+        WorkspaceCombo.ToolTip = Text("Choose or type a workspace name");
+        SaveWorkspaceButton.ToolTip = Text("Save enabled websites as a workspace");
+        RunWorkspaceButton.ToolTip = Text("Run selected workspace");
+        if (!_runInProgress) WorkflowStatusLabel.Text = Text("Ready");
+    }
+
+    private void MonitorCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_loadingEditor) _monitorSelectionChanged = true;
+    }
+
+    private void UpdateRunButtons()
+    {
+        bool available = !_runInProgress && !_vaultLockInProgress && !_teachingInProgress && !_windowsLocked && !_exiting;
+        RunAllButton.IsEnabled = available;
+        RunSelectedButton.IsEnabled = available;
+        RunWorkspaceButton.IsEnabled = available;
+        TeachButton.IsEnabled = available;
+        RepairButton.IsEnabled = available;
+        StopButton.IsEnabled = _runInProgress && _runCancellation is { IsCancellationRequested: false } && !_vaultLockInProgress;
+        MainTabs.IsEnabled = !_vaultLockInProgress;
     }
 
     private static System.Drawing.Icon CreateTrayIcon()
@@ -182,6 +236,7 @@ public partial class MainWindow : Window
     private void ExitFromTray()
     {
         _exiting = true;
+        UpdateRunButtons();
         Close();
     }
 
@@ -241,7 +296,11 @@ public partial class MainWindow : Window
         int index = Enumerable.Range(0, BrowserCombo.Items.Count)
             .FirstOrDefault(i => ((ComboBoxItem)BrowserCombo.Items[i]).Content?.ToString() == w.Browser);
         BrowserCombo.SelectedIndex = index;
-        MonitorCombo.SelectedIndex = Math.Clamp(w.MonitorIndex, 0, Math.Max(0, MonitorCombo.Items.Count - 1));
+        // Refresh on selection too: laptop docking may have changed since startup.
+        var monitors = MonitorService.GetMonitors();
+        MonitorCombo.ItemsSource = monitors;
+        MonitorCombo.SelectedItem = MonitorService.Resolve(w, monitors);
+        _monitorSelectionChanged = false;
         LoginModeCombo.SelectedIndex = w.LoginMode == "None" ? 1 : 0;
         UsernameContinueBox.Text = w.UsernameContinueSelector;
         PasswordOriginBox.Text = w.PasswordCredentialOrigin;
@@ -328,7 +387,12 @@ public partial class MainWindow : Window
         w.StartUrl = StartUrlBox.Text.Trim();
         w.DestinationUrl = DestinationUrlBox.Text.Trim();
         w.Browser = BrowserSelection(BrowserCombo);
-        w.MonitorIndex = (MonitorCombo.SelectedItem as MonitorChoice)?.Index ?? 0;
+        if (MonitorCombo.SelectedItem is MonitorChoice monitor &&
+            (_monitorSelectionChanged || string.IsNullOrWhiteSpace(w.MonitorDeviceName)))
+        {
+            w.MonitorIndex = monitor.Index;
+            w.MonitorDeviceName = monitor.DeviceName;
+        }
         w.LoginMode = BrowserSelection(LoginModeCombo);
         w.UsernameContinueSelector = UsernameContinueBox.Text.Trim();
         w.PasswordCredentialOrigin = PasswordOriginBox.Text.Trim();
@@ -349,9 +413,12 @@ public partial class MainWindow : Window
 
     private bool SaveAll(bool showNotification = false)
     {
+        if (_vaultLockInProgress || !VaultDatabase.Current.IsUnlocked) return false;
         try
         {
             ApplyCurrentEditor();
+            _configuration.UiLanguage = (LanguageCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "auto";
+            ApplyUiLanguage();
             _configuration.StartWithWindows = StartupCheck.IsChecked == true;
             _configuration.RunOnUnlock = UnlockCheck.IsChecked == true;
             _configuration.RunOnAppStart = LaunchCheck.IsChecked == true;
@@ -470,6 +537,7 @@ public partial class MainWindow : Window
 
     private async void AddWorkflow_Click(object sender, RoutedEventArgs e)
     {
+        if (_vaultLockInProgress || _exiting || !RequireMasterPassword()) return;
         if (_newWorkflowWindow is not null)
         {
             _newWorkflowWindow.Activate();
@@ -489,6 +557,7 @@ public partial class MainWindow : Window
         try
         {
             if (!await ShowNewWorkflowAsync(wizard)) return;
+            if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked) return;
             var next = wizard.CreatedWorkflow;
             if (next is null) return;
             try
@@ -743,6 +812,45 @@ public partial class MainWindow : Window
         RefreshSteps(); StepList.SelectedIndex = dest;
     }
 
+    private void SaveWorkspace_Click(object sender, RoutedEventArgs e)
+    {
+        var name = WorkspaceCombo.Text.Trim();
+        if (name.Length is < 1 or > 64)
+        {
+            MessageBox.Show(this, "Enter a workspace name (1–64 characters).", "Workspace", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        if (!SaveAll()) return;
+        var existing = _configuration.Workspaces.FirstOrDefault(profile =>
+            string.Equals(profile.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null && MessageBox.Show(this,
+            "Replace the workflow selection in this workspace?", "Update workspace",
+            MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+        var previousName = existing?.Name;
+        var previousIds = existing?.WorkflowIds;
+        var profile = WorkspaceProfile.Capture(_configuration, name);
+        try { _store.Save(_configuration); }
+        catch (Exception ex)
+        {
+            if (existing is null) _configuration.Workspaces.Remove(profile);
+            else { existing.Name = previousName!; existing.WorkflowIds = previousIds!; }
+            MessageBox.Show(this, ex.Message, "Workspace not saved", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        WorkspaceCombo.Items.Refresh();
+        WorkspaceCombo.SelectedItem = existing is null && !_configuration.Workspaces.Contains(profile) ? null : profile;
+    }
+
+    private void RunWorkspace_Click(object sender, RoutedEventArgs e)
+    {
+        if (WorkspaceCombo.SelectedItem is not WorkspaceProfile profile ||
+            !string.Equals(WorkspaceCombo.Text.Trim(), profile.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            MessageBox.Show(this, "Select a saved workspace first.", "Workspace", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        _ = RunEnabledAsync(workspace: profile);
+    }
+
     private void Run_Click(object sender, RoutedEventArgs e) => _ = RunEnabledAsync();
     private void RunSelected_Click(object sender, RoutedEventArgs e) => _ = RunEnabledAsync(onlySelected: true);
 
@@ -759,6 +867,7 @@ public partial class MainWindow : Window
     {
         var recorder = new VisualRecorderWindow(page) { Owner = this };
         if (!await ShowRecorderAsync(recorder) || recorder.RecordedSteps.Count == 0) return;
+        if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked) return;
 
         // Teach remains modeless; the selected website may have changed.
         var original = _configuration.Workflows.FirstOrDefault(w => w.Id == workflow.Id);
@@ -784,12 +893,15 @@ public partial class MainWindow : Window
 
     private async void RecordSteps_Click(object sender, RoutedEventArgs e)
     {
-        if (_teachingInProgress || _selected is null || !SaveAll()) return;
+        if (_teachingInProgress || _runInProgress || _vaultLockInProgress || _windowsLocked || _exiting || _selected is null || !SaveAll()) return;
         var workflow = _selected;
         _teachingInProgress = true;
+        UpdateRunButtons();
         try
         {
-            var page = await _runner.GetPageForRecorderAsync(workflow);
+            _activeTeachTask = _runner.GetPageForRecorderAsync(workflow);
+            var page = await _activeTeachTask;
+            if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked) return;
             await SaveTaughtStepsAsync(workflow, page);
         }
         catch (Exception ex)
@@ -797,12 +909,17 @@ public partial class MainWindow : Window
             MessageBox.Show(this, MakeBrowserFriendlyMessage(ex),
                 "Teach clicks", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
-        finally { _teachingInProgress = false; }
+        finally
+        {
+            _activeTeachTask = null;
+            _teachingInProgress = false;
+            UpdateRunButtons();
+        }
     }
 
     private async void RepairLogin_Click(object sender, RoutedEventArgs e)
     {
-        if (_teachingInProgress) return;
+        if (_teachingInProgress || _runInProgress || _vaultLockInProgress || _windowsLocked || _exiting) return;
         try { await RepairLoginCoreAsync(); }
         catch (Exception ex)
         {
@@ -813,9 +930,10 @@ public partial class MainWindow : Window
 
     private async Task RepairLoginCoreAsync()
     {
-        if (_teachingInProgress || _selected is null || !SaveAll()) return;
+        if (_teachingInProgress || _vaultLockInProgress || _windowsLocked || _exiting || _selected is null || !SaveAll()) return;
         var workflow = _selected;
         _teachingInProgress = true;
+        UpdateRunButtons();
         try
         {
             MessageBox.Show(this,
@@ -824,89 +942,102 @@ public partial class MainWindow : Window
                 "3. Return to Teach and click Save clicks.\n\n" +
                 "Use Passwords to save a login; Teach does not record passwords.",
                 "Repair login", MessageBoxButton.OK, MessageBoxImage.Information);
-            var page = await _runner.GetPageForRecorderAsync(workflow);
+            _activeTeachTask = _runner.GetPageForRecorderAsync(workflow);
+            var page = await _activeTeachTask;
+            if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked) return;
             var health = await LoginHealth.InspectAsync(page);
             if (health.NeedsAttention) AppendLog($"Repair login: {health.Reason}");
             await SaveTaughtStepsAsync(workflow, page);
         }
-        finally { _teachingInProgress = false; }
+        finally
+        {
+            _activeTeachTask = null;
+            _teachingInProgress = false;
+            UpdateRunButtons();
+        }
     }
 
-    private void Stop_Click(object sender, RoutedEventArgs e) => _runCancellation?.Cancel();
-
-    private async Task RunEnabledAsync(bool onlySelected = false)
+    private void Stop_Click(object sender, RoutedEventArgs e)
     {
-        if (_windowsLocked) { AppendLog("Windows is locked; automation was paused."); return; }
-        if (!VaultDatabase.Current.IsUnlocked)
-        {
-            ShowFromTray();
-            if (!RequireMasterPassword(forcePrompt: true))
-            {
-                AppendLog("Master password required; workflow was not started.");
-                return;
-            }
-        }
-        if (_runner.IsRunning) { AppendLog("Already running; ignoring duplicate trigger."); return; }
-        if (!SaveAll()) return;
-        var toRun = onlySelected && _selected is not null
-            ? new List<WebsiteWorkflow> { _selected }
-            : _configuration.Workflows.Where(w => w.Enabled).ToList();
-        if (toRun.Count == 0) { AppendLog("No enabled workflows to run."); return; }
-        if (!EnsureKeePassPasswordForRun(toRun))
-        {
-            AppendLog("KeePassXC password required; workflow was not started.");
-            return;
-        }
-        _runCancellation?.Dispose();
-        _runCancellation = new CancellationTokenSource();
+        _runCancellation?.Cancel();
+        UpdateRunButtons();
+    }
 
-        StopButton.IsEnabled = true;
-        var failed = false;
-        AutomationEngine.RunResult? runResult = null;
+    private async Task RunEnabledAsync(bool onlySelected = false, WorkspaceProfile? workspace = null)
+    {
+        if (_runInProgress || _runner.IsRunning || _vaultLockInProgress || _windowsLocked || _teachingInProgress || _exiting) return;
+        // Own the UI operation before any modal prompt can pump another hotkey/tray event.
+        _runInProgress = true;
+        UpdateRunButtons();
+        CancellationTokenSource? cancellation = null;
         try
         {
-            runResult = await _runner.RunAsync(
-                toRun,
-                _runCancellation.Token,
-                includeDisabled: onlySelected,
-                configuration: _configuration,
-                keepassMasterPassword: _keepassMasterPassword);
+            if (!VaultDatabase.Current.IsUnlocked)
+            {
+                ShowFromTray();
+                if (!RequireMasterPassword(forcePrompt: true)) return;
+            }
+            if (_windowsLocked || _vaultLockInProgress || _exiting || !SaveAll()) return;
+            var toRun = onlySelected
+                ? (_selected is null ? new List<WebsiteWorkflow>() : new List<WebsiteWorkflow> { _selected })
+                : workspace is not null
+                    ? workspace.Resolve(_configuration).ToList()
+                    : _configuration.Workflows.Where(workflow => workflow.Enabled).ToList();
+            if (toRun.Count == 0) { AppendLog("No enabled workflows to run."); return; }
+            if (!EnsureKeePassPasswordForRun(toRun)) return;
+            if (_windowsLocked || _vaultLockInProgress || _exiting || !VaultDatabase.Current.IsUnlocked)
+            {
+                _keepassMasterPassword = null;
+                return;
+            }
+            var monitors = MonitorService.GetMonitors();
+            foreach (var workflow in toRun)
+                workflow.MonitorIndex = MonitorService.Resolve(workflow, monitors).Index;
+            cancellation = new CancellationTokenSource();
+            _runCancellation = cancellation;
+            UpdateRunButtons();
+            WorkflowStatusLabel.Text = LocalizationService.Text("Running", _configuration.UiLanguage);
+            _activeRunTask = _runner.RunAsync(toRun, cancellation.Token,
+                includeDisabled: onlySelected, configuration: _configuration, keepassMasterPassword: _keepassMasterPassword);
+            var result = await _activeRunTask;
+            if (cancellation.IsCancellationRequested || _windowsLocked || _vaultLockInProgress || _exiting) return;
+            if (result.LoginNeedsAttention is { Count: > 0 } attention)
+            {
+                WorkflowStatusLabel.Text = LocalizationService.Text("Sign-in needs attention", _configuration.UiLanguage);
+                NotifyTray("Sign-in needs attention", $"{attention.Count} site(s) may still need MFA/SSO or Repair login.", Forms.ToolTipIcon.Warning);
+                await OfferRepairForLoginAttentionAsync(attention);
+            }
+            else if (result.FailedCount > 0)
+            {
+                WorkflowStatusLabel.Text = LocalizationService.Text("Failed", _configuration.UiLanguage);
+                NotifyTray("LaunchFlow", $"{result.FailedCount} workflow(s) failed. Review the website steps before running again.", Forms.ToolTipIcon.Warning);
+            }
+            else
+            {
+                WorkflowStatusLabel.Text = LocalizationService.Text("Finished", _configuration.UiLanguage);
+                NotifyTray("LaunchFlow", toRun.Count == 1 ? $"Finished “{toRun[0].Name}”." : $"Finished {toRun.Count} workflows.");
+            }
         }
         catch (OperationCanceledException)
         {
-            AppendLog("Run stopped.");
-            NotifyTray("LaunchFlow", "Workflow run was stopped.");
+            WorkflowStatusLabel.Text = LocalizationService.Text("Stopped", _configuration.UiLanguage);
+            if (!_exiting) NotifyTray("LaunchFlow", "Workflow run was stopped.");
         }
         catch (Exception ex)
         {
-            failed = true;
-            AppendLog("Run error: " + ex.Message);
-            NotifyTray("LaunchFlow", "A workflow failed: " + ex.Message, Forms.ToolTipIcon.Error);
+            WorkflowStatusLabel.Text = LocalizationService.Text("Failed", _configuration.UiLanguage);
+            AppendLog("Run error: " + ex.GetType().Name);
+            if (!_exiting) NotifyTray("LaunchFlow", "A workflow failed. Review the website settings and try again.", Forms.ToolTipIcon.Error);
         }
         finally
         {
-
-            StopButton.IsEnabled = false;
-            if (!failed && _runCancellation is { IsCancellationRequested: false })
-            {
-                if (runResult?.LoginNeedsAttention is { Count: > 0 } attention)
-                {
-                    var names = string.Join(", ", attention.Select(a => a.WorkflowName));
-                    NotifyTray("Sign-in needs attention",
-                        attention.Count == 1
-                            ? $"“{attention[0].WorkflowName}” may still need MFA/SSO or Repair login."
-                            : $"{attention.Count} sites need sign-in attention: {names}",
-                        Forms.ToolTipIcon.Warning);
-                    await OfferRepairForLoginAttentionAsync(attention);
-                }
-                else
-                {
-                    NotifyTray("LaunchFlow",
-                        toRun.Count == 1
-                            ? $"Finished “{toRun[0].Name}”."
-                            : $"Finished {toRun.Count} workflows.");
-                }
-            }
+            if (cancellation?.IsCancellationRequested == true)
+                WorkflowStatusLabel.Text = LocalizationService.Text("Stopped", _configuration.UiLanguage);
+            if (ReferenceEquals(_runCancellation, cancellation)) _runCancellation = null;
+            cancellation?.Dispose();
+            _activeRunTask = null;
+            _runInProgress = false;
+            UpdateRunButtons();
         }
     }
 
@@ -917,6 +1048,7 @@ public partial class MainWindow : Window
         MainTabs.SelectedIndex = 0;
         foreach (var item in items)
         {
+            if (_vaultLockInProgress || _windowsLocked || _exiting || _runCancellation?.IsCancellationRequested == true) return;
             var workflow = _configuration.Workflows.FirstOrDefault(w => w.Id == item.WorkflowId);
             if (workflow is null) continue;
             WorkflowList.SelectedItem = workflow;
@@ -970,6 +1102,7 @@ public partial class MainWindow : Window
     {
         if (_windowsLocked) return; // Duplicate Windows events must not create timers.
         _windowsLocked = true;
+        UpdateRunButtons();
         _lockedSinceUtc = DateTimeOffset.UtcNow;
         _unlockCancellation?.Cancel();
         _runCancellation?.Cancel(); // Don't start new steps while the device is locked.
@@ -985,51 +1118,64 @@ public partial class MainWindow : Window
         try
         {
             await Task.Delay(LockTimeout, token);
-            await Dispatcher.InvokeAsync(() =>
+            await Dispatcher.InvokeAsync(new Func<Task>(async () =>
             {
                 // Check the actual elapsed lock interval; timers may be late
                 // after laptop sleep/resume and events may arrive out of order.
                 if (_windowsLocked && _lockedSinceUtc == lockTime &&
                     DateTimeOffset.UtcNow - lockTime >= LockTimeout)
-                    SecureVaultLock("Windows has been locked for the configured timeout: encrypted vault locked.");
-            });
+                    await SecureVaultLockAsync("Windows has been locked for the configured timeout: encrypted vault locked.");
+            })).Task.Unwrap();
         }
         catch (OperationCanceledException) { }
     }
 
-    private void SecureVaultLock(string message)
+    private Task SecureVaultLockAsync(string message)
     {
+        if (!_vaultLockTask.IsCompleted) return _vaultLockTask;
+        _vaultLockTask = SecureVaultLockCoreAsync(message);
+        return _vaultLockTask;
+    }
+
+    private async Task SecureVaultLockCoreAsync(string message)
+    {
+        _vaultLockInProgress = true;
+        UpdateRunButtons();
         _runCancellation?.Cancel();
         _keepassMasterPassword = null;
         try
         {
-            _runner.CloseSessionsAsync().GetAwaiter().GetResult();
-        }
-        catch (Exception ex)
-        {
-            AppendLog("Could not close browser sessions before lock: " + ex.Message);
-            if (_configuration.DiagnosticsLogEnabled) CrashLog.Write("CloseSessions", ex);
-        }
-
-        if (_configuration.SealBrowserProfilesOnLock)
-        {
+            // Profile wrapping uses its own DPAPI-protected key. Revoke the vault key
+            // BEFORE waiting for browsers; a stalled browser must not extend authorization.
+            LockPasswordManager(message);
+            VaultDatabase.Current.Lock();
+            ClearCredentialEditor();
             try
             {
-                ProfileVaultService.SealAll();
-                AppendLog("Browser profiles sealed (encrypted at rest) while the vault is locked.");
+                if (_activeRunTask is not null) await _activeRunTask;
+                if (_activeTeachTask is not null) await _activeTeachTask;
             }
+            catch (Exception ex) { AppendLog("Automation ended during lock: " + ex.GetType().Name); }
+            try { await _runner.CloseSessionsAsync(); }
             catch (Exception ex)
             {
-                AppendLog("Could not seal browser profiles: " + ex.Message);
-                if (_configuration.DiagnosticsLogEnabled) CrashLog.Write("SealProfiles", ex);
+                AppendLog("Could not close browser sessions before lock: " + ex.GetType().Name);
+                if (_configuration.DiagnosticsLogEnabled) CrashLog.Write("CloseSessions", ex);
+            }
+            if (_configuration.SealBrowserProfilesOnLock)
+            {
+                try { await Task.Run(ProfileVaultService.SealAll); }
+                catch (Exception ex)
+                {
+                    AppendLog("Could not seal browser profiles; source files retained: " + ex.GetType().Name);
+                    if (_configuration.DiagnosticsLogEnabled) CrashLog.Write("SealProfiles", ex);
+                }
             }
         }
-
-        if (VaultDatabase.Current.IsUnlocked)
+        finally
         {
-            LockPasswordManager(message);
-            VaultDatabase.Current.Lock(); // Zero the derived key, don't merely hide a tab.
-            ClearCredentialEditor();
+            _vaultLockInProgress = false;
+            UpdateRunButtons();
         }
     }
 
@@ -1297,7 +1443,10 @@ public partial class MainWindow : Window
         _lockTimeoutCancellation?.Dispose();
         _lockTimeoutCancellation = null;
         if (interval >= LockTimeout)
-            SecureVaultLock($"Windows was locked for {interval.TotalMinutes:F1} minutes; master password required.");
+            await SecureVaultLockAsync($"Windows was locked for {interval.TotalMinutes:F1} minutes; master password required.");
+        else await _vaultLockTask;
+        UpdateRunButtons();
+        if (_windowsLocked || _exiting) return;
         if (!VaultDatabase.Current.IsUnlocked)
         {
             ShowFromTray();
@@ -1601,10 +1750,12 @@ public partial class MainWindow : Window
 
     private bool RequireMasterPassword(bool forcePrompt = false)
     {
+        if (_vaultLockInProgress || _windowsLocked || _exiting) return false;
         if (!forcePrompt && PasswordSessionIsValid()) return true;
         if (!_master.IsConfigured) return false;
         var prompt = new UnlockWindow { Owner = this };
         if (prompt.ShowDialog() != true || string.IsNullOrEmpty(prompt.Password)) return false;
+        if (_vaultLockInProgress || _windowsLocked || _exiting) return false;
         try
         {
             if (_master.Verify(prompt.Password))
@@ -1628,13 +1779,14 @@ public partial class MainWindow : Window
         return false;
     }
 
-    private void LockPasswords_Click(object sender, RoutedEventArgs e)
+    private async void LockPasswords_Click(object sender, RoutedEventArgs e)
     {
-        SecureVaultLock("Vault manually locked; master password required before automation.");
+        await SecureVaultLockAsync("Vault manually locked; master password required before automation.");
     }
 
-    private void ChangeMasterPassword_Click(object sender, RoutedEventArgs e)
+    private async void ChangeMasterPassword_Click(object sender, RoutedEventArgs e)
     {
+        if (_vaultLockInProgress || _runInProgress || _teachingInProgress || !RequireMasterPassword()) return;
         var current = new SecretPromptWindow("Change master password", "Enter your current master password.") { Owner = this };
         if (current.ShowDialog() != true) return;
         var next = new SecretPromptWindow("New master password",
@@ -1655,7 +1807,7 @@ public partial class MainWindow : Window
             _master.Change(current.Secret, next.Secret);
             WindowsHelloService.Disable();
             _configuration.WindowsHelloUnlockEnabled = false;
-            SecureVaultLock("Master password changed; vault locked. Re-enable Windows Hello if you use it.");
+            await SecureVaultLockAsync("Master password changed; vault locked. Re-enable Windows Hello if you use it.");
             AppendLog("Master password changed. Windows Hello unlock was cleared.");
         }
         catch (Exception ex) { MessageBox.Show(this, ex.Message, "Password not changed", MessageBoxButton.OK, MessageBoxImage.Warning); }
@@ -1732,6 +1884,15 @@ public partial class MainWindow : Window
             VaultDatabase.Current.ReplaceSnapshot(imported.Config, imported.Credentials);
             _configuration.Workflows.Clear();
             _configuration.Workflows.AddRange(imported.Config.Workflows);
+            _configuration.Workspaces.Clear();
+            _configuration.Workspaces.AddRange(imported.Config.Workspaces);
+            WorkspaceCombo.Items.Refresh();
+            WorkspaceCombo.SelectedItem = null;
+            WorkspaceCombo.Text = "";
+            _configuration.UiLanguage = imported.Config.UiLanguage;
+            _configuration.AdditionalSettings = imported.Config.AdditionalSettings;
+            LanguageCombo.SelectedIndex = _configuration.UiLanguage switch { "en" => 1, "nl" => 2, _ => 0 };
+            ApplyUiLanguage();
             _configuration.StartWithWindows = imported.Config.StartWithWindows;
             _configuration.RunOnUnlock = imported.Config.RunOnUnlock;
             _configuration.RunOnAppStart = imported.Config.RunOnAppStart;
@@ -1825,6 +1986,13 @@ public partial class MainWindow : Window
         _lockTimeoutCancellation?.Dispose();
         _tray.Visible = false;
         _tray.Dispose();
+        try
+        {
+            await _vaultLockTask;
+            if (_activeRunTask is not null) await _activeRunTask;
+            if (_activeTeachTask is not null) await _activeTeachTask;
+        }
+        catch { /* cancelled or failed during shutdown */ }
         try { await _runner.DisposeAsync(); } catch { /* closed during shutdown */ }
         _runCancellation?.Dispose();
         _unlockCancellation?.Dispose();

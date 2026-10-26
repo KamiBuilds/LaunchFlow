@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="UiHarness.cs" />
+    <Compile Include="../../LaunchFlow/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
+    <Compile Include="../../LaunchFlow/Services/MonitorService.cs" Link="MonitorService.cs" />
+    <Compile Include="../../LaunchFlow/Services/LocalizationService.cs" Link="LocalizationService.cs" Condition="Exists('../../LaunchFlow/Services/LocalizationService.cs')" />
+  </ItemGroup>
+</Project>

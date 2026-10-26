@@ -1,8 +1,16 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 namespace LaunchFlow.Models;
 
 public sealed class Configuration
 {
     public List<WebsiteWorkflow> Workflows { get; set; } = new();
+    private List<WorkspaceProfile> _workspaces = new();
+    public List<WorkspaceProfile> Workspaces { get => _workspaces; set => _workspaces = value ?? new(); }
+    public string UiLanguage { get; set; } = "auto";
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? AdditionalSettings { get; set; }
     public bool StartWithWindows { get; set; }
     public bool RunOnUnlock { get; set; }
     public bool RunOnAppStart { get; set; }
