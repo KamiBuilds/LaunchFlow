@@ -641,7 +641,7 @@ public sealed class AutomationEngine : IAsyncDisposable
             var monitors = MonitorService.GetMonitors();
             var monitor = !string.IsNullOrWhiteSpace(deviceName)
                 ? monitors.FirstOrDefault(m => m.DeviceName.Equals(deviceName, StringComparison.OrdinalIgnoreCase))
-                  ?? monitors[0]
+                  ?? monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0]
                 : monitors[Math.Clamp(monitorIndex, 0, monitors.Count - 1)];
             var bounds = monitor.Bounds;
             // Chromium-only CDP window placement; Firefox quietly skips.
