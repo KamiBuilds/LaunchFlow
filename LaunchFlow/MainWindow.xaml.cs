@@ -102,6 +102,8 @@ public partial class MainWindow : Window
         MonitorCombo.SelectedIndex = 0;
         WorkflowList.ItemsSource = _configuration.Workflows;
         WorkspaceCombo.ItemsSource = _configuration.Workspaces;
+        LanguageCombo.SelectedIndex = _configuration.UiLanguage switch { "en" => 1, "nl" => 2, _ => 0 };
+        ApplyUiLanguage();
 
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Open LaunchFlow", null, (_, _) => Dispatcher.Invoke(ShowFromTray));
@@ -122,6 +124,18 @@ public partial class MainWindow : Window
         if (_configuration.Workflows.Count > 0) WorkflowList.SelectedIndex = 0;
         else ShowEmptyEditor();
         AppendLog("LaunchFlow is ready. Encrypted SQLite vault unlocked with Argon2id master key.");
+    }
+
+    private void ApplyUiLanguage()
+    {
+        var language = _configuration.UiLanguage;
+        WorkflowsNav.Content = LocalizationService.Text("Workflows", language);
+        PasswordsNav.Content = LocalizationService.Text("Passwords", language);
+        SettingsNav.Content = LocalizationService.Text("Settings", language);
+        SaveWorkspaceButton.Content = LocalizationService.Text("Save workspace", language);
+        RunWorkspaceButton.Content = "▶ " + LocalizationService.Text("Run workspace", language);
+        RunAllButton.Content = "▶ " + LocalizationService.Text("Run all", language);
+        WorkspaceHeading.Text = LocalizationService.Text("Workspace profiles", language).ToUpperInvariant();
     }
 
     private static System.Drawing.Icon CreateTrayIcon()
@@ -354,6 +368,8 @@ public partial class MainWindow : Window
         try
         {
             ApplyCurrentEditor();
+            _configuration.UiLanguage = (LanguageCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "auto";
+            ApplyUiLanguage();
             _configuration.StartWithWindows = StartupCheck.IsChecked == true;
             _configuration.RunOnUnlock = UnlockCheck.IsChecked == true;
             _configuration.RunOnAppStart = LaunchCheck.IsChecked == true;
