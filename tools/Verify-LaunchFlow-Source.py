@@ -112,5 +112,15 @@ check('element.value' not in recorder and 'input,select,textarea' in recorder,
       'Teach records form-control clicks without text values')
 check('ImportLaunchFlowFile' in main_code and 'SecureTransferService.Export' in main_code,
       'protected import and export remain available')
+# Guard against accidentally reintroducing secret-bearing diagnostic logs.
+diagnostics=(root/'LaunchFlow/Services/CrashLog.cs').read_text(encoding='utf-8')
+check('ex.StackTrace' not in diagnostics and 'ex.Message' not in diagnostics,
+      'diagnostic output never contains raw exception text or stack traces')
+check('SafeToken(category)' in diagnostics and 'SafeToken(message)' in diagnostics,
+      'diagnostic event names are restricted to safe identifiers')
+check('MaxBytes' in diagnostics and 'File.Move(LogPath' in diagnostics,
+      'local diagnostics have bounded rotation')
+check((root/'.github/workflows/validate-pr.yml').is_file(),
+      'Windows compile validation workflow included')
 print('\n'+ ('FAILED: '+', '.join(errors) if errors else 'Source/configuration checks PASS. Native Windows build remains required.'))
 sys.exit(bool(errors))
