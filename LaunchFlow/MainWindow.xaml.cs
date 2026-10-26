@@ -721,6 +721,16 @@ public partial class MainWindow : Window
     private void Run_Click(object sender, RoutedEventArgs e) => _ = RunEnabledAsync();
     private void RunSelected_Click(object sender, RoutedEventArgs e) => _ = RunEnabledAsync(onlySelected: true);
 
+    private static Task<bool> ShowRecorderAsync(VisualRecorderWindow recorder)
+    {
+        // Unlike ShowDialog, Show() leaves the main window movable and usable.
+        var done = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        recorder.Closed += (_, _) => done.TrySetResult(recorder.Saved);
+        try { recorder.Show(); }
+        catch (Exception ex) { done.TrySetException(ex); }
+        return done.Task;
+    }
+
     private async void RecordSteps_Click(object sender, RoutedEventArgs e)
     {
         if (_selected is null || !SaveAll()) return;
@@ -728,7 +738,7 @@ public partial class MainWindow : Window
         {
             var page = await _runner.GetPageForRecorderAsync(_selected);
             var recorder = new VisualRecorderWindow(page) { Owner = this };
-            if (recorder.ShowDialog() == true)
+            if (await ShowRecorderAsync(recorder))
             {
                 _selected.Steps.AddRange(recorder.RecordedSteps);
                 RefreshSteps();
@@ -756,18 +766,18 @@ public partial class MainWindow : Window
     {
         if (_selected is null || !SaveAll()) return;
         MessageBox.Show(this,
-            "Repair login opens the site so you can finish MFA/SSO or teach the missing clicks.\n\n" +
-            "1. Complete any prompts in the browser.\n" +
-            "2. Click Start click capture and click through the broken part.\n" +
-            "3. Save steps — they run after auto-login next time.\n\n" +
-            "Tip: turn off Auto-login temporarily if the site only works with a fully taught path.",
+            "The website will open alongside a small Teach window.\n\n" +
+            "1. Complete any sign-in prompts in your browser.\n" +
+            "2. Click the buttons you want LaunchFlow to remember. Recording starts automatically.\n" +
+            "3. Return to Teach and click Save clicks.\n\n" +
+            "Passwords are never recorded. Use Passwords to store your login safely.",
             "Repair login", MessageBoxButton.OK, MessageBoxImage.Information);
         var page = await _runner.GetPageForRecorderAsync(_selected);
         var health = await LoginHealth.InspectAsync(page);
         if (health.NeedsAttention)
             AppendLog($"Repair login: {health.Reason}");
         var recorder = new VisualRecorderWindow(page) { Owner = this };
-        if (recorder.ShowDialog() == true && recorder.RecordedSteps.Count > 0)
+        if (await ShowRecorderAsync(recorder) && recorder.RecordedSteps.Count > 0)
         {
             _selected.Steps.AddRange(recorder.RecordedSteps);
             RefreshSteps();
@@ -1203,6 +1213,11 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(new Action(() => _ = MaybeCheckUpdatesAsync()));
     }
 
+    private void Help_Click(object sender, RoutedEventArgs e)
+    {
+        new TutorialWindow { Owner = this }.ShowDialog();
+    }
+
     private void MaybeShowWelcomeChecklist()
     {
         if (_configuration.WelcomeChecklistShown) return;
@@ -1212,16 +1227,7 @@ public partial class MainWindow : Window
         _configuration.WelcomeChecklistShown = true;
         try { _store.Save(_configuration); } catch { /* ignore */ }
 
-        var browsers = BrowserEnvironment.Probe();
-        MessageBox.Show(this,
-            "Welcome to LaunchFlow.\n\n" +
-            "1. Create a workflow for each website you want to open.\n" +
-            "2. Save the login in Passwords (or point to KeePassXC).\n" +
-            "3. Press your shortcut (default Ctrl+M) or click Run all.\n\n" +
-            browsers.Summary + "\n\n" +
-            "Your vault stays on this PC in an encrypted local database. " +
-            "Use Settings → Security to back it up anytime.",
-            "Get started", MessageBoxButton.OK, MessageBoxImage.Information);
+        new TutorialWindow { Owner = this }.ShowDialog();
     }
 
     private void RefreshVaultBackupStatus()

@@ -24,6 +24,16 @@ This download becomes available once the first stable release is published. Draf
 
 Run the **same universal installer** again to find and install the latest stable version. The application also supports checking for newer versions. Existing encrypted vaults and workflow data are retained when upgrading.
 
+## Quick start
+
+1. Open LaunchFlow and use **+ New** to add a website.
+2. Open **Passwords** if you want LaunchFlow to sign in using your saved credentials.
+3. Select your website and click **Teach clicks** if it should click something after sign-in. Move between the browser and Teach window freely; recording starts automatically.
+4. Click **Save clicks**, then **Test this site** to try the workflow.
+5. Choose **Help** anytime for the four-step setup guide.
+
+Teach never records typed text or passwords. Some websites need you to complete MFA yourself. Not every login can be fully automated.
+
 ## Development
 
 The core application is in `LaunchFlow/`. The standalone updater is in `bootstrapper/`; Windows setup definitions are in `installer/`; build support is in `tools/`.

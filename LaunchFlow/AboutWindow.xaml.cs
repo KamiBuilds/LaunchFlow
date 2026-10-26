@@ -15,7 +15,7 @@ public partial class AboutWindow : Window
         Loaded += (_, _) => DarkWindowChrome.Apply(this);
         var version = Assembly.GetExecutingAssembly().GetName().Version;
         VersionText.Text = version is null
-            ? "Version 0.7.10"
+            ? "Version 0.7.11"
             : $"Version {version.Major}.{version.Minor}.{version.Build}";
         DataPathText.Text = VaultDatabase.Current.DatabasePath;
     }

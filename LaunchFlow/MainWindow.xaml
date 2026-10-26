@@ -117,6 +117,8 @@
                   Padding="9,7" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
           <Button x:Name="StopButton" Content="■ Stop" Click="Stop_Click" IsEnabled="False"
                   Padding="9,7" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+          <Button Content="Help" Click="Help_Click" Padding="9,7"
+                  ToolTip="How to set up your first website" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
           <Button Content="About" Click="About_Click" Padding="9,7" Margin="0"
                   shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
         </StackPanel>
@@ -192,8 +194,8 @@
             <DockPanel Margin="0,0,0,8">
               <TextBlock Text="ACTIONS AFTER SIGN-IN" Style="{StaticResource SectionHeader}" DockPanel.Dock="Left" VerticalAlignment="Center"/>
               <WrapPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="● Teach" Click="RecordSteps_Click" Style="{StaticResource PrimaryButton}"
-                        AutomationProperties.Name="Teach by clicking" ToolTip="Record clicks from the live site" Margin="0,0,6,6"/>
+                <Button Content="● Teach clicks" Click="RecordSteps_Click" Style="{StaticResource PrimaryButton}"
+                        AutomationProperties.Name="Teach by clicking" ToolTip="Show LaunchFlow which buttons to click on your website" Margin="0,0,6,6"/>
                 <Button Content="Repair login" Click="RepairLogin_Click" Margin="0,0,6,6"
                         ToolTip="Open the site and teach steps when auto-login or MFA breaks"/>
                 <Button Content="+ Page" Click="AddPage_Click" ToolTip="Open another website/page after sign-in" Margin="0,0,6,6"/>

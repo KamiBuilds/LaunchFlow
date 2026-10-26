@@ -34,6 +34,14 @@ for xaml in (root/'LaunchFlow').glob('*.xaml'):
     except ET.ParseError as ex: errors.append(f'Invalid XAML XML {xaml.name}: {ex}')
 check(len(list((root/'LaunchFlow').glob('*.xaml')))>=5,'XAML files parsed')
 main_code=(root/'LaunchFlow/MainWindow.xaml.cs').read_text(encoding='utf-8')
+recorder_code=(root/'LaunchFlow/VisualRecorderWindow.xaml.cs').read_text(encoding='utf-8')
+check('ShowRecorderAsync(recorder)' in main_code and 'recorder.ShowDialog()' not in main_code,
+      'Teach runs modeless so windows can move')
+check('ExposeBindingAsync<string>' in recorder_code and 'AddInitScriptAsync' in recorder_code,
+      'Teach records clicks through page navigation')
+check((root/'LaunchFlow/TutorialWindow.xaml').is_file() and 'new TutorialWindow' in main_code,
+      'beginner tutorial is available')
+main_code=(root/'LaunchFlow/MainWindow.xaml.cs').read_text(encoding='utf-8')
 check('EnsureStartupWorkflowVisible();' in main_code and 'MainTabs.SelectedIndex = -1;' in main_code,
       'initial Workflows content is forced to render after Loaded')
 print('\n'+ ('FAILED: '+', '.join(errors) if errors else 'Source/configuration checks PASS. Native Windows build remains required.'))

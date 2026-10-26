@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Threading;
@@ -11,183 +12,181 @@ namespace LaunchFlow;
 public partial class VisualRecorderWindow : Window
 {
     private readonly IPage _page;
-    private readonly DispatcherTimer _pollTimer = new() { Interval = TimeSpan.FromMilliseconds(450) };
+    private readonly DispatcherTimer _drainTimer = new() { Interval = TimeSpan.FromMilliseconds(200) };
+    private readonly ConcurrentQueue<CapturedAction> _pending = new();
+    private readonly string _bindingName = "__launchFlowTeach_" + Guid.NewGuid().ToString("N");
+    private IAsyncDisposable? _binding;
     private bool _capturing;
+    private bool _stopping;
 
+    public bool Saved { get; private set; }
     public List<WorkflowStep> RecordedSteps { get; } = new();
 
     public VisualRecorderWindow(IPage page)
     {
         _page = page;
         InitializeComponent();
-        Loaded += (_, _) => DarkWindowChrome.Apply(this);
-        RefreshList();
-        _pollTimer.Tick += PollTimer_Tick;
+        Loaded += async (_, _) =>
+        {
+            DarkWindowChrome.Apply(this);
+            await StartRecordingAsync();
+        };
+        _drainTimer.Tick += (_, _) => DrainActions();
     }
 
-    private async void PollTimer_Tick(object? sender, EventArgs e) => await PollClicksAsync();
-
-    private async void ToggleCapture_Click(object sender, RoutedEventArgs e)
+    // Browser-to-app notifications keep clicks that would be lost on navigation.
+    // AddInitScriptAsync reattaches the click listener to each navigated frame.
+    private async Task StartRecordingAsync()
     {
+        if (_stopping || _capturing) return;
         try
         {
-            if (!_capturing)
+            if (_binding is null)
             {
-                await InstallRecorderScriptAsync();
-                _capturing = true;
-                _pollTimer.Start();
-                CaptureToggle.Content = "Stop click capture";
-                CaptureStatus.Text = "Listening for clicks in the browser… Avoid typing passwords while capturing.";
-                StatusText.Text = "Click capture is on. Interact with the site; steps appear in the list.";
+                _binding = await _page.ExposeBindingAsync<string>(_bindingName,
+                    (_, json) =>
+                    {
+                        if (!_capturing || _stopping || json.Length > 8192) return;
+                        try
+                        {
+                            var action = JsonSerializer.Deserialize<CapturedAction>(json,
+                                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                            if (action?.Type == "Click" && !string.IsNullOrWhiteSpace(action.Target))
+                                _pending.Enqueue(action);
+                        }
+                        catch (JsonException) { /* Ignore malformed messages. */ }
+                    });
+                await _page.AddInitScriptAsync(BuildRecorderScript());
             }
-            else
-            {
-                await StopCaptureAsync();
-            }
+            await _page.EvaluateAsync(BuildRecorderScript());
+            _capturing = true;
+            _drainTimer.Start();
+            CaptureToggle.Content = "Pause recording";
+            CaptureStatus.Text = "Recording clicks… Switch to the browser and click something.";
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "Recorder", MessageBoxButton.OK, MessageBoxImage.Warning);
+            _capturing = false;
+            CaptureStatus.Text = "Could not start click recording. You can still add a step manually.";
+            MessageBox.Show(this, ex.Message, "Teach couldn't start", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
-    private async Task InstallRecorderScriptAsync()
-    {
-        const string script = """
-            () => {
-              if (window.__lfRecorderInstalled) return true;
-              window.__lfRecorderInstalled = true;
-              window.__lfClicks = [];
-              const esc = (s) => String(s).replace(/([ !"#$%&'()*+,./:;<=>?@[\\\]^`{|}~])/g, '\\$1');
-              const cssPath = (el) => {
-                if (!(el instanceof Element)) return '';
-                if (el.id) return '#' + esc(el.id);
-                const parts = [];
-                let cur = el;
-                for (let depth = 0; cur && cur.nodeType === 1 && depth < 6; depth++) {
-                  let part = cur.nodeName.toLowerCase();
-                  const parent = cur.parentElement;
-                  if (cur.id) { parts.unshift('#' + esc(cur.id)); break; }
-                  if (parent) {
-                    const siblings = Array.from(parent.children).filter(c => c.nodeName === cur.nodeName);
-                    if (siblings.length > 1) part += ':nth-of-type(' + (siblings.indexOf(cur) + 1) + ')';
-                  }
-                  parts.unshift(part);
-                  cur = parent;
-                }
-                return parts.join(' > ');
-              };
-              const push = (type, target, extra) => {
-                if (!target) return;
-                window.__lfClicks.push({ type, target, value: extra || '' });
-              };
-              document.addEventListener('click', (e) => {
-                const el = e.target;
-                if (!(el instanceof Element)) return;
-                if (el.closest('input[type=password], [type=password]')) return;
-                const label = (el.innerText || el.getAttribute('aria-label') || '').trim().slice(0, 48);
-                push('Click', cssPath(el), label);
-              }, true);
-              document.addEventListener('change', (e) => {
-                const el = e.target;
-                if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)) return;
-                if (el instanceof HTMLInputElement && el.type === 'password') return;
-                push('Fill', cssPath(el), el.value || '');
-              }, true);
-              return true;
+    private string BuildRecorderScript() => $$"""
+        () => {
+          const binding = '{{_bindingName}}';
+          if (window.__lfStopTeach) window.__lfStopTeach();
+          let active = true;
+          const cssPath = (element) => {
+            if (!(element instanceof Element)) return '';
+            if (element.id) return '#' + CSS.escape(element.id);
+            const parts = [];
+            let el = element;
+            for (let i = 0; el && i < 7; i++, el = el.parentElement) {
+              if (el.id) { parts.unshift('#' + CSS.escape(el.id)); break; }
+              let name = el.tagName.toLowerCase();
+              const parent = el.parentElement;
+              if (parent) {
+                const similar = [...parent.children].filter(n => n.tagName === el.tagName);
+                if (similar.length > 1) name += ':nth-of-type(' + (similar.indexOf(el) + 1) + ')';
+              }
+              parts.unshift(name);
             }
-            """;
-        await _page.EvaluateAsync(script);
+            return parts.join(' > ');
+          };
+          const onClick = (event) => {
+            if (!active || !event.isTrusted) return;
+            const target = event.target;
+            if (!(target instanceof Element)) return;
+            // Never record typed values, passwords, or editable inputs.
+            if (target.closest('input,textarea,[contenteditable],select,[type=password]')) return;
+            const el = target.closest('a,button,[role="button"],[role="link"],label') || target;
+            const selector = cssPath(el);
+            const report = window[binding];
+            if (!selector || typeof report !== 'function') return;
+            const label = (el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 48);
+            void report(JSON.stringify({type:'Click',target:selector,label})).catch(() => {});
+          };
+          document.addEventListener('click', onClick, true);
+          window.__lfStopTeach = () => {
+            active = false;
+            document.removeEventListener('click', onClick, true);
+          };
+          return true;
+        }
+        """;
+
+    private async void ToggleCapture_Click(object sender, RoutedEventArgs e)
+    {
+        if (_stopping) return;
+        if (_capturing)
+        {
+            _capturing = false;
+            DrainActions();
+            CaptureToggle.Content = "Resume recording";
+            CaptureStatus.Text = "Paused — " + RecordedSteps.Count + " click(s) captured.";
+        }
+        else
+        {
+            try { await _page.EvaluateAsync(BuildRecorderScript()); }
+            catch { /* The init script will reattach after navigation. */ }
+            _capturing = true;
+            CaptureToggle.Content = "Pause recording";
+            CaptureStatus.Text = "Recording clicks…";
+        }
     }
 
-    private async Task PollClicksAsync()
+    private void DrainActions()
     {
-        if (!_capturing) return;
-        try
+        bool changed = false;
+        while (_pending.TryDequeue(out var item))
         {
-            var json = await _page.EvaluateAsync<string>("""
-                () => {
-                  const items = window.__lfClicks || [];
-                  window.__lfClicks = [];
-                  return JSON.stringify(items);
-                }
-                """);
-            if (string.IsNullOrWhiteSpace(json) || json == "[]") return;
-            var batch = JsonSerializer.Deserialize<List<CapturedAction>>(json,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            if (batch is null || batch.Count == 0) return;
-            foreach (var item in batch)
+            if (string.IsNullOrWhiteSpace(item.Target)) continue;
+            var description = string.IsNullOrWhiteSpace(item.Label)
+                ? "Click " + item.Target
+                : "Click “" + item.Label + "”";
+            RecordedSteps.Add(new WorkflowStep
             {
-                if (string.IsNullOrWhiteSpace(item.Target)) continue;
-                var description = item.Type == "Fill"
-                    ? $"Fill → {item.Target}"
-                    : string.IsNullOrWhiteSpace(item.Value)
-                        ? $"{item.Type} → {item.Target}"
-                        : $"{item.Type} “{item.Value}” → {item.Target}";
-                AddStep(item.Type ?? "Click", item.Target, description,
-                    string.Equals(item.Type, "Fill", StringComparison.OrdinalIgnoreCase) ? item.Value : null);
-            }
-            CaptureStatus.Text = $"Captured {RecordedSteps.Count} step(s).";
+                Type = "Click", Target = item.Target, Description = description
+            });
+            changed = true;
         }
-        catch
+        if (changed)
         {
-            // Navigations briefly break evaluate; keep listening.
+            RefreshList();
+            CaptureStatus.Text = "Captured " + RecordedSteps.Count + " click(s). Click Save when finished.";
         }
     }
 
-    private async Task StopCaptureAsync()
-    {
-        _capturing = false;
-        _pollTimer.Stop();
-        CaptureToggle.Content = "Start click capture";
-        CaptureStatus.Text = "Click capture is off.";
-        try
-        {
-            await _page.EvaluateAsync("() => { window.__lfRecorderInstalled = false; window.__lfClicks = []; }");
-        }
-        catch { /* page closed */ }
-    }
-
-    private async void CaptureUrl_Click(object sender, RoutedEventArgs e)
+    private void CaptureUrl_Click(object sender, RoutedEventArgs e)
     {
         try
         {
             var url = _page.Url;
-            if (string.IsNullOrWhiteSpace(url) || url is "about:blank")
-            {
-                MessageBox.Show(this, "The page has no navigable URL yet.",
-                    "Recorder", MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
-
             AutomationEngine.ValidateUrl(url);
-            AddStep("Navigate", url, $"Navigate → {url}");
+            AddStep("Navigate", url, "Open " + url);
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "Recorder", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, "Open a website in the browser first. " + ex.Message,
+                "No page yet", MessageBoxButton.OK, MessageBoxImage.Information);
         }
-
-        await Task.CompletedTask;
     }
 
     private void AddNavigate_Click(object sender, RoutedEventArgs e) =>
-        EditNew(new WorkflowStep { Type = "Navigate", Target = "https://", Description = "Navigate" });
-
+        EditNew(new WorkflowStep { Type = "Navigate", Target = "https://", Description = "Open a page" });
     private void AddClick_Click(object sender, RoutedEventArgs e) =>
         EditNew(new WorkflowStep { Type = "Click", Target = "button", Description = "Click" });
-
-    private void AddFill_Click(object sender, RoutedEventArgs e) =>
-        EditNew(new WorkflowStep { Type = "Fill", Target = "input", Value = "", Description = "Fill" });
-
     private void AddWait_Click(object sender, RoutedEventArgs e) =>
-        EditNew(new WorkflowStep { Type = "Wait", Target = "1500", Description = "Wait 1500 ms" });
+        EditNew(new WorkflowStep { Type = "Wait", Target = "1500", Description = "Wait" });
 
-    private void EditNew(WorkflowStep seed)
+    private void EditNew(WorkflowStep step)
     {
-        var editor = new StepEditorWindow(seed) { Owner = this };
+        var editor = new StepEditorWindow(step) { Owner = this };
         if (editor.ShowDialog() == true)
-            AddStep(editor.Result.Type, editor.Result.Target, Describe(editor.Result), editor.Result.Value);
+            AddStep(editor.Result.Type, editor.Result.Target,
+                editor.Result.Description ?? editor.Result.Type + " " + editor.Result.Target,
+                editor.Result.Value);
     }
 
     private void Remove_Click(object sender, RoutedEventArgs e)
@@ -202,58 +201,69 @@ public partial class VisualRecorderWindow : Window
     private void Clear_Click(object sender, RoutedEventArgs e)
     {
         RecordedSteps.Clear();
+        while (_pending.TryDequeue(out _)) { }
         RefreshList();
+        CaptureStatus.Text = "No clicks saved yet. Try clicking something on the website.";
     }
 
     private async void Save_Click(object sender, RoutedEventArgs e)
     {
-        await StopCaptureAsync();
-        DialogResult = true;
+        if (_stopping) return;
+        SaveStepsButton.IsEnabled = false;
+        await Task.Delay(200);
+        DrainActions();
+        if (RecordedSteps.Count == 0)
+        {
+            SaveStepsButton.IsEnabled = true;
+            CaptureStatus.Text = "Nothing was recorded yet. Click a button on the website, then try Save clicks.";
+            return;
+        }
+        Saved = true;
+        Close();
     }
 
-    private async void Cancel_Click(object sender, RoutedEventArgs e)
+    private void Cancel_Click(object sender, RoutedEventArgs e)
     {
-        await StopCaptureAsync();
+        Saved = false;
         RecordedSteps.Clear();
-        DialogResult = false;
+        Close();
     }
 
     private async void Window_Closed(object? sender, EventArgs e)
     {
-        _pollTimer.Tick -= PollTimer_Tick;
-        await StopCaptureAsync();
+        _stopping = true;
+        _capturing = false;
+        _drainTimer.Stop();
+        try { await _page.EvaluateAsync("() => { if (window.__lfStopTeach) window.__lfStopTeach(); }"); }
+        catch { /* Browser may have closed. */ }
+        if (_binding is not null)
+        {
+            try { await _binding.DisposeAsync(); }
+            catch { /* Browser may have disposed the binding. */ }
+            _binding = null;
+        }
     }
 
     private void AddStep(string type, string target, string description, string? value = null)
     {
         RecordedSteps.Add(new WorkflowStep
         {
-            Type = type,
-            Target = target,
-            Value = value ?? "",
-            Description = description
+            Type = type, Target = target, Value = value ?? "", Description = description
         });
         RefreshList();
     }
 
-    private static string Describe(WorkflowStep s) =>
-        string.IsNullOrWhiteSpace(s.Description) ? $"{s.Type} → {s.Target}" : s.Description;
-
     private void RefreshList()
     {
-        foreach (var step in RecordedSteps)
-        {
-            if (string.IsNullOrWhiteSpace(step.Description))
-                step.Description = $"{step.Type} → {step.Target}";
-        }
         StepList.ItemsSource = null;
         StepList.ItemsSource = RecordedSteps;
+        if (RecordedSteps.Count > 0) StepList.ScrollIntoView(RecordedSteps[^1]);
     }
 
     private sealed class CapturedAction
     {
         public string? Type { get; set; }
         public string Target { get; set; } = "";
-        public string? Value { get; set; }
+        public string? Label { get; set; }
     }
 }

@@ -1,3 +1,14 @@
+# v0.7.11 — KISS-rule usability and Teach clicks (experimental)
+
+- Made Teach a movable non-modal window so the main app and browser remain usable.
+- Start recording clicks automatically; live click updates survive normal page navigations.
+- Save captured clicks when the user chooses Save clicks; never record typed input or passwords.
+- Added a four-step getting-started guide, available anytime from Help.
+- Simplified labels in Teach and the website setup wizard.
+- Preserved the encrypted vault and existing installer ID.
+
+**Testing:** Windows compilation and login-flow tests are required before merging.
+
 # v0.7.10 — First-launch workflow display (development)
 
 - Fixed a startup UI issue where the Workflows page stayed blank until switching to Passwords or Settings and back.
