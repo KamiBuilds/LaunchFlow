@@ -267,7 +267,7 @@ public partial class MainWindow : Window
         if (savedMonitor is null)
             MonitorCombo.SelectedIndex = string.IsNullOrWhiteSpace(w.MonitorDeviceName)
                 ? Math.Clamp(w.MonitorIndex, 0, Math.Max(0, MonitorCombo.Items.Count - 1))
-                : 0; // Original display unavailable: fall back to primary display.
+                : MonitorService.GetMonitors().FirstOrDefault(m => m.IsPrimary)?.Index ?? 0; // Use primary display.
         LoginModeCombo.SelectedIndex = w.LoginMode == "None" ? 1 : w.LoginMode == "SSO" ? 2 : 0;
         UsernameContinueBox.Text = w.UsernameContinueSelector;
         PasswordOriginBox.Text = w.PasswordCredentialOrigin;
