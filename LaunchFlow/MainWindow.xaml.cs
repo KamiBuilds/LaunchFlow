@@ -31,6 +31,7 @@ public partial class MainWindow : Window
     private bool _windowsLocked;
     private DateTimeOffset? _lockedSinceUtc;
     private CancellationTokenSource? _lockTimeoutCancellation;
+    private readonly SemaphoreSlim _vaultLockGate = new(1, 1);
 
     private bool _revertingTab;
     private bool _sidebarCollapsed;
@@ -100,6 +101,7 @@ public partial class MainWindow : Window
         MonitorCombo.ItemsSource = MonitorService.GetMonitors();
         MonitorCombo.SelectedIndex = 0;
         WorkflowList.ItemsSource = _configuration.Workflows;
+        WorkspaceCombo.ItemsSource = _configuration.Workspaces;
 
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Open LaunchFlow", null, (_, _) => Dispatcher.Invoke(ShowFromTray));
@@ -744,6 +746,42 @@ public partial class MainWindow : Window
     }
 
     private void Run_Click(object sender, RoutedEventArgs e) => _ = RunEnabledAsync();
+
+    private void SaveWorkspace_Click(object sender, RoutedEventArgs e)
+    {
+        var name = WorkspaceCombo.Text.Trim();
+        if (name.Length is < 1 or > 64)
+        {
+            MessageBox.Show(this, "Enter a workspace name (1–64 characters).");
+            return;
+        }
+        if (!SaveAll()) return;
+        var existing = _configuration.Workspaces.FirstOrDefault(w =>
+            string.Equals(w.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null &&
+            MessageBox.Show(this, "Replace the workflow selection in this workspace?",
+                "Update workspace", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
+            return;
+        var profile = existing ?? new WorkspaceProfile { Name = name };
+        profile.WorkflowIds = _configuration.Workflows
+            .Where(w => w.Enabled).Select(w => w.Id).ToList();
+        if (existing is null) _configuration.Workspaces.Add(profile);
+        _store.Save(_configuration);
+        WorkspaceCombo.ItemsSource = null;
+        WorkspaceCombo.ItemsSource = _configuration.Workspaces;
+        WorkspaceCombo.SelectedItem = profile;
+        AppendLog("Workspace saved.");
+    }
+
+    private void RunWorkspace_Click(object sender, RoutedEventArgs e)
+    {
+        if (WorkspaceCombo.SelectedItem is not WorkspaceProfile profile)
+        {
+            MessageBox.Show(this, "Select a saved workspace first.");
+            return;
+        }
+        _ = RunEnabledAsync(workspace: profile);
+    }
     private void RunSelected_Click(object sender, RoutedEventArgs e) => _ = RunEnabledAsync(onlySelected: true);
 
     private static Task<bool> ShowRecorderAsync(VisualRecorderWindow recorder)
@@ -834,7 +872,7 @@ public partial class MainWindow : Window
 
     private void Stop_Click(object sender, RoutedEventArgs e) => _runCancellation?.Cancel();
 
-    private async Task RunEnabledAsync(bool onlySelected = false)
+    private async Task RunEnabledAsync(bool onlySelected = false, WorkspaceProfile? workspace = null)
     {
         if (_windowsLocked) { AppendLog("Windows is locked; automation was paused."); return; }
         if (!VaultDatabase.Current.IsUnlocked)
@@ -850,7 +888,9 @@ public partial class MainWindow : Window
         if (!SaveAll()) return;
         var toRun = onlySelected && _selected is not null
             ? new List<WebsiteWorkflow> { _selected }
-            : _configuration.Workflows.Where(w => w.Enabled).ToList();
+            : workspace is not null
+                ? workspace.Resolve(_configuration).ToList()
+                : _configuration.Workflows.Where(w => w.Enabled).ToList();
         if (toRun.Count == 0) { AppendLog("No enabled workflows to run."); return; }
         if (!EnsureKeePassPasswordForRun(toRun))
         {
@@ -898,6 +938,12 @@ public partial class MainWindow : Window
                             : $"{attention.Count} sites need sign-in attention: {names}",
                         Forms.ToolTipIcon.Warning);
                     await OfferRepairForLoginAttentionAsync(attention);
+                }
+                else if (runResult is { FailedCount: > 0 } failures)
+                {
+                    NotifyTray("LaunchFlow",
+                        $"{failures.FailedCount} workflow(s) failed. Review the website steps before running again.",
+                        Forms.ToolTipIcon.Warning);
                 }
                 else
                 {
@@ -985,25 +1031,27 @@ public partial class MainWindow : Window
         try
         {
             await Task.Delay(LockTimeout, token);
-            await Dispatcher.InvokeAsync(() =>
+            await Dispatcher.InvokeAsync(async () =>
             {
-                // Check the actual elapsed lock interval; timers may be late
-                // after laptop sleep/resume and events may arrive out of order.
+                // Check elapsed lock interval after sleep/resume or duplicate events.
                 if (_windowsLocked && _lockedSinceUtc == lockTime &&
                     DateTimeOffset.UtcNow - lockTime >= LockTimeout)
-                    SecureVaultLock("Windows has been locked for the configured timeout: encrypted vault locked.");
-            });
+                    await SecureVaultLockAsync("Windows has been locked for the configured timeout: encrypted vault locked.");
+            }).Task.Unwrap();
         }
         catch (OperationCanceledException) { }
     }
 
-    private void SecureVaultLock(string message)
+    private async Task SecureVaultLockAsync(string message)
     {
+        await _vaultLockGate.WaitAsync();
+        try
+        {
         _runCancellation?.Cancel();
         _keepassMasterPassword = null;
         try
         {
-            _runner.CloseSessionsAsync().GetAwaiter().GetResult();
+            await _runner.CloseSessionsAsync();
         }
         catch (Exception ex)
         {
@@ -1031,6 +1079,8 @@ public partial class MainWindow : Window
             VaultDatabase.Current.Lock(); // Zero the derived key, don't merely hide a tab.
             ClearCredentialEditor();
         }
+        }
+        finally { _vaultLockGate.Release(); }
     }
 
     private string DescribeCredentialStatus(WebsiteWorkflow w)
@@ -1297,7 +1347,7 @@ public partial class MainWindow : Window
         _lockTimeoutCancellation?.Dispose();
         _lockTimeoutCancellation = null;
         if (interval >= LockTimeout)
-            SecureVaultLock($"Windows was locked for {interval.TotalMinutes:F1} minutes; master password required.");
+            await SecureVaultLockAsync($"Windows was locked for {interval.TotalMinutes:F1} minutes; master password required.");
         if (!VaultDatabase.Current.IsUnlocked)
         {
             ShowFromTray();
@@ -1659,6 +1709,11 @@ public partial class MainWindow : Window
 
     private void Export_Click(object sender, RoutedEventArgs e)
     {
+        if (EnterprisePolicy.Load().DisableExport)
+        {
+            MessageBox.Show(this, "Exports are disabled by your organization's policy.");
+            return;
+        }
         if (!SaveAll()) return;
         if (!RequireMasterPassword(forcePrompt: true)) return;
         var dialog = new Microsoft.Win32.SaveFileDialog
@@ -1684,6 +1739,11 @@ public partial class MainWindow : Window
 
     private void Import_Click(object sender, RoutedEventArgs e)
     {
+        if (EnterprisePolicy.Load().DisableExport)
+        {
+            MessageBox.Show(this, "Portable imports are disabled by your organization's policy.");
+            return;
+        }
         if (_runner.IsRunning) { MessageBox.Show(this, "Stop active workflows before importing."); return; }
         if (!RequireMasterPassword(forcePrompt: true)) return;
         var file = new OpenFileDialog
