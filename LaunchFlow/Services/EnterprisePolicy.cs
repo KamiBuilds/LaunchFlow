@@ -13,6 +13,7 @@ public sealed class EnterprisePolicy
     private const string RegistryPath = @"SOFTWARE\Policies\LaunchFlow";
     public bool DisableAutomation { get; init; }
     public bool DisableCredentialFill { get; init; }
+    public bool DisableCredentialStorage { get; init; }
     public bool DisableExport { get; init; }
     public bool DisableTeach { get; init; }
     public bool RequireHttpsForCredentials { get; init; }
@@ -45,6 +46,7 @@ public sealed class EnterprisePolicy
             {
                 DisableAutomation = Flag(key, "DisableAutomation"),
                 DisableCredentialFill = Flag(key, "DisableCredentialFill"),
+                DisableCredentialStorage = Flag(key, "DisableCredentialStorage"),
                 DisableExport = Flag(key, "DisableExport"),
                 DisableTeach = Flag(key, "DisableTeach"),
                 RequireHttpsForCredentials = Flag(key, "RequireHttpsForCredentials"),
@@ -62,6 +64,7 @@ public sealed class EnterprisePolicy
     {
         DisableAutomation = true,
         DisableCredentialFill = true,
+        DisableCredentialStorage = true,
         DisableExport = true,
         DisableTeach = true,
         RequireHttpsForCredentials = true
