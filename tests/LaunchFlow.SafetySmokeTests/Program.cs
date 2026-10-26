@@ -22,6 +22,8 @@ Check(!admin.AllowsCredentialFill("http://portal.example.org"), "HTTPS policy en
 Check(admin.AllowsCredentialFill("https://portal.example.org/login"), "permitted HTTPS login");
 var blocked = new EnterprisePolicy { DisableCredentialFill = true };
 Check(!blocked.AllowsCredentialFill("https://example.org"), "admin credential block enforced");
+Check(new EnterprisePolicy { DisableCredentialStorage = true }.DisableCredentialStorage,
+      "separate managed credential-storage restriction represented");
 
 var workflow = new WebsiteWorkflow { Name = "Monitoring", Enabled = true };
 var disabled = new WebsiteWorkflow { Name = "Disabled", Enabled = false };
