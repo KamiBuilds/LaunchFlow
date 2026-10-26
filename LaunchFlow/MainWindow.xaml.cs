@@ -1816,6 +1816,17 @@ public partial class MainWindow : Window
             VaultDatabase.Current.ReplaceSnapshot(imported.Config, imported.Credentials);
             _configuration.Workflows.Clear();
             _configuration.Workflows.AddRange(imported.Config.Workflows);
+            _configuration.Workspaces.Clear();
+            _configuration.Workspaces.AddRange(imported.Config.Workspaces ?? new List<WorkspaceProfile>());
+            WorkspaceCombo.ItemsSource = null;
+            WorkspaceCombo.ItemsSource = _configuration.Workspaces;
+            _configuration.UiLanguage = imported.Config.UiLanguage is "en" or "nl"
+                ? imported.Config.UiLanguage : "auto";
+            LanguageCombo.SelectedIndex = _configuration.UiLanguage switch
+            {
+                "en" => 1, "nl" => 2, _ => 0
+            };
+            ApplyUiLanguage();
             _configuration.StartWithWindows = imported.Config.StartWithWindows;
             _configuration.RunOnUnlock = imported.Config.RunOnUnlock;
             _configuration.RunOnAppStart = imported.Config.RunOnAppStart;
