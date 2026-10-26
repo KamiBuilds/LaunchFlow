@@ -250,6 +250,7 @@
       <Setter Property="Foreground" Value="#08201D"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
+    <!-- Every checkbox is a text-labelled teal on/off switch. -->
     <Style TargetType="CheckBox">
       <Setter Property="Foreground" Value="#E9F1FB"/>
       <Setter Property="FontSize" Value="13"/>
@@ -259,46 +260,33 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="CheckBox">
-            <StackPanel Orientation="Horizontal">
-              <Border x:Name="Box" Width="18" Height="18" CornerRadius="4"
-                      Background="#0D1522" BorderBrush="#546E89" BorderThickness="1.5"
-                      VerticalAlignment="Center" Margin="0,0,10,0">
-                <Path x:Name="Check" Visibility="Collapsed" Stroke="#08201D" StrokeThickness="2.2"
-                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
-                      Data="M3,9 L7,13 L15,4" Margin="1"/>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+              <Border x:Name="Track" Width="36" Height="20" CornerRadius="10"
+                      Background="#364B61" VerticalAlignment="Center" Margin="0,0,11,0">
+                <Ellipse x:Name="Thumb" Width="14" Height="14" Fill="#C5D1DD"
+                         HorizontalAlignment="Left" VerticalAlignment="Center" Margin="3,0,0,0"/>
               </Border>
               <ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="True"/>
             </StackPanel>
             <ControlTemplate.Triggers>
               <Trigger Property="IsChecked" Value="True">
-                <Setter TargetName="Box" Property="Background" Value="#27C866"/>
-                <Setter TargetName="Box" Property="BorderBrush" Value="#27C866"/>
-                <Setter TargetName="Check" Property="Visibility" Value="Visible"/>
+                <Setter TargetName="Track" Property="Background" Value="#55D8C8"/>
+                <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/>
+                <Setter TargetName="Thumb" Property="Margin" Value="0,0,3,0"/>
+                <Setter TargetName="Thumb" Property="Fill" Value="#0D2430"/>
               </Trigger>
               <Trigger Property="IsChecked" Value="{x:Null}">
-                <Setter TargetName="Box" Property="Background" Value="#2A3F55"/>
-                <Setter TargetName="Box" Property="BorderBrush" Value="#27C866"/>
-                <Setter TargetName="Check" Property="Data" Value="M4,9 L14,9"/>
-                <Setter TargetName="Check" Property="Stroke" Value="#27C866"/>
-                <Setter TargetName="Check" Property="Visibility" Value="Visible"/>
+                <Setter TargetName="Track" Property="Background" Value="#426D79"/>
               </Trigger>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Box" Property="BorderBrush" Value="#3ADC7E"/>
+                <Setter TargetName="Track" Property="Opacity" Value="0.88"/>
               </Trigger>
-              <MultiTrigger>
-                <MultiTrigger.Conditions>
-                  <Condition Property="IsMouseOver" Value="True"/>
-                  <Condition Property="IsChecked" Value="True"/>
-                </MultiTrigger.Conditions>
-                <Setter TargetName="Box" Property="Background" Value="#3ADC7E"/>
-                <Setter TargetName="Box" Property="BorderBrush" Value="#3ADC7E"/>
-              </MultiTrigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Opacity" Value="0.45"/>
               </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="Box" Property="BorderBrush" Value="#3ADC7E"/>
-                <Setter TargetName="Box" Property="BorderThickness" Value="2"/>
+                <Setter TargetName="Track" Property="BorderBrush" Value="#6EE7D7"/>
+                <Setter TargetName="Track" Property="BorderThickness" Value="1"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>

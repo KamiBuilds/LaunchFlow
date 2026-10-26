@@ -98,8 +98,18 @@ check('VaultBackupService' not in main_code and 'VaultBackupService' not in db,
       'automatic database backup calls removed')
 check(not (root/'LaunchFlow/Services/VaultBackupService.cs').exists(),
       'unused database backup service removed')
-check('Value="#27C866"' in styles and 'Value="#27C866"' in main_xaml,
-      'enabled controls use solid green')
+check('Value="#55D8C8"' in styles and 'Value="#55D8C8"' in main_xaml,
+      'switches use the same LaunchFlow teal')
+check('x:Name="Check"' not in styles and 'x:Name="Thumb"' in styles,
+      'checkbox controls have no checkmark glyph')
+recorder=(root/'LaunchFlow/VisualRecorderWindow.xaml.cs').read_text(encoding='utf-8')
+check('_context.ExposeBindingAsync<string>' in recorder and '_context.AddInitScriptAsync' in recorder,
+      'Teach listens across browser tabs and navigation')
+check("document.addEventListener('pointerdown'" in recorder and
+      "document.addEventListener('click'" in recorder,
+      'Teach captures pointer and keyboard clicks')
+check('element.value' not in recorder and 'input,select,textarea' in recorder,
+      'Teach records form-control clicks without text values')
 check('ImportLaunchFlowFile' in main_code and 'SecureTransferService.Export' in main_code,
       'protected import and export remain available')
 print('\n'+ ('FAILED: '+', '.join(errors) if errors else 'Source/configuration checks PASS. Native Windows build remains required.'))

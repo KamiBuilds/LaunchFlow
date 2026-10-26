@@ -12,7 +12,7 @@ public partial class AboutWindow : Window
         Loaded += (_, _) => DarkWindowChrome.Apply(this);
         var version = Assembly.GetExecutingAssembly().GetName().Version;
         VersionText.Text = version is null
-            ? "Version 0.7.18"
+            ? "Version 0.7.19"
             : $"Version {version.Major}.{version.Minor}.{version.Build}";
     }
 

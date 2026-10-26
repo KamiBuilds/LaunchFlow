@@ -55,7 +55,7 @@
           </StackPanel>
           <ControlTemplate.Triggers>
             <Trigger Property="IsChecked" Value="True">
-              <Setter TargetName="Track" Property="Background" Value="#27C866"/>
+              <Setter TargetName="Track" Property="Background" Value="#55D8C8"/>
               <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/>
               <Setter TargetName="Thumb" Property="Margin" Value="0,0,3,0"/>
               <Setter TargetName="Thumb" Property="Fill" Value="#0A1B26"/>

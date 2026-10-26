@@ -1,3 +1,14 @@
+# v0.7.19 — Teal switches and multi-click recording
+
+- Removed checkmark icons from checkbox controls, replacing them with compact on/off switches in LaunchFlow teal.
+- Matched the workflow Enabled switch to the same blue-green accent.
+- Record every user click, including form-field clicks, without collecting entered values or passwords.
+- Register Teach listeners across browser navigations, child frames and newly opened tabs.
+- Capture pointer clicks before redirects and keyboard-activated clicks as fallback.
+- Continue showing the number of captured actions and give in-flight callbacks time to finish when saving.
+
+**Testing:** Requires a native Windows compilation and practical Teach-session tests before release.
+
 # v0.7.18 — Simpler interface and green enabled controls
 
 - Checked boxes and the workflow on/off switch now use a consistent solid green.

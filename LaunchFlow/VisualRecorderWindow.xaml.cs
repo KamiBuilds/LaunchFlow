@@ -12,12 +12,16 @@ namespace LaunchFlow;
 public partial class VisualRecorderWindow : Window
 {
     private readonly IPage _page;
-    private readonly DispatcherTimer _drainTimer = new() { Interval = TimeSpan.FromMilliseconds(200) };
+    private readonly IBrowserContext _context;
+    private readonly DispatcherTimer _drainTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
     private readonly ConcurrentQueue<CapturedAction> _pending = new();
     private readonly string _bindingName = "__launchFlowTeach_" + Guid.NewGuid().ToString("N");
+    private readonly string _stateName = "__launchFlowTeachState_" + Guid.NewGuid().ToString("N");
     private IAsyncDisposable? _binding;
     private bool _capturing;
     private bool _stopping;
+    private bool _initializing;
+    private bool _saving;
 
     public bool Saved { get; private set; }
     public List<WorkflowStep> RecordedSteps { get; } = new();
@@ -25,6 +29,7 @@ public partial class VisualRecorderWindow : Window
     public VisualRecorderWindow(IPage page)
     {
         _page = page;
+        _context = page.Context;
         InitializeComponent();
         Loaded += async (_, _) =>
         {
@@ -34,111 +39,143 @@ public partial class VisualRecorderWindow : Window
         _drainTimer.Tick += (_, _) => DrainActions();
     }
 
-    // Browser-to-app notifications keep clicks that would be lost on navigation.
-    // AddInitScriptAsync reattaches the click listener to each navigated frame.
     private async Task StartRecordingAsync()
     {
-        if (_stopping || _capturing) return;
+        if (_stopping || _initializing || _binding is not null) return;
+        _initializing = true;
+        _capturing = true;
+        _drainTimer.Start();
         try
         {
-            if (_binding is null)
+            // Bind to the browser context so clicks survive redirects and new tabs.
+            _binding = await _context.ExposeBindingAsync<string>(_bindingName, (_, json) =>
             {
-                _binding = await _page.ExposeBindingAsync<string>(_bindingName,
-                    (_, json) =>
-                    {
-                        if (!_capturing || _stopping || json.Length > 8192) return;
-                        try
-                        {
-                            var action = JsonSerializer.Deserialize<CapturedAction>(json,
-                                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                            if (action?.Type == "Click" && !string.IsNullOrWhiteSpace(action.Target))
-                                _pending.Enqueue(action);
-                        }
-                        catch (JsonException) { /* Ignore malformed messages. */ }
-                    });
-                await _page.AddInitScriptAsync(BuildRecorderScript());
+                if (!_capturing || _stopping || json.Length > 8192) return;
+                try
+                {
+                    var action = JsonSerializer.Deserialize<CapturedAction>(json,
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    if (action?.Type == "Click" &&
+                        !string.IsNullOrWhiteSpace(action.Target) &&
+                        action.Target.Length <= 2048)
+                        _pending.Enqueue(action);
+                }
+                catch (JsonException) { }
+            });
+
+            await _context.AddInitScriptAsync(BuildRecorderScript());
+            var script = BuildRecorderScript();
+
+            // Attach immediately to already-open pages and frames as well.
+            foreach (var page in _context.Pages)
+            {
+                if (page.IsClosed) continue;
+                foreach (var frame in page.Frames)
+                {
+                    try { await frame.EvaluateAsync(script); }
+                    catch (PlaywrightException) { }
+                }
             }
-            await _page.EvaluateAsync(BuildRecorderScript());
-            _capturing = true;
-            _drainTimer.Start();
+
             CaptureToggle.Content = "Pause recording";
-            CaptureStatus.Text = "Recording clicks… Switch to the browser and click something.";
+            CaptureStatus.Text = "Recording every click. Use the browser, then come back to Save clicks.";
         }
         catch (Exception ex)
         {
             _capturing = false;
-            CaptureStatus.Text = "Could not start click recording. You can still add a step manually.";
-            MessageBox.Show(this, ex.Message, "Teach couldn't start", MessageBoxButton.OK, MessageBoxImage.Warning);
+            _drainTimer.Stop();
+            CaptureToggle.IsEnabled = false;
+            CaptureStatus.Text = "Click recording could not start. You can still add steps manually.";
+            MessageBox.Show(this, ex.Message, "Teach couldn't start",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            _initializing = false;
         }
     }
 
     private string BuildRecorderScript() => $$"""
         (() => {
           const binding = '{{_bindingName}}';
-          if (window.__lfStopTeach) window.__lfStopTeach();
-          let active = true;
+          const stateName = '{{_stateName}}';
+          if (window[stateName] || typeof window[binding] !== 'function') return;
+
           const cssPath = (element) => {
             if (!(element instanceof Element)) return '';
             if (element.id) return '#' + CSS.escape(element.id);
             const parts = [];
             let el = element;
-            for (let i = 0; el && i < 7; i++, el = el.parentElement) {
-              if (el.id) { parts.unshift('#' + CSS.escape(el.id)); break; }
+            for (let i = 0; el && i < 8; i++, el = el.parentElement) {
+              if (el.id) {
+                parts.unshift('#' + CSS.escape(el.id));
+                break;
+              }
               let name = el.tagName.toLowerCase();
               const parent = el.parentElement;
               if (parent) {
-                const similar = [...parent.children].filter(n => n.tagName === el.tagName);
-                if (similar.length > 1) name += ':nth-of-type(' + (similar.indexOf(el) + 1) + ')';
+                const siblings = Array.from(parent.children).filter(n => n.tagName === el.tagName);
+                if (siblings.length > 1) name += ':nth-of-type(' + (siblings.indexOf(el) + 1) + ')';
               }
               parts.unshift(name);
             }
             return parts.join(' > ');
           };
+
+          let lastPointerTime = 0;
+          const record = (event) => {
+            if (!event.isTrusted) return;
+            const node = event.target;
+            if (!(node instanceof Element)) return;
+            const element = node.closest('a,button,input,select,textarea,label,[role="button"],[role="link"]') || node;
+            const target = cssPath(element);
+            if (!target) return;
+
+            // Store only element selectors, never typed text or field values.
+            const editable = element.matches('input,textarea,[contenteditable]') ||
+                             Boolean(element.closest('[contenteditable]'));
+            const label = editable
+              ? (element.getAttribute('aria-label') || element.tagName.toLowerCase())
+              : (element.getAttribute('aria-label') || element.textContent || '').trim().slice(0, 48);
+            const send = window[binding];
+            if (typeof send === 'function') {
+              void send(JSON.stringify({ type: 'Click', target, label })).catch(() => {});
+            }
+          };
+
+          const onPointer = (event) => {
+            if (event.button !== 0 || !event.isPrimary) return;
+            lastPointerTime = Date.now();
+            record(event);
+          };
           const onClick = (event) => {
-            if (!active || !event.isTrusted) return;
-            const target = event.target;
-            if (!(target instanceof Element)) return;
-            // Never record typed values, passwords, or editable inputs.
-            if (target.closest('input,textarea,[contenteditable],select,[type=password]')) return;
-            const el = target.closest('a,button,[role="button"],[role="link"],label') || target;
-            const selector = cssPath(el);
-            const report = window[binding];
-            if (!selector || typeof report !== 'function') return;
-            const label = (el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 48);
-            void report(JSON.stringify({type:'Click',target:selector,label})).catch(() => {});
+            // Keyboard-activated clicks lack a preceding pointer event.
+            if (Date.now() - lastPointerTime >= 700) record(event);
           };
+          document.addEventListener('pointerdown', onPointer, true);
           document.addEventListener('click', onClick, true);
-          window.__lfStopTeach = () => {
-            active = false;
+          window[stateName] = () => {
+            document.removeEventListener('pointerdown', onPointer, true);
             document.removeEventListener('click', onClick, true);
+            delete window[stateName];
           };
-          return true;
         })()
         """;
 
-    private async void ToggleCapture_Click(object sender, RoutedEventArgs e)
+    private void ToggleCapture_Click(object sender, RoutedEventArgs e)
     {
-        if (_stopping) return;
-        if (_capturing)
-        {
-            _capturing = false;
-            DrainActions();
-            CaptureToggle.Content = "Resume recording";
-            CaptureStatus.Text = "Paused — " + RecordedSteps.Count + " click(s) captured.";
-        }
-        else
-        {
-            try { await _page.EvaluateAsync(BuildRecorderScript()); }
-            catch { /* The init script will reattach after navigation. */ }
-            _capturing = true;
-            CaptureToggle.Content = "Pause recording";
-            CaptureStatus.Text = "Recording clicks…";
-        }
+        if (_stopping || _initializing || _saving || _binding is null) return;
+        _capturing = !_capturing;
+        CaptureToggle.Content = _capturing ? "Pause recording" : "Resume recording";
+        DrainActions();
+        CaptureStatus.Text = _capturing
+            ? "Recording every click…"
+            : $"Paused — {RecordedSteps.Count} click(s) captured.";
     }
 
     private void DrainActions()
     {
-        bool changed = false;
+        var changed = false;
         while (_pending.TryDequeue(out var item))
         {
             if (string.IsNullOrWhiteSpace(item.Target)) continue;
@@ -151,18 +188,18 @@ public partial class VisualRecorderWindow : Window
             });
             changed = true;
         }
-        if (changed)
-        {
-            RefreshList();
-            CaptureStatus.Text = "Captured " + RecordedSteps.Count + " click(s). Click Save when finished.";
-        }
+
+        if (!changed) return;
+        RefreshList();
+        CaptureStatus.Text = $"Recorded {RecordedSteps.Count} click(s). Click Save when you're done.";
     }
 
     private void CaptureUrl_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            var url = _page.Url;
+            var page = _context.Pages.LastOrDefault(p => !p.IsClosed) ?? _page;
+            var url = page.Url;
             AutomationEngine.ValidateUrl(url);
             AddStep("Navigate", url, "Open " + url);
         }
@@ -175,8 +212,10 @@ public partial class VisualRecorderWindow : Window
 
     private void AddNavigate_Click(object sender, RoutedEventArgs e) =>
         EditNew(new WorkflowStep { Type = "Navigate", Target = "https://", Description = "Open a page" });
+
     private void AddClick_Click(object sender, RoutedEventArgs e) =>
         EditNew(new WorkflowStep { Type = "Click", Target = "button", Description = "Click" });
+
     private void AddWait_Click(object sender, RoutedEventArgs e) =>
         EditNew(new WorkflowStep { Type = "Wait", Target = "1500", Description = "Wait" });
 
@@ -203,23 +242,31 @@ public partial class VisualRecorderWindow : Window
         RecordedSteps.Clear();
         while (_pending.TryDequeue(out _)) { }
         RefreshList();
-        CaptureStatus.Text = "No clicks saved yet. Try clicking something on the website.";
+        CaptureStatus.Text = "No clicks recorded yet. Try clicking something on the website.";
     }
 
     private async void Save_Click(object sender, RoutedEventArgs e)
     {
-        if (_stopping) return;
+        if (_stopping || _saving || _initializing) return;
+        _saving = true;
         SaveStepsButton.IsEnabled = false;
-        await Task.Delay(200);
-        DrainActions();
-        if (RecordedSteps.Count == 0)
+        try
         {
-            SaveStepsButton.IsEnabled = true;
-            CaptureStatus.Text = "Nothing was recorded yet. Click a button on the website, then try Save clicks.";
-            return;
+            await Task.Delay(450);
+            DrainActions();
+            if (RecordedSteps.Count == 0)
+            {
+                CaptureStatus.Text = "Nothing was recorded. Click on the website, then try Save again.";
+                return;
+            }
+            Saved = true;
+            Close();
         }
-        Saved = true;
-        Close();
+        finally
+        {
+            _saving = false;
+            if (!Saved && !_stopping) SaveStepsButton.IsEnabled = true;
+        }
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
@@ -234,12 +281,25 @@ public partial class VisualRecorderWindow : Window
         _stopping = true;
         _capturing = false;
         _drainTimer.Stop();
-        try { await _page.EvaluateAsync("() => { if (window.__lfStopTeach) window.__lfStopTeach(); }"); }
-        catch { /* Browser may have closed. */ }
+        var cleanup = "() => { const key = '" + _stateName + "'; if (typeof window[key] === 'function') window[key](); }";
+        try
+        {
+            foreach (var page in _context.Pages)
+            {
+                if (page.IsClosed) continue;
+                foreach (var frame in page.Frames)
+                {
+                    try { await frame.EvaluateAsync(cleanup); }
+                    catch (PlaywrightException) { }
+                }
+            }
+        }
+        catch (PlaywrightException) { }
+
         if (_binding is not null)
         {
             try { await _binding.DisposeAsync(); }
-            catch { /* Browser may have disposed the binding. */ }
+            catch (Exception) { }
             _binding = null;
         }
     }
