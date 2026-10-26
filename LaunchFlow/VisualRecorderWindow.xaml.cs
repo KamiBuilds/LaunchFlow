@@ -48,9 +48,11 @@ public partial class VisualRecorderWindow : Window
         try
         {
             // Bind to the browser context so clicks survive redirects and new tabs.
-            _binding = await _context.ExposeBindingAsync<string>(_bindingName, (_, json) =>
+            _binding = await _context.ExposeBindingAsync<string>(_bindingName, (source, json) =>
             {
-                if (!_capturing || _stopping || json.Length > 8192) return;
+                // Recording is restricted to approved hosts, including child frames.
+                if (!_capturing || _stopping || json.Length > 8192 ||
+                    !EnterprisePolicy.Load().AllowsUrl(source.Frame.Url)) return;
                 try
                 {
                     var action = JsonSerializer.Deserialize<CapturedAction>(json,
@@ -103,11 +105,14 @@ public partial class VisualRecorderWindow : Window
 
           const cssPath = (element) => {
             if (!(element instanceof Element)) return '';
-            if (element.id) return '#' + CSS.escape(element.id);
+            const safeId = (s) => typeof s === 'string' && /^[A-Za-z][A-Za-z0-9_-]{0,79}$/.test(s);
+            const testId = element.getAttribute('data-testid');
+            if (safeId(testId)) return '[data-testid="' + testId + '"]';
+            if (safeId(element.id)) return '#' + CSS.escape(element.id);
             const parts = [];
             let el = element;
             for (let i = 0; el && i < 8; i++, el = el.parentElement) {
-              if (el.id) {
+              if (safeId(el.id)) {
                 parts.unshift('#' + CSS.escape(el.id));
                 break;
               }
@@ -131,12 +136,9 @@ public partial class VisualRecorderWindow : Window
             const target = cssPath(element);
             if (!target) return;
 
-            // Store only element selectors, never typed text or field values.
-            const editable = element.matches('input,textarea,[contenteditable]') ||
-                             Boolean(element.closest('[contenteditable]'));
-            const label = editable
-              ? (element.getAttribute('aria-label') || element.tagName.toLowerCase())
-              : (element.getAttribute('aria-label') || element.textContent || '').trim().slice(0, 48);
+            // Labels and textContent can contain names, ticket IDs or secrets.
+            // Record only the HTML element type and a selector, never page text.
+            const label = element.tagName.toLowerCase();
             const send = window[binding];
             if (typeof send === 'function') {
               void send(JSON.stringify({ type: 'Click', target, label })).catch(() => {});
