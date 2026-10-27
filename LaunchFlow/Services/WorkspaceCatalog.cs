@@ -19,6 +19,18 @@ public static class WorkspaceCatalog
             string.Equals(selected.Name, enteredName?.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
+    public static bool ConfirmationStillValid(
+        Configuration configuration, string name, WorkspaceProfile? expectedTarget,
+        long expectedRevision, long currentRevision, IReadOnlyList<Guid> enabledWorkflowIds)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(enabledWorkflowIds);
+        return expectedRevision == currentRevision &&
+            ReferenceEquals(FindByName(configuration, name), expectedTarget) &&
+            configuration.Workflows.Where(workflow => workflow.Enabled)
+                .Select(workflow => workflow.Id).SequenceEqual(enabledWorkflowIds);
+    }
+
     public static WorkspaceProfile Save(Configuration configuration, string name, Action persist)
     {
         ArgumentNullException.ThrowIfNull(configuration);
