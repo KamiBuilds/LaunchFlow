@@ -49,6 +49,10 @@ check('WorkspaceCatalog.Save(_configuration, name' in source and
       'WorkspaceCatalog.IsCurrentSelection' in source and
       'PreviewWorkspaceButton.IsEnabled = available && savedWorkspaceSelected' in source,
       "workspace save, preview and run share rollback-safe validated selection")
+check('WorkspaceCatalog.ConfirmationStillValid(' in source and
+      '_workspaceRevision++' in source and
+      'VaultDatabase.Current.ReplaceSnapshot(imported.Config, imported.Credentials);\n            _workspaceRevision++;' in source,
+      "encrypted import invalidates modal workspace overwrite approval")
 style = (root / "LaunchFlow/App.xaml").read_text(encoding="utf-8")
 check('SelectionBoxItemTemplate' in style and 'PART_Popup' in style
       and 'ItemsPresenter' in style,
