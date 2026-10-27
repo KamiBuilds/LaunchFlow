@@ -424,6 +424,10 @@
                   <TextBlock Text="Check whether a new version is available." TextWrapping="Wrap" Foreground="#BACCE0" Margin="0,0,0,8"/>
                   <TextBox x:Name="UpdateFeedBox" Visibility="Collapsed"/>
                   <Button Content="Check for updates" Click="CheckUpdates_Click" Padding="14,8" HorizontalAlignment="Left"/>
+                  <Button Content="Browser setup" Click="BrowserSetup_Click" Padding="14,8"
+                          HorizontalAlignment="Left" Margin="0,10,0,0"
+                          ToolTip="Check approved browsers and open official download pages only with consent"
+                          AutomationProperties.Name="Browser setup and readiness"/>
                   <Button Content="Export safe diagnostics" Click="ExportDiagnostics_Click" Padding="14,8"
                           HorizontalAlignment="Left" Margin="0,10,0,0"
                           ToolTip="Save a local report containing only version, timestamps and redacted event codes"
