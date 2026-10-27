@@ -26,6 +26,17 @@ try
     ProfileVaultService.SealAll();
     ProfileVaultService.UnsealAll();
     Assert(CrashLog.Failures.Count == 0, "repeated profile lock/unlock reports no failures");
+    var tamperedId = Guid.NewGuid().ToString("N");
+    var tamperedPath = Path.Combine(ProfileVaultService.SealedRoot, tamperedId + ".profile.aes");
+    var tampered = File.ReadAllBytes(firstArchive);
+    tampered[24] ^= 0x01;
+    File.WriteAllBytes(tamperedPath, tampered);
+    var rejectedTamper = false;
+    try { ProfileVaultService.UnsealAll(); }
+    catch (AggregateException) { rejectedTamper = true; }
+    Assert(rejectedTamper && !Directory.Exists(Path.Combine(ProfileVaultService.ProfilesRoot, tamperedId)),
+        "tampered authenticated chunks never publish a browser profile");
+    File.Delete(tamperedPath);
     var invalidId = Guid.NewGuid().ToString("N");
     using var zip = new MemoryStream();
     using (var archive = new ZipArchive(zip, ZipArchiveMode.Create, leaveOpen: true))
