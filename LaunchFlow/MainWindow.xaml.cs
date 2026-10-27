@@ -1188,6 +1188,32 @@ public partial class MainWindow : Window
         new AboutWindow { Owner = this }.ShowDialog();
     }
 
+    private void ExportDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        if (MessageBox.Show(this,
+                "Export a local support report with application version and redacted event codes? No websites, credentials or workflow details will be included.",
+                "Export diagnostics", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Save redacted diagnostics",
+            Filter = "Text report (*.txt)|*.txt",
+            DefaultExt = ".txt",
+            FileName = "LaunchFlow-Diagnostics.txt"
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        try
+        {
+            DiagnosticReportService.Export(dialog.FileName);
+            MessageBox.Show(this, "Redacted diagnostic report saved.", "Diagnostics");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "Could not export diagnostics: " + ex.GetType().Name,
+                "Diagnostics", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
     private TimeSpan LockTimeout => TimeSpan.FromMinutes(Math.Clamp(_configuration.VaultLockMinutes, 1, 120));
 
     private void HandleSessionSwitch(object sender, SessionSwitchEventArgs e)
