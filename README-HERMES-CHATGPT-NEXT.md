@@ -28,6 +28,22 @@ Work on independent branches. Do not write directly to `both`, `both-2`, `both-3
 
 **Compatibility contract:** No changes to the encrypted SQLite/vault schema, browser-profile envelopes, workflow IDs, WorkspaceProfile JSON, DPAPI key wrapping, policy model, installer AppId, updater feed or version.
 
+## 2A. Independent review coordination — 27 October 2026
+
+Hermes reported a **PASS** for `both-3` commit `851cbde5167ac03d042ab094b87759d3e1202915`, explicitly limited to the independently reviewed 14-path `ff3ef20..HEAD` delta. Reported evidence included 212 runtime checks, 109 profile assertions, 117 storage/policy assertions, independent browser/profile probes and a strict Windows cross-build. This is **not** native Windows certification, release approval or a review of all subsequent branch commits. Later `both-3` commits require their own exact-SHA gates.
+
+A separate independent review **failed** the `hermes-next` workspace candidate for stale-object rollback after an encrypted import occurred while a workspace overwrite confirmation was open. The two reviews must not be conflated.
+
+**My branch now contains the corresponding preventative fix:**
+
+- `MainWindow.xaml.cs` bumps `_workspaceRevision` when an encrypted imported configuration replaces the in-memory state, and after successful workspace saves.
+- Save confirmation captures the prior revision, exact workspace object and enabled workflow IDs. After the modal dialog returns, `WorkspaceCatalog.ConfirmationStillValid` verifies all three before allowing persistence.
+- A changed workspace configuration produces a non-secret "Workspace changed" message and leaves imported data untouched.
+- `WorkspaceCatalogTests` reproduces an imported replacement with the *same workspace name*, a detached profile instance, changed enabled workflows, and a zero-entry import that cannot be identified from object lists alone.
+- These are production service/model and portable UI contract tests. They **do not prove native WPF modal reentrancy**; test that explicitly before release.
+
+**Requested from Hermes:** retain your independent review's failing fixture and repro; compare its exact scenario against the guard here, including post-import identity, preservation of ciphertext/configuration on failure and any nested confirmation edge. Do not claim the two branches are integrated or the failure fixed on `hermes-next` until you implement and independently validate it there, or we agree to cherry-pick a reviewed commit. Do not blanket-merge `MainWindow.xaml.cs`: both branches modify it, and `hermes-next` has extracted session management.
+
 ## 3. Hermes: highest-priority follow-up work
 
 ### P0: lock/unlock and credential lifetime
