@@ -180,11 +180,17 @@
                        AutomationProperties.Name="Workflow status"/>
             <TextBlock x:Name="WorkspaceHeading" Text="WORKSPACES" Margin="0,13,0,5"
                        FontSize="11" FontWeight="SemiBold" Foreground="#A0B4CC"/>
-            <ComboBox x:Name="WorkspaceCombo" IsEditable="True" DisplayMemberPath="Name"
-                      ToolTip="Choose or type a workspace name" AutomationProperties.Name="Workspace profiles"/>
+            <TextBlock Text="Saved workspaces" Foreground="#9DAFC5" FontSize="12" Margin="0,0,0,5"/>
+            <ComboBox x:Name="WorkspaceCombo" IsEditable="False" DisplayMemberPath="Name"
+                      MaxDropDownHeight="260" SelectionChanged="WorkspaceCombo_SelectionChanged"
+                      ToolTip="Select a saved workspace" AutomationProperties.Name="Saved workspace selector"/>
+            <TextBlock Text="Workspace name" Foreground="#9DAFC5" FontSize="12" Margin="0,10,0,5"/>
+            <TextBox x:Name="WorkspaceNameBox" Margin="0,0,0,3"
+                     ToolTip="Enter a name to create a workspace, or use the selected name to update it"
+                     AutomationProperties.Name="Workspace name"/>
             <WrapPanel Margin="0,6,0,0">
               <Button x:Name="SaveWorkspaceButton" Content="Save workspace" Click="SaveWorkspace_Click"
-                      Padding="6,5" ToolTip="Save enabled websites as a workspace" AutomationProperties.Name="Save workspace"/>
+                      Padding="6,5" ToolTip="Save enabled websites under the workspace name" AutomationProperties.Name="Save workspace"/>
               <Button Content="Preview" Click="PreviewWorkspace_Click" Padding="6,5"
                       ToolTip="View monitor assignments and browser readiness without starting workflows"
                       AutomationProperties.Name="Preview selected workspace"/>
