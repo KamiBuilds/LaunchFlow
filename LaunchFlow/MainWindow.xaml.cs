@@ -1188,6 +1188,9 @@ public partial class MainWindow : Window
         new AboutWindow { Owner = this }.ShowDialog();
     }
 
+    private void BrowserSetup_Click(object sender, RoutedEventArgs e) =>
+        new BrowserSetupWindow { Owner = this }.ShowDialog();
+
     private void ExportDiagnostics_Click(object sender, RoutedEventArgs e)
     {
         if (MessageBox.Show(this,
