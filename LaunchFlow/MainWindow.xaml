@@ -184,37 +184,63 @@
       <Grid.ColumnDefinitions><ColumnDefinition Width="274" x:Name="SidebarColumn"/><ColumnDefinition Width="36"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
       <Button x:Name="SidebarToggleButton" Grid.Column="1" Content="❮" Click="ToggleSidebar_Click" ToolTip="Show or hide the workflow list" Width="31" Height="42" VerticalAlignment="Top" Margin="0,3,0,0" Padding="2" Background="#20384C"/><Border Grid.Column="0" Background="#111F30" CornerRadius="13" Padding="17" x:Name="SidebarPanel" BorderBrush="#263C50" BorderThickness="1">
         <DockPanel>
-          <StackPanel DockPanel.Dock="Top" Margin="0,0,0,15">
-            <TextBlock Text="YOUR WORKFLOWS" FontWeight="SemiBold" FontSize="11" Foreground="#A0B4CC"/>
-            <TextBlock Text="Select a site to configure" Foreground="#7D91A8" FontSize="12" Margin="0,7,0,0"/>
-            <TextBlock x:Name="WorkflowStatusLabel" Text="Ready" FontSize="11" Foreground="#46DACB"
-                       Margin="0,6,0,0" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
-                       AutomationProperties.Name="Workflow status"/>
-            <TextBlock x:Name="WorkspaceHeading" Text="WORKSPACES" Margin="0,13,0,5"
-                       FontSize="11" FontWeight="SemiBold" Foreground="#A0B4CC"/>
-            <TextBlock Text="Saved workspaces" Foreground="#9DAFC5" FontSize="12" Margin="0,0,0,5"/>
-            <ComboBox x:Name="WorkspaceCombo" IsEditable="False" DisplayMemberPath="Name"
-                      MaxDropDownHeight="260" SelectionChanged="WorkspaceCombo_SelectionChanged"
-                      ToolTip="Select a saved workspace" AutomationProperties.Name="Saved workspace selector"/>
-            <TextBlock Text="Workspace name" Foreground="#9DAFC5" FontSize="12" Margin="0,10,0,5"/>
-            <TextBox x:Name="WorkspaceNameBox" Margin="0,0,0,3"
-                     ToolTip="Enter a name to create a workspace, or use the selected name to update it"
-                     AutomationProperties.Name="Workspace name"/>
-            <WrapPanel Margin="0,6,0,0">
-              <Button x:Name="SaveWorkspaceButton" Content="Save workspace" Click="SaveWorkspace_Click"
-                      Padding="6,5" ToolTip="Save enabled websites under the workspace name" AutomationProperties.Name="Save workspace"/>
-              <Button Content="Preview" Click="PreviewWorkspace_Click" Padding="6,5"
-                      ToolTip="View monitor assignments and browser readiness without starting workflows"
-                      AutomationProperties.Name="Preview selected workspace"/>
-              <Button x:Name="RunWorkspaceButton" Content="▶ Run" Click="RunWorkspace_Click"
-                      Padding="6,5" ToolTip="Run selected workspace" AutomationProperties.Name="Run selected workspace"/>
-            </WrapPanel>
+          <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
+            <TextBlock Text="YOUR WORKFLOWS" FontWeight="SemiBold" FontSize="11"
+                       Foreground="#92B4C6" Margin="1,0,0,3"/>
+            <TextBlock Text="Everything ready for your next shift." Foreground="#A8BECD"
+                       FontSize="11" TextWrapping="Wrap" Margin="1,0,0,8"/>
+            <Border CornerRadius="8" Background="#14323E" Padding="9,6"
+                    HorizontalAlignment="Left" Margin="0,0,0,16">
+              <StackPanel Orientation="Horizontal">
+                <Ellipse Width="7" Height="7" Fill="#46DACB" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <TextBlock x:Name="WorkflowStatusLabel" Text="Ready" Foreground="#91EBDD"
+                           FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center"
+                           AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Workflow status"/>
+              </StackPanel>
+            </Border>
+            <Border Background="#172B3E" BorderBrush="#2B4558" BorderThickness="1"
+                    CornerRadius="11" Padding="11">
+              <StackPanel>
+                <TextBlock x:Name="WorkspaceHeading" Text="WORKSPACE PROFILES"
+                           FontSize="10" FontWeight="Bold" Foreground="#8DAFBE"
+                           Margin="1,0,0,10"/>
+                <TextBlock Text="Saved workspace" Foreground="#C5D9E4" FontSize="11"
+                           Margin="1,0,0,5"/>
+                <ComboBox x:Name="WorkspaceCombo" IsEditable="False" DisplayMemberPath="Name"
+                          MaxDropDownHeight="260" SelectionChanged="WorkspaceCombo_SelectionChanged"
+                          ToolTip="Select a saved workspace" AutomationProperties.Name="Saved workspace selector"/>
+                <TextBlock Text="New / existing name" Foreground="#C5D9E4"
+                           FontSize="11" Margin="1,11,0,5"/>
+                <TextBox x:Name="WorkspaceNameBox"
+                         ToolTip="Enter a name to create a workspace, or use the selected name to update it"
+                         AutomationProperties.Name="Workspace name"/>
+                <Grid Margin="0,10,0,0">
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                  <Button x:Name="SaveWorkspaceButton" Grid.Column="0" Content="Save"
+                          Click="SaveWorkspace_Click" Padding="10,6" Margin="0"
+                          ToolTip="Save enabled websites under the workspace name"
+                          AutomationProperties.Name="Save workspace"/>
+                  <Button Grid.Column="2" Content="Preview" Click="PreviewWorkspace_Click"
+                          Padding="10,6" Margin="0"
+                          ToolTip="View monitor assignments and browser readiness without starting workflows"
+                          AutomationProperties.Name="Preview selected workspace"/>
+                </Grid>
+                <Button x:Name="RunWorkspaceButton" Content="▶ Run workspace" Click="RunWorkspace_Click"
+                        Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch"
+                        Margin="0,8,0,0" Padding="10,7"
+                        ToolTip="Run selected workspace" AutomationProperties.Name="Run selected workspace"/>
+              </StackPanel>
+            </Border>
+            <TextBlock Text="WEBSITES" FontWeight="SemiBold" FontSize="10"
+                       Foreground="#92B4C6" Margin="2,15,0,0"/>
           </StackPanel>
-          <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,14,0,0">
+          <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,12,0,0">
             <Button x:Name="DuplicateWorkflowButton" Content="Duplicate" Click="DuplicateWorkflow_Click" IsEnabled="False"/>
             <Button x:Name="DeleteWorkflowButton" Content="Delete" Click="DeleteWorkflow_Click" IsEnabled="False" Margin="0"/>
           </StackPanel>
-          <ListBox x:Name="WorkflowList" SelectionChanged="WorkflowList_SelectionChanged" DisplayMemberPath="Name" Padding="5" FontSize="14"/>
+          <ListBox x:Name="WorkflowList" SelectionChanged="WorkflowList_SelectionChanged"
+                   DisplayMemberPath="Name" Padding="5" FontSize="13" Background="Transparent"
+                   AutomationProperties.Name="Saved website workflows"/>
         </DockPanel>
       </Border>
       <Border Grid.Column="2" Background="#111F30" CornerRadius="13" Padding="22" BorderBrush="#263C50" BorderThickness="1">
@@ -223,7 +249,7 @@
           <StackPanel x:Name="EditorPanel">
             <Grid Height="40" Margin="0,0,0,10">
               <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-              <TextBlock Text="Workflow editor" FontWeight="Bold" FontSize="18" VerticalAlignment="Center"/>
+              <TextBlock Text="Website configuration" FontWeight="Bold" FontSize="20" VerticalAlignment="Center"/>
               <CheckBox Grid.Column="1" x:Name="EnabledCheck" Style="{StaticResource WorkflowEnabledToggle}"
                         AutomationProperties.Name="Enable or disable this workflow"
                         ToolTip="Choose whether this website runs with Run all" VerticalAlignment="Center" Margin="0,0,2,0"/>
@@ -251,11 +277,14 @@
             </Grid>
             <!-- Legacy control retained for settings compatibility. Old destinations migrate to steps. -->
             <TextBox x:Name="DestinationUrlBox" Visibility="Collapsed"/>
-            <TextBlock Text="Save a login, then Run. Use Add page for another URL after sign-in." TextWrapping="Wrap" Foreground="#BED2E5" Margin="0,0,0,10" FontSize="12"/>
+            <Border Background="#153440" CornerRadius="8" Padding="12,9" Margin="0,2,0,16">
+              <TextBlock Text="Configure the website above, then add any steps you want to run after sign-in."
+                         Foreground="#C3DEDF" TextWrapping="Wrap" FontSize="12"/>
+            </Border>
             <DockPanel Margin="0,0,0,8">
-              <TextBlock Text="ACTIONS AFTER SIGN-IN" Style="{StaticResource SectionHeader}" DockPanel.Dock="Left" VerticalAlignment="Center"/>
+              <TextBlock Text="AUTOMATION STEPS" Style="{StaticResource SectionHeader}" DockPanel.Dock="Left" VerticalAlignment="Center"/>
               <WrapPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button x:Name="TeachButton" Content="● Teach clicks" Click="RecordSteps_Click" Style="{StaticResource PrimaryButton}"
+                <Button x:Name="TeachButton" Content="● Record clicks" Click="RecordSteps_Click" Style="{StaticResource PrimaryButton}"
                         AutomationProperties.Name="Teach by clicking" ToolTip="Show LaunchFlow which buttons to click on your website" Margin="0,0,6,6"/>
                 <Button x:Name="RepairButton" Content="Repair login" Click="RepairLogin_Click" Margin="0,0,6,6"
                         ToolTip="Open the site and teach steps when auto-login or MFA breaks"/>
@@ -265,7 +294,7 @@
                 <Button Content="Remove" Click="RemoveStep_Click" Margin="0,0,0,6"/>
               </WrapPanel>
             </DockPanel>
-            <ListBox x:Name="StepList" Height="120" FontSize="13" MouseDoubleClick="EditStep_Click"
+            <ListBox x:Name="StepList" MinHeight="128" Height="152" FontSize="13" MouseDoubleClick="EditStep_Click"
                      AutomationProperties.Name="Workflow steps after sign-in"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,6,0,0">
               <Button Content="↑ Up" Click="MoveStepUp_Click"/>
