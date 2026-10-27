@@ -2,7 +2,7 @@ name: LaunchFlow Windows UI and installer smoke
 
 on:
   push:
-    branches: [both-2, both-3]
+    branches: [both-2, both-3, hermes-next]
   pull_request:
     branches: [both]
 

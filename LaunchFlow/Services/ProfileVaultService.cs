@@ -26,6 +26,7 @@ public static class ProfileVaultService
         var failures = new List<Exception>();
         foreach (var dir in Directory.GetDirectories(ProfilesRoot))
         {
+            if (IsReservedProfileName(Path.GetFileName(dir))) continue;
             try
             {
                 SealDirectory(dir);
@@ -37,7 +38,7 @@ public static class ProfileVaultService
             }
         }
         if (failures.Count > 0)
-            throw new AggregateException("Some browser profiles could not be sealed. Their plaintext folders were retained.", failures);
+            throw new AggregateException("Some browser profiles could not finish sealing or cleanup. Encrypted snapshots and remaining plaintext were retained.", failures);
     }
 
     public static void UnsealAll()
@@ -48,6 +49,7 @@ public static class ProfileVaultService
         var failures = new List<Exception>();
         foreach (var file in Directory.GetFiles(SealedRoot, "*.profile.aes"))
         {
+            if (IsReservedProfileName(Path.GetFileName(file))) continue;
             try
             {
                 UnsealFile(file);
@@ -88,7 +90,11 @@ public static class ProfileVaultService
                 output.Flush(flushToDisk: true);
             }
             File.Move(temp, sealedPath, overwrite: true);
-            Directory.Delete(directory, recursive: true);
+            // Recursive deletion can partially succeed: remove this generation from
+            // browser/seal admission atomically before deleting any of its contents.
+            var disposal = Path.Combine(ProfilesRoot, ".sealed-" + Guid.NewGuid().ToString("N"));
+            Directory.Move(directory, disposal);
+            Directory.Delete(disposal, recursive: true);
         }
         finally
         {
@@ -98,6 +104,10 @@ public static class ProfileVaultService
             if (File.Exists(temp)) File.Delete(temp);
         }
     }
+
+    private static bool IsReservedProfileName(string name) =>
+        name.StartsWith(".restore-", StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith(".sealed-", StringComparison.OrdinalIgnoreCase);
 
     private static void UnsealFile(string sealedPath)
     {

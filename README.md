@@ -1,6 +1,6 @@
 # LaunchFlow
 
-> **`both-3` hardening branch — not release-approved.** Based on the `both-2` UI and feature improvements, with policy-dispatch and profile-compatibility repairs. Work is being regression-tested and independently reviewed; consult [the hardening checklist](docs/BOTH-3-HARDENING.md) for exact verification status. Native Windows desktop/DPAPI/install-upgrade-uninstall tests remain required. Use synthetic data or disposable copies, not production credentials. This branch does not authorize or publish a stable release.
+> **`hermes-next` stabilization branch — not release-approved.** Based on reviewed `both-3` commit `25df42a`, targeting a future v0.7.21 release candidate without changing the current version yet. See the [stabilization contract](docs/HERMES-NEXT-STABILIZATION.md), [profile safety and recovery boundaries](docs/PROFILE-SAFETY-AND-EVOLUTION.md) and [unexecuted native Windows acceptance gates](docs/NATIVE-WINDOWS-ACCEPTANCE.md). Use synthetic data or disposable copies, not production credentials. Development artifacts do not authorize a stable release.
 
 LaunchFlow is a Windows desktop application for automated website workflows, secure local credential storage, and multi-monitor browser sessions.
 
@@ -40,7 +40,7 @@ Teach never records typed text or passwords. Some websites need you to complete 
 
 The core application is in `LaunchFlow/`. The standalone updater is in `bootstrapper/`; Windows setup definitions are in `installer/`; build support is in `tools/`.
 
-Pushes to `both-3`, `both-2`, `both`, `hermes` and `chatgpt`, plus pull requests, run automated checks and Windows installer builds. The [Windows workflow](https://github.com/KamiBuilds/LaunchFlow/actions/workflows/windows.yml) uploads build artifacts; it does not publish a stable release. Its Linux browser job tests linked production logic with explicit Windows platform seams, not the native desktop app.
+Pushes to `hermes-next`, `both-3`, `both-2`, `both`, `hermes` and `chatgpt`, plus pull requests, run automated checks and Windows installer builds. The [Windows workflow](https://github.com/KamiBuilds/LaunchFlow/actions/workflows/windows.yml) uploads build artifacts; it does not publish a stable release. Its Linux browser job tests linked production logic with explicit Windows platform seams, not the native desktop app.
 
 For a manual build, choose **Run workflow** on the intended branch and leave `publish_release` disabled. Optional draft creation requires explicit `DRAFT-v<VERSION>@<full selected commit SHA>` confirmation and native Windows test evidence. That path creates a **draft only**; stable publication is a separate human action after verification. The stable download above does not install this experimental branch.
 

@@ -49,10 +49,18 @@ External task evidence: `/root/projects/launchflow-evidence/hermes-next/`.
 
 ## Progress
 
-- Baseline branch, clean worktree and unchanged protected branch tips verified.
-- Lifecycle overlap investigation active; workspace and profile investigations are
-  read-only and isolated from this worktree.
-- No version change, stable merge or GitHub Release authorized.
+- Lifecycle milestone `62d2387` is independently reviewed and pushed: three stale
+  unlock continuations are fenced by session generation/cancellation ownership;
+  lifecycle orchestration moved into `MainWindow.Session.cs` without a broad rewrite.
+- Profile partial-delete/reseal data loss was independently reproduced and repaired;
+  the exact reviewed service bytes are integrated with a maintained permission-fault
+  regression. See [profile safety and evolution](PROFILE-SAFETY-AND-EVOLUTION.md).
+  Whole-suite integration verification is retained outside the repository.
+- Workspace investigation confirmed four gaps: post-confirmation durable save,
+  selected-ID persistence, pending editor changes in Preview, and null imported entries.
+  Focused repairs are in progress; native dropdown behavior is still unverified.
+- Native acceptance remains [unexecuted](NATIVE-WINDOWS-ACCEPTANCE.md). No version
+  change, stable merge or GitHub Release is authorized.
 
 ## Final report
 
