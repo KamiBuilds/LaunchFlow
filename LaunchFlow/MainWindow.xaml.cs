@@ -71,6 +71,8 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        HeaderVersionLabel.Text = "v" + AppInfo.VersionString;
+        CurrentVersionLabel.Text = "Installed version " + AppInfo.VersionString;
         try
         {
             _configuration = _store.Load();
