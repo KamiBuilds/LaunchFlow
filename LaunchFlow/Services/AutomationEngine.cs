@@ -8,11 +8,21 @@ public sealed class AutomationEngine : IAsyncDisposable
 {
     private readonly CredentialVault _vault;
     private readonly object _gate = new();
+    private readonly SemaphoreSlim _sessionGate = new(1, 1);
     private readonly Dictionary<Guid, TrackedSession> _sessions = new();
+    private readonly HashSet<IBrowserContext> _unclaimedContexts = new();
     private IPlaywright? _playwright;
     private bool _running;
+    private bool _closing;
+    private bool _cleanupRequired;
+    private bool _disposed;
+    private CancellationTokenSource? _activeRunCancellation;
+    private Task _activeRunTask = Task.CompletedTask;
+    private Task? _closeTask;
 
     public event Action<string>? OnLog;
+    public enum WorkflowRunState { Running, WaitingForSignIn, Completed, Failed, Cancelled }
+    public event Action<string, WorkflowRunState>? OnWorkflowStatus;
     public Func<WebsiteWorkflow, string, Task<bool>>? ApproveLoginOriginAsync { get; set; }
 
     public bool IsRunning
@@ -21,10 +31,16 @@ public sealed class AutomationEngine : IAsyncDisposable
     }
 
     public sealed record LoginAttention(Guid WorkflowId, string WorkflowName, string Reason);
+    public sealed record StepAttention(Guid WorkflowId, string WorkflowName, string StepType);
+    private sealed class WorkflowStepException(string stepType) : Exception("Workflow step needs repair.")
+    {
+        public string StepType { get; } = stepType;
+    }
 
     public sealed class RunResult
     {
         public List<LoginAttention> LoginNeedsAttention { get; } = new();
+        public List<StepAttention> StepsNeedAttention { get; } = new();
         public int FinishedCount { get; set; }
         public int FailedCount { get; set; }
     }
@@ -40,51 +56,92 @@ public sealed class AutomationEngine : IAsyncDisposable
             throw new ArgumentException("URL is required.");
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
-            throw new ArgumentException($"Invalid URL: {url}");
+            throw new ArgumentException("A valid HTTP or HTTPS URL is required.");
     }
 
-    public async Task<RunResult> RunAsync(
+    public Task<RunResult> RunAsync(
         IEnumerable<WebsiteWorkflow> workflows,
         CancellationToken cancellationToken,
         bool includeDisabled = false,
         Configuration? configuration = null,
         string? keepassMasterPassword = null)
     {
+        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<RunResult> task;
         lock (_gate)
         {
+            CheckSessionAdmission();
             if (_running)
                 throw new InvalidOperationException("Automation is already running.");
             _running = true;
+            var linkedRun = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _activeRunCancellation = linkedRun;
+            task = RunCoreAsync(start.Task, workflows, linkedRun, includeDisabled, configuration, keepassMasterPassword);
+            _activeRunTask = task;
         }
+        // Register ownership before status subscribers or synchronous validation can initiate a close.
+        start.SetResult();
+        return task;
+    }
 
+    private async Task<RunResult> RunCoreAsync(
+        Task start, IEnumerable<WebsiteWorkflow> workflows, CancellationTokenSource linkedRun, bool includeDisabled,
+        Configuration? configuration, string? keepassMasterPassword)
+    {
+        await start.ConfigureAwait(false);
+        var cancellationToken = linkedRun.Token;
         var result = new RunResult();
         try
         {
-            await EnsurePlaywrightAsync().ConfigureAwait(false);
             foreach (var workflow in workflows)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (!includeDisabled && !workflow.Enabled) continue;
+                Status(workflow, WorkflowRunState.Running);
                 try
                 {
                     var attention = await RunOneAsync(workflow, cancellationToken, configuration, keepassMasterPassword)
                         .ConfigureAwait(false);
+                    cancellationToken.ThrowIfCancellationRequested();
                     if (attention is not null)
+                    {
                         result.LoginNeedsAttention.Add(attention);
+                        Status(workflow, WorkflowRunState.WaitingForSignIn);
+                    }
                     else
+                    {
                         result.FinishedCount++;
+                        Status(workflow, WorkflowRunState.Completed);
+                    }
                 }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception ex)
+                catch (Exception) when (cancellationToken.IsCancellationRequested)
+                {
+                    Status(workflow, WorkflowRunState.Cancelled);
+                    throw new OperationCanceledException(cancellationToken);
+                }
+                catch (WorkflowStepException ex)
                 {
                     result.FailedCount++;
-                    Log($"Workflow '{workflow.Name}' failed: {ex.Message}");
+                    result.StepsNeedAttention.Add(new StepAttention(workflow.Id, workflow.Name, ex.StepType));
+                    Status(workflow, WorkflowRunState.Failed);
+                    Log($"Workflow '{workflow.Name}' needs a step repaired: {ex.StepType}.");
+                }
+                catch (Exception)
+                {
+                    result.FailedCount++;
+                    Status(workflow, WorkflowRunState.Failed);
+                    Log($"Workflow '{workflow.Name}' failed. Check or repair the workflow.");
                 }
             }
         }
         finally
         {
-            lock (_gate) _running = false;
+            lock (_gate)
+            {
+                _running = false;
+                _activeRunCancellation = null;
+            }
+            linkedRun.Dispose();
         }
 
         return result;
@@ -92,41 +149,120 @@ public sealed class AutomationEngine : IAsyncDisposable
 
     public async Task<IPage> GetPageForRecorderAsync(WebsiteWorkflow workflow)
     {
-        await EnsurePlaywrightAsync().ConfigureAwait(false);
-        var page = await GetOrCreatePageAsync(workflow, CancellationToken.None).ConfigureAwait(false);
-        ValidateUrl(workflow.StartUrl);
-        // Keep any sign-in progress in the browser during Teach or Repair.
-        if (!Uri.TryCreate(page.Url, UriKind.Absolute, out var current) ||
-            (current.Scheme != Uri.UriSchemeHttp && current.Scheme != Uri.UriSchemeHttps))
+        lock (_gate) CheckSessionAdmission();
+        await _sessionGate.WaitAsync().ConfigureAwait(false);
+        try
         {
-            await page.GotoAsync(workflow.StartUrl, new PageGotoOptions
+            lock (_gate) CheckSessionAdmission();
+            ValidateUrl(workflow.StartUrl);
+            await EnsurePlaywrightAsync().ConfigureAwait(false);
+            var page = await GetOrCreatePageCoreAsync(workflow, CancellationToken.None).ConfigureAwait(false);
+            // Keep any sign-in progress in the browser during Teach or Repair.
+            if (!Uri.TryCreate(page.Url, UriKind.Absolute, out var current) ||
+                (current.Scheme != Uri.UriSchemeHttp && current.Scheme != Uri.UriSchemeHttps))
             {
-                WaitUntil = WaitUntilState.DOMContentLoaded,
-                Timeout = 60_000
-            }).ConfigureAwait(false);
+                await page.GotoAsync(workflow.StartUrl, new PageGotoOptions
+                {
+                    WaitUntil = WaitUntilState.DOMContentLoaded,
+                    Timeout = 60_000
+                }).ConfigureAwait(false);
+            }
+            lock (_gate) CheckSessionAdmission();
+            return page;
         }
-        return page;
+        finally { _sessionGate.Release(); }
     }
 
     /// <summary>
     /// Close browser contexts so profile folders can be sealed on vault lock.
     /// Playwright itself stays alive for the next unlock.
     /// </summary>
-    public async Task CloseSessionsAsync()
+    public Task CloseSessionsAsync()
     {
-        lock (_gate) _running = false;
-        foreach (var session in _sessions.Values.ToList())
+        TaskCompletionSource completion;
+        CancellationTokenSource? active;
+        Task activeRun;
+        lock (_gate)
         {
-            try { await session.Context.CloseAsync().ConfigureAwait(false); } catch { /* lock path */ }
+            if (_closeTask is not null) return _closeTask;
+            _closing = true;
+            completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _closeTask = completion.Task;
+            active = _activeRunCancellation;
+            activeRun = _activeRunTask;
         }
-        _sessions.Clear();
+        _ = CloseSessionsCoreAsync(completion, active, activeRun);
+        return completion.Task;
+    }
+
+    private async Task CloseSessionsCoreAsync(TaskCompletionSource completion, CancellationTokenSource? active, Task activeRun)
+    {
+        var failed = false;
+        try
+        {
+            Task cancellation = Task.CompletedTask;
+            try { if (active is not null) cancellation = active.CancelAsync(); }
+            catch (ObjectDisposedException) { /* The run has already finished. */ }
+            await _sessionGate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                foreach (var entry in _sessions.ToArray())
+                {
+                    try
+                    {
+                        await entry.Value.Context.CloseAsync().ConfigureAwait(false);
+                        _sessions.Remove(entry.Key);
+                    }
+                    catch { failed = true; }
+                }
+                foreach (var context in _unclaimedContexts.ToArray())
+                {
+                    try
+                    {
+                        await context.CloseAsync().ConfigureAwait(false);
+                        _unclaimedContexts.Remove(context);
+                    }
+                    catch { failed = true; }
+                }
+            }
+            finally { _sessionGate.Release(); }
+            // Closing contexts first releases dispatched browser actions; never await run termination before closing them.
+            try { await cancellation.ConfigureAwait(false); } catch { failed = true; }
+            try { await activeRun.ConfigureAwait(false); } catch { /* The run's caller owns its result/cancellation. */ }
+        }
+        catch { failed = true; }
+        finally
+        {
+            lock (_gate)
+            {
+                _closing = false;
+                _cleanupRequired = failed;
+                _closeTask = null;
+                if (failed) completion.TrySetException(new InvalidOperationException("Browser sessions could not be closed. Keep the vault unlocked and retry."));
+                else completion.TrySetResult();
+            }
+        }
     }
 
     public async ValueTask DisposeAsync()
     {
+        lock (_gate) _disposed = true;
         await CloseSessionsAsync().ConfigureAwait(false);
-        _playwright?.Dispose();
-        _playwright = null;
+        await _sessionGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            _playwright?.Dispose();
+            _playwright = null;
+        }
+        finally { _sessionGate.Release(); }
+    }
+
+    // Call only while holding _gate. The async session gate owns Playwright creation, session writes and closing.
+    private void CheckSessionAdmission()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_closing) throw new InvalidOperationException("Browser sessions are closing. Try again after closing finishes.");
+        if (_cleanupRequired) throw new InvalidOperationException("Browser cleanup is incomplete. Retry closing sessions before continuing.");
     }
 
     private async Task<LoginAttention?> RunOneAsync(
@@ -135,6 +271,7 @@ public sealed class AutomationEngine : IAsyncDisposable
         Configuration? configuration,
         string? keepassMasterPassword)
     {
+        ct.ThrowIfCancellationRequested();
         Log($"Starting '{workflow.Name}'…");
         ValidateUrl(workflow.StartUrl);
         if (!string.IsNullOrWhiteSpace(workflow.DestinationUrl))
@@ -153,12 +290,14 @@ public sealed class AutomationEngine : IAsyncDisposable
 
         var page = await GetOrCreatePageAsync(workflow, ct).ConfigureAwait(false);
         await PositionWindowAsync(page, workflow.MonitorIndex).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
 
         var currentUrl = page.Url;
         var alreadyOnSite = !string.IsNullOrEmpty(currentUrl) &&
                             Uri.TryCreate(currentUrl, UriKind.Absolute, out var cur) &&
                             Uri.TryCreate(workflow.StartUrl, UriKind.Absolute, out var start) &&
-                            string.Equals(cur.Host, start.Host, StringComparison.OrdinalIgnoreCase);
+                            string.Equals(cur.Scheme, start.Scheme, StringComparison.OrdinalIgnoreCase) &&
+                            string.Equals(cur.Authority, start.Authority, StringComparison.OrdinalIgnoreCase);
 
         if (!alreadyOnSite)
         {
@@ -173,11 +312,13 @@ public sealed class AutomationEngine : IAsyncDisposable
             Log($"Reusing open page for '{workflow.Name}'.");
         }
 
+        ct.ThrowIfCancellationRequested();
         if (workflow.AutoLogin &&
             !string.Equals(workflow.LoginMode, "None", StringComparison.OrdinalIgnoreCase))
         {
-            if (!await TryAutoLoginAsync(workflow, page, ct, configuration, keepassMasterPassword)
-                .ConfigureAwait(false))
+            if (!string.Equals(workflow.LoginMode, "SSO", StringComparison.OrdinalIgnoreCase) &&
+                !await TryAutoLoginAsync(workflow, page, ct, configuration, keepassMasterPassword)
+                    .ConfigureAwait(false))
                 return new LoginAttention(workflow.Id, workflow.Name,
                     "Auto-login was interrupted or its credential field was not approved/ready. Retry sign-in manually before continuing.");
             var health = await LoginHealth.InspectAsync(page, ct).ConfigureAwait(false);
@@ -192,9 +333,13 @@ public sealed class AutomationEngine : IAsyncDisposable
         {
             ct.ThrowIfCancellationRequested();
             // A failed action leaves browser state uncertain; do not dispatch later steps or a destination navigation.
-            await ExecuteStepAsync(page, step, ct).ConfigureAwait(false);
+            try { await ExecuteStepAsync(page, step, ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception) { throw new WorkflowStepException(PublicStepType(step.Type)); }
+            ct.ThrowIfCancellationRequested();
         }
 
+        ct.ThrowIfCancellationRequested();
         if (!string.IsNullOrWhiteSpace(workflow.DestinationUrl))
         {
             await page.GotoAsync(workflow.DestinationUrl, new PageGotoOptions
@@ -215,6 +360,7 @@ public sealed class AutomationEngine : IAsyncDisposable
         Configuration? configuration,
         string? keepassMasterPassword)
     {
+        ct.ThrowIfCancellationRequested();
         var credential = _vault.Read(workflow, configuration, keepassMasterPassword);
         if (credential is null)
         {
@@ -234,9 +380,10 @@ public sealed class AutomationEngine : IAsyncDisposable
                     filledUser = true;
                     if (!string.IsNullOrWhiteSpace(workflow.UsernameContinueSelector))
                     {
+                        ct.ThrowIfCancellationRequested();
                         await page.Locator(workflow.UsernameContinueSelector).First
                             .ClickAsync().ConfigureAwait(false);
-                        await page.WaitForTimeoutAsync(800).ConfigureAwait(false);
+                        await Task.Delay(800, ct).ConfigureAwait(false);
                     }
                 }
                 else
@@ -261,9 +408,13 @@ public sealed class AutomationEngine : IAsyncDisposable
             {
                 var submit = page.Locator(workflow.SubmitSelector).First;
                 if (await submit.CountAsync().ConfigureAwait(false) > 0)
+                {
+                    ct.ThrowIfCancellationRequested();
                     await submit.ClickAsync().ConfigureAwait(false);
+                }
             }
 
+            ct.ThrowIfCancellationRequested();
             var waitMs = Math.Clamp(workflow.LoginWaitSeconds, 5, 180) * 1000;
             if (!string.IsNullOrWhiteSpace(workflow.LoginSuccessSelector))
             {
@@ -280,7 +431,7 @@ public sealed class AutomationEngine : IAsyncDisposable
             }
             else
             {
-                await page.WaitForTimeoutAsync(Math.Min(waitMs, 3000)).ConfigureAwait(false);
+                await Task.Delay(Math.Min(waitMs, 3000), ct).ConfigureAwait(false);
             }
 
             if (!filledUser && !filledPass)
@@ -295,9 +446,9 @@ public sealed class AutomationEngine : IAsyncDisposable
             return true;
         }
         catch (OperationCanceledException) { throw; }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Log($"Auto-login for '{workflow.Name}' incomplete: {ex.Message}. " +
+            Log($"Auto-login for '{workflow.Name}' incomplete. " +
                 "Leaving the browser open for manual sign-in / MFA.");
             return false;
         }
@@ -421,31 +572,42 @@ public sealed class AutomationEngine : IAsyncDisposable
                 break;
             case "Wait":
                 if (int.TryParse(step.Target, out var ms))
-                    await page.WaitForTimeoutAsync(Math.Clamp(ms, 0, 60_000)).ConfigureAwait(false);
+                    await Task.Delay(Math.Clamp(ms, 0, 60_000), ct).ConfigureAwait(false);
                 else
                     await page.Locator(step.Target).First.WaitForAsync().ConfigureAwait(false);
                 break;
             default:
-                // Unknown steps are ignored rather than aborting the run.
-                break;
+                throw new InvalidOperationException("Unsupported workflow step.");
         }
     }
 
     private async Task<IPage> GetOrCreatePageAsync(WebsiteWorkflow workflow, CancellationToken ct)
     {
+        await _sessionGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            lock (_gate) CheckSessionAdmission();
+            await EnsurePlaywrightAsync().ConfigureAwait(false);
+            return await GetOrCreatePageCoreAsync(workflow, ct).ConfigureAwait(false);
+        }
+        finally { _sessionGate.Release(); }
+    }
+
+    private async Task<IPage> GetOrCreatePageCoreAsync(WebsiteWorkflow workflow, CancellationToken ct)
+    {
         ct.ThrowIfCancellationRequested();
         if (_sessions.TryGetValue(workflow.Id, out var existing))
         {
+            if (!existing.Page.IsClosed) return existing.Page;
             try
             {
-                if (existing.Page.IsClosed)
-                    _sessions.Remove(workflow.Id);
-                else
-                    return existing.Page;
+                await existing.Context.CloseAsync().ConfigureAwait(false);
+                _sessions.Remove(workflow.Id);
             }
             catch
             {
-                _sessions.Remove(workflow.Id);
+                lock (_gate) _cleanupRequired = true;
+                throw new InvalidOperationException("The previous browser session could not be closed. Retry closing sessions before continuing.");
             }
         }
 
@@ -473,9 +635,32 @@ public sealed class AutomationEngine : IAsyncDisposable
         }
 
         var context = await LaunchContextWithRecoveryAsync(browserType, workflow, profileDir, options, ct).ConfigureAwait(false);
-        var page = context.Pages.FirstOrDefault() ?? await context.NewPageAsync().ConfigureAwait(false);
-        _sessions[workflow.Id] = new TrackedSession(context, page);
-        return page;
+        _unclaimedContexts.Add(context);
+        try
+        {
+            // Launch has no cancellation-token API. Own its result before inspecting or publishing any page.
+            ct.ThrowIfCancellationRequested();
+            lock (_gate) CheckSessionAdmission();
+            var page = context.Pages.FirstOrDefault() ?? await context.NewPageAsync().ConfigureAwait(false);
+            lock (_gate)
+            {
+                ct.ThrowIfCancellationRequested();
+                CheckSessionAdmission();
+                _sessions[workflow.Id] = new TrackedSession(context, page);
+                _unclaimedContexts.Remove(context);
+            }
+            return page;
+        }
+        catch
+        {
+            try
+            {
+                await context.CloseAsync().ConfigureAwait(false);
+                _unclaimedContexts.Remove(context);
+            }
+            catch { lock (_gate) _cleanupRequired = true; }
+            throw;
+        }
     }
 
     private async Task<IBrowserContext> LaunchContextWithRecoveryAsync(
@@ -531,9 +716,9 @@ public sealed class AutomationEngine : IAsyncDisposable
                 }
             }).ConfigureAwait(false);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Log("Could not position browser on monitor: " + ex.Message);
+            Log("Could not position browser on the selected monitor.");
         }
     }
 
@@ -575,6 +760,10 @@ public sealed class AutomationEngine : IAsyncDisposable
         string.Equals(a.TrimEnd('/'), b.TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
 
     private void Log(string message) => OnLog?.Invoke(message);
+    private void Status(WebsiteWorkflow workflow, WorkflowRunState state) => OnWorkflowStatus?.Invoke(workflow.Name, state);
+
+    private static string PublicStepType(string type) => type is "Navigate" or "Click" or "Fill" or "Press" or "Wait"
+        ? type : "Unsupported";
 
     private sealed record TrackedSession(IBrowserContext Context, IPage Page);
 }

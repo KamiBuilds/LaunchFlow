@@ -6,7 +6,12 @@ namespace LaunchFlow.Services;
 public sealed class CredentialVault
 {
     public SiteCredential Credential { get; set; } = new("test-user", "test-only-password");
-    public SiteCredential Read(WebsiteWorkflow workflow, Configuration? configuration, string? master) => Credential;
+    public int ReadCount { get; private set; }
+    public SiteCredential Read(WebsiteWorkflow workflow, Configuration? configuration, string? master)
+    {
+        ReadCount++;
+        return Credential;
+    }
 }
 
 public static class MonitorService

@@ -4,7 +4,11 @@ using LaunchFlow.Services;
 using Microsoft.Playwright;
 
 using var playwright = await Playwright.CreateAsync();
+if (args.Contains("--dispatch-only")) { await DispatchedFillTests.RunAsync(playwright); return; }
 await WorkflowExecutionTests.RunAsync(playwright, args);
+await EngineBehaviorTests.RunAsync(playwright, args);
+await EngineLifecycleTests.RunAsync(playwright, args);
+if (!args.Contains("--document-bound-only") && !args.Contains("--profile-only")) await DispatchedFillTests.RunAsync(playwright);
 if (args.Contains("--execution-only")) return;
 await DocumentBoundCredentialTests.RunAsync(playwright, args);
 if (args.Contains("--document-bound-only")) return;
