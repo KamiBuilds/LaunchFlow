@@ -914,6 +914,16 @@ public partial class MainWindow : Window
         WorkspaceCombo.SelectedItem = existing is null && !_configuration.Workspaces.Contains(profile) ? null : profile;
     }
 
+    private void PreviewWorkspace_Click(object sender, RoutedEventArgs e)
+    {
+        if (WorkspaceCombo.SelectedItem is not WorkspaceProfile selected)
+        {
+            MessageBox.Show(this, "Select a saved workspace first.");
+            return;
+        }
+        new WorkspacePreviewWindow(selected, _configuration) { Owner = this }.ShowDialog();
+    }
+
     private void RunWorkspace_Click(object sender, RoutedEventArgs e)
     {
         if (WorkspaceCombo.SelectedItem is not WorkspaceProfile profile ||
