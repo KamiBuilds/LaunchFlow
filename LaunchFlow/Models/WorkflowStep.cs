@@ -16,6 +16,8 @@ public sealed class WorkflowStep
         "Fill" => "Fill",
         "Wait" => "Wait",
         "Press" => "Press",
+        "AssertVisible" => "Verify element",
+        "WaitForURL" => "Wait for URL",
         _ => "Workflow step"
     };
 }
