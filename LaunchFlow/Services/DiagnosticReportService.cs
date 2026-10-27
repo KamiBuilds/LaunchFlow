@@ -7,7 +7,7 @@ namespace LaunchFlow.Services;
 public static class DiagnosticReportService
 {
     private static readonly Regex SafeEvent = new(
-        @"\A\d{4}-\d{2}-\d{2}T[0-9:.+-]+\s+\[[A-Za-z_-]+\]\s+[A-Za-z_-]+\z",
+        @"\A\d{4}-\d{2}-\d{2}T[0-9:.+-]+\s+\[(?:UI|Fatal|CloseSessions|SealProfiles|ProfileSeal|ProfileUnseal|ProfileDelete|UpdateCheck|VaultReset|VaultResetDelete|General)\]\s+(?:Failure|Event)\z",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public static void Export(string path)
