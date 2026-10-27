@@ -29,6 +29,12 @@ The focused switches `--policy-only` and `--monitor-only` exercise these additio
 
 Local numbered evidence is retained outside the repository under `both/engine-policy`. Initial mocked HTTP-redirect attempts reached Chromium's DNS/error document because followed redirect requests can bypass route interception; those are retained fixture failures, not security RED or GREEN. Corrected owned-loopback HTTP redirect fixtures were replayed against retained pre-integration engine source to establish an actual failing baseline. All listeners close at fixture disposal. Later RED/GREEN pairs cover credential flags/HTTPS, owning-frame denial, asynchronous approval/retrieval revocation, recorded-step restrictions, launch ownership and monitor preference.
 
+## CI fixture synchronization correction
+
+The earlier pushed engine checkpoint's Linux CI exposed a failure in the aborted-workflow fixture: a 200 ms delay plus an incomplete task did not prove that credential binding had started. Playwright initialization/window placement could still be pending, so replacing the document first legitimately selected the replacement as the initial document.
+
+The maintained fixture now deliberately delays CDP placement, observes the original input during bound-element resolution, then performs the same replacement and original no-fill/no-follow-up/manual-attention assertions. The slow-start fixture reproduced the old synchronization failure; corrected observation passed four sequential focused runs. An initial test-only JavaScript local-name shadowing error is retained separately, not claimed as an application defect. This changes test synchronization, not production credential logic.
+
 ## Limits and remaining gates
 
 Administrator policy uses cooperative snapshots, not an atomic transaction with registry changes. Already-dispatched browser operations cannot be recalled, and browser scripts/network activity and external default-browser windows are not an OS/network sandbox. Keyboard actions retain the existing page-focused behavior. The credential binding does not protect against malicious scripts already executing in an approved origin. Arbitrary untrusted in-process code is not contained.

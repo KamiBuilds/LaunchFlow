@@ -323,15 +323,34 @@ internal static class DocumentBoundCredentialTests
     {
         await using var f = await Fixture.CreateAsync(browser, "user", Input("user", "disabled"));
         f.Workflow.Steps.Add(new() { Type = "Click", Target = "#followup" });
+        await f.Page.EvaluateAsync("""
+            () => {
+                const input = document.querySelector('#user');
+                const owner = input.ownerDocument;
+                Object.defineProperty(input, 'ownerDocument', {
+                    configurable: true,
+                    get() { owner.body.dataset.credentialBound = 'yes'; return owner; }
+                });
+            }
+            """);
         var sessions = (System.Collections.IDictionary)typeof(AutomationEngine)
             .GetField("_sessions", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(f.Engine)!;
         var sessionType = typeof(AutomationEngine).GetNestedType("TrackedSession", BindingFlags.NonPublic)!;
-        sessions.Add(f.Workflow.Id, Activator.CreateInstance(sessionType, f.Context, f.Page));
+        // Inert startup seam: binding must not be inferred from elapsed time while window setup is still pending.
+        async Task<ICDPSession> SlowPlacementAsync()
+        {
+            await Task.Delay(500);
+            return await f.Context.NewCDPSessionAsync(f.Page);
+        }
+        var context = ForwardProxy<IBrowserContext>.Create(f.Context, (method, _) =>
+            method.Name == nameof(IBrowserContext.NewCDPSessionAsync) ? (true, SlowPlacementAsync()) : (false, null));
+        var trackedPage = ForwardProxy<IPage>.Create(f.Page, (method, _) => method.Name == "get_Context" ? (true, context) : (false, null));
+        sessions.Add(f.Workflow.Id, Activator.CreateInstance(sessionType, f.Context, trackedPage));
         var run = (Task<AutomationEngine.LoginAttention?>)typeof(AutomationEngine)
             .GetMethod("RunOneAsync", BindingFlags.NonPublic | BindingFlags.Instance)!
             .Invoke(f.Engine, new object?[] { f.Workflow, CancellationToken.None, null, null })!;
-        await Task.Delay(200);
-        Check(!run.IsCompleted, "workflow fixture is awaiting a disabled bound username");
+        await f.Page.WaitForFunctionAsync("document.body.dataset.credentialBound === 'yes'", null, new() { Timeout = 10_000 });
+        Check(!run.IsCompleted, "workflow fixture observed its disabled username during bound-element resolution");
         await f.ReplaceContentAsync("<input id='user'><button id='followup' onclick=\"document.body.dataset.followed='yes'\">continue</button>");
         var attention = await run;
         Check(attention?.WorkflowId == f.Workflow.Id, "aborted credential insertion returns manual attention for the original workflow");
