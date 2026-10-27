@@ -7,8 +7,8 @@ try
     CrashLog.LogPath = Path.Combine(root, "diagnostics.log");
     File.WriteAllLines(CrashLog.LogPath,
     [
-        "2026-10-27T07:00:00+00:00 [Browser] Failure",
-        "2026-10-27T07:00:01+00:00 [Vault] Event",
+        "2026-10-27T07:00:00+00:00 [CloseSessions] Failure",
+        "2026-10-27T07:00:01+00:00 [ProfileSeal] Event",
         "Private URL https://internal.example.test/?token=synthetic-secret",
         "2026-10-27T07:00:03+00:00 [Browser] synthetic-secret"
     ]);
