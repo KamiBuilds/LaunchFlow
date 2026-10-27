@@ -165,6 +165,16 @@ jobs:
         with:
           name: LaunchFlow-v${{ needs.windows.outputs.version }}-${{ github.sha }}-Windows
           path: dist
+      - name: Require approved Authenticode signatures before draft publication
+        shell: pwsh
+        env:
+          SIGNING_THUMBPRINT: ${{ vars.LAUNCHFLOW_SIGNING_THUMBPRINT }}
+          LF_VERSION: ${{ needs.windows.outputs.version }}
+        run: |
+          ./scripts/Verify-SignedArtifacts.ps1 -ExpectedThumbprint $env:SIGNING_THUMBPRINT -Paths @(
+            "dist/LaunchFlow-Setup-v$env:LF_VERSION-x64.exe",
+            'dist/LaunchFlow-Universal-Installer.exe'
+          )
       - name: Create and verify a new draft without updating any existing release
         shell: pwsh
         env:
