@@ -196,7 +196,9 @@
                             IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
                 <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="25"/></Grid.ColumnDefinitions>
                   <ContentPresenter Grid.Column="0" HorizontalAlignment="Left" VerticalAlignment="Center"
-                                    Content="{TemplateBinding SelectionBoxItem}" TextElement.Foreground="#FFFFFF"/>
+                                    Content="{TemplateBinding SelectionBoxItem}"
+                                    ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                    TextElement.Foreground="#FFFFFF"/>
                   <TextBlock Grid.Column="1" Text="⌄" Foreground="#FFFFFF" FontSize="17" HorizontalAlignment="Center"/>
                 </Grid>
                 <ToggleButton.Template>
