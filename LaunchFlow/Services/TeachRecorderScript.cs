@@ -14,7 +14,6 @@ internal static class TeachRecorderScript
             sessions = state.sessions;
           };
           window.__launchFlowTeachRecorderV1 = { update };
-          const editable = 'input,textarea,select,[contenteditable],[role="textbox"],[role="combobox"]';
           const cssPath = element => {
             const parts = [];
             for (let el = element; el; el = el.parentElement) {
@@ -30,7 +29,7 @@ internal static class TeachRecorderScript
           const record = event => {
             if (!event.isTrusted || !sessions.length) return;
             // Do not read values, labels, IDs, or text: even button text can contain an echoed password.
-            if (event.composedPath().some(el => el instanceof Element && el.closest(editable))) return;
+            // Only the element's structural location is recorded, never its value or text.
             const target = event.target;
             if (!(target instanceof Element)) return;
             if (event.composedPath().some(node => node instanceof ShadowRoot)) {

@@ -57,6 +57,25 @@ internal static class WorkflowExecutionTests
         Check(!destinationVisited && await page.GetAttributeAsync("body", "data-followed") is null,
             "unsupported step prevents later actions and destination navigation");
         Check(!logs.Any(log => log.Contains("private-", StringComparison.Ordinal)), "unsupported diagnostics do not echo private step data");
+
+        workflow.Steps.Clear();
+        workflow.DestinationUrl = "";
+        workflow.Steps.Add(new() { Type = "AssertVisible", Target = "#followup" });
+        workflow.Steps.Add(new() { Type = "WaitForURL", Target = page.Url });
+        var verified = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(verified.FinishedCount == 1 && verified.FailedCount == 0,
+            "no-code element assertions and URL waits pass on an expected browser state");
+        workflow.Steps[0].Target = "#missing";
+        var rejected = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(rejected.FailedCount == 1 && rejected.StepsNeedAttention.Single().StepType == "AssertVisible",
+            "failed readiness assertion stops safely and reports its bounded step type");
+        await page.SetContentAsync("<input id='password' type='password'>");
+        workflow.Steps.Clear();
+        workflow.Steps.Add(new() { Type = "Fill", Target = "#password", Value = "synthetic-private-test" });
+        var protectedPassword = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(protectedPassword.FailedCount == 1 &&
+              await page.InputValueAsync("#password") == "",
+              "generic Fill steps cannot insert embedded secrets into password fields");
     }
 
     private static void Check(bool condition, string description) => EngineBehaviorTests.Check(condition, description);

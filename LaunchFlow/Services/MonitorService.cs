@@ -41,7 +41,7 @@ public static class MonitorService
                 Name = label,
                 DeviceName = screen.DeviceName,
                 IsPrimary = screen.Primary,
-                Bounds = screen.Bounds
+                Bounds = screen.WorkingArea
             });
         }
 

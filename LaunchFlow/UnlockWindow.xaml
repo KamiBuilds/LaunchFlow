@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Unlock LaunchFlow" Width="500" Height="340" MinWidth="460" MinHeight="320"
         ResizeMode="NoResize" WindowStartupLocation="CenterScreen"
-        Background="#111A2A" Foreground="#E9F1FB" FontFamily="Segoe UI" FontSize="13"
+        Background="#0D1725" Foreground="#EEF6FA" FontFamily="Segoe UI" FontSize="13"
         Icon="pack://application:,,,/Assets/LaunchFlow.ico">
   <Grid Margin="28,24">
     <Grid.RowDefinitions>
@@ -17,10 +17,10 @@
       <Image Source="pack://application:,,,/Assets/LaunchFlow.png" Width="40" Height="40" Margin="0,0,12,0"/>
       <StackPanel VerticalAlignment="Center">
         <TextBlock Text="Unlock LaunchFlow" FontSize="22" FontWeight="SemiBold"/>
-        <TextBlock Text="Your local encrypted vault" Foreground="#91A1B7" FontSize="12"/>
+        <TextBlock Text="Your local encrypted vault" Foreground="#9AB6C8" FontSize="12"/>
       </StackPanel>
     </StackPanel>
-    <TextBlock Grid.Row="1" Margin="0,16,0,12" Foreground="#A8BED6" TextWrapping="Wrap"
+    <TextBlock Grid.Row="1" Margin="0,16,0,12" Foreground="#B4CCDB" TextWrapping="Wrap"
                Text="Enter your master password, or use Windows Hello if you enabled it. LaunchFlow cannot recover a forgotten password — you can reset the vault and start over."/>
     <PasswordBox x:Name="PasswordBox" Grid.Row="2" Height="38" Background="#0D1522" Foreground="White"
                  BorderBrush="#354358" Padding="10,8"/>

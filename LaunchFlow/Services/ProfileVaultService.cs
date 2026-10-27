@@ -1,6 +1,7 @@
 using System.IO;
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Buffers.Binary;
 
 namespace LaunchFlow.Services;
 
@@ -73,17 +74,15 @@ public static class ProfileVaultService
         var sealedPath = Path.Combine(SealedRoot, id + ".profile.aes");
         var temp = sealedPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         var key = ProfileKey();
-        using var zip = new MemoryStream();
-        byte[] plain = Array.Empty<byte>();
         try
         {
-            // Do not create a second plaintext copy in the shared temporary directory.
-            ZipFile.CreateFromDirectory(directory, zip, CompressionLevel.Optimal, includeBaseDirectory: false);
-            plain = zip.ToArray();
-            var sealedBytes = Encrypt(plain, key);
             using (var output = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
-                output.Write(sealedBytes);
+                using (var encryptor = new ChunkedArchiveWriter(output, key))
+                {
+                    ZipFile.CreateFromDirectory(directory, encryptor, CompressionLevel.Optimal, includeBaseDirectory: false);
+                    encryptor.Finish();
+                }
                 output.Flush(flushToDisk: true);
             }
             File.Move(temp, sealedPath, overwrite: true);
@@ -92,8 +91,6 @@ public static class ProfileVaultService
         finally
         {
             CryptographicOperations.ZeroMemory(key);
-            CryptographicOperations.ZeroMemory(plain);
-            if (zip.TryGetBuffer(out var buffer)) CryptographicOperations.ZeroMemory(buffer.AsSpan());
             if (File.Exists(temp)) File.Delete(temp);
         }
     }
@@ -102,33 +99,200 @@ public static class ProfileVaultService
     {
         var id = Path.GetFileName(sealedPath).Replace(".profile.aes", "", StringComparison.OrdinalIgnoreCase);
         var target = Path.Combine(ProfilesRoot, id);
-        if (Directory.Exists(target)) return; // already open
+        if (Directory.Exists(target)) return;
 
-        var sealedBytes = File.ReadAllBytes(sealedPath);
         var key = ProfileKey();
+        var staging = Path.Combine(ProfilesRoot, ".restore-" + Guid.NewGuid().ToString("N"));
         try
         {
-            if (!TryDecrypt(sealedBytes, key, out var zipBytes))
-                throw new CryptographicException("Profile package could not be decrypted.");
-            var staging = Path.Combine(ProfilesRoot, ".restore-" + Guid.NewGuid().ToString("N"));
-            try
+            Directory.CreateDirectory(staging);
+            using var source = File.OpenRead(sealedPath);
+            Span<byte> signature = stackalloc byte[5];
+            if (source.Length < signature.Length)
+                throw new CryptographicException("Invalid browser-profile archive.");
+            source.ReadExactly(signature);
+
+            if (signature.SequenceEqual("LFPS2"u8))
             {
-                // Publish only a complete extraction; a failed restore must remain retryable.
-                Directory.CreateDirectory(staging);
-                using var archive = new ZipArchive(new MemoryStream(zipBytes, writable: false), ZipArchiveMode.Read);
-                archive.ExtractToDirectory(staging, overwriteFiles: false);
-                Directory.Move(staging, target);
+                // Read-mode ZipArchive requires seeking; the isolated temporary ZIP is
+                // deleted by Windows as soon as its exclusive file handle closes.
+                var temp = Path.Combine(ProfilesRoot, ".zip-" + Guid.NewGuid().ToString("N"));
+                using var zip = new FileStream(temp, FileMode.CreateNew, FileAccess.ReadWrite,
+                    FileShare.None, 64 * 1024, FileOptions.DeleteOnClose);
+                DecryptChunks(source, zip, key);
+                zip.Position = 0;
+                ExtractArchive(zip, staging);
             }
-            finally
+            else
             {
-                if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
-                CryptographicOperations.ZeroMemory(zipBytes);
+                source.Position = 0;
+                var bytes = File.ReadAllBytes(sealedPath);
+                try
+                {
+                    if (!TryDecrypt(bytes, key, out var plaintext))
+                        throw new CryptographicException("Browser-profile archive cannot be decrypted.");
+                    try
+                    {
+                        using var archiveStream = new MemoryStream(plaintext, writable: false);
+                        ExtractArchive(archiveStream, staging);
+                    }
+                    finally { CryptographicOperations.ZeroMemory(plaintext); }
+                }
+                finally { CryptographicOperations.ZeroMemory(bytes); }
             }
+            Directory.Move(staging, target);
         }
         finally
         {
             CryptographicOperations.ZeroMemory(key);
+            if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
         }
+    }
+
+    private static void ExtractArchive(Stream zip, string staging)
+    {
+        using var archive = new ZipArchive(zip, ZipArchiveMode.Read, leaveOpen: true);
+        long total = 0;
+        if (archive.Entries.Count > 200_000)
+            throw new InvalidDataException("Browser profile has too many entries.");
+        foreach (var entry in archive.Entries)
+        {
+            if (entry.Length > 4L * 1024 * 1024 * 1024 ||
+                total > 8L * 1024 * 1024 * 1024 - entry.Length)
+                throw new InvalidDataException("Browser profile exceeds its extraction limit.");
+            total += entry.Length;
+        }
+        archive.ExtractToDirectory(staging, overwriteFiles: false);
+    }
+
+    private static void DecryptChunks(Stream source, Stream destination, byte[] key)
+    {
+        using var aes = new AesGcm(key, 16);
+        long index = 0;
+        Span<byte> size = stackalloc byte[4];
+        Span<byte> nonce = stackalloc byte[12];
+        Span<byte> tag = stackalloc byte[16];
+        Span<byte> aad = stackalloc byte[12];
+        while (true)
+        {
+            source.ReadExactly(size);
+            var length = BinaryPrimitives.ReadInt32LittleEndian(size);
+            if (length is < 0 or > 64 * 1024)
+                throw new CryptographicException("Invalid browser-profile chunk length.");
+            source.ReadExactly(nonce);
+            var ciphertext = new byte[length];
+            var plaintext = new byte[length];
+            try
+            {
+                source.ReadExactly(ciphertext);
+                source.ReadExactly(tag);
+                BinaryPrimitives.WriteInt64LittleEndian(aad, index);
+                BinaryPrimitives.WriteInt32LittleEndian(aad[8..], length);
+                aes.Decrypt(nonce, ciphertext, tag, plaintext, aad);
+                if (length == 0)
+                {
+                    if (source.ReadByte() != -1)
+                        throw new CryptographicException("Browser-profile archive has trailing data.");
+                    break;
+                }
+                destination.Write(plaintext);
+                index++;
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(ciphertext);
+                CryptographicOperations.ZeroMemory(plaintext);
+            }
+        }
+    }
+
+    private sealed class ChunkedArchiveWriter : Stream
+    {
+        private readonly Stream _output;
+        private readonly AesGcm _aes;
+        private readonly byte[] _buffer = new byte[64 * 1024];
+        private int _count;
+        private long _index;
+        private bool _finished;
+
+        public ChunkedArchiveWriter(Stream output, byte[] key)
+        {
+            _output = output;
+            _aes = new AesGcm(key, 16);
+            _output.Write("LFPS2"u8);
+        }
+
+        public override void Write(byte[] buffer, int offset, int count) =>
+            Write(buffer.AsSpan(offset, count));
+
+        public override void Write(ReadOnlySpan<byte> bytes)
+        {
+            if (_finished) throw new ObjectDisposedException(nameof(ChunkedArchiveWriter));
+            while (!bytes.IsEmpty)
+            {
+                var length = Math.Min(bytes.Length, _buffer.Length - _count);
+                bytes[..length].CopyTo(_buffer.AsSpan(_count));
+                _count += length;
+                bytes = bytes[length..];
+                if (_count == _buffer.Length) WriteChunk(_count);
+            }
+        }
+
+        private void WriteChunk(int length)
+        {
+            Span<byte> nonce = stackalloc byte[12];
+            RandomNumberGenerator.Fill(nonce);
+            Span<byte> tag = stackalloc byte[16];
+            Span<byte> aad = stackalloc byte[12];
+            BinaryPrimitives.WriteInt64LittleEndian(aad, _index);
+            BinaryPrimitives.WriteInt32LittleEndian(aad[8..], length);
+            var encrypted = new byte[length];
+            try
+            {
+                _aes.Encrypt(nonce, _buffer.AsSpan(0, length), encrypted, tag, aad);
+                Span<byte> size = stackalloc byte[4];
+                BinaryPrimitives.WriteInt32LittleEndian(size, length);
+                _output.Write(size);
+                _output.Write(nonce);
+                _output.Write(encrypted);
+                _output.Write(tag);
+                _index++;
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(encrypted);
+                CryptographicOperations.ZeroMemory(_buffer.AsSpan(0, length));
+                _count = 0;
+            }
+        }
+
+        public void Finish()
+        {
+            if (_finished) return;
+            if (_count > 0) WriteChunk(_count);
+            WriteChunk(0);
+            _finished = true;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                CryptographicOperations.ZeroMemory(_buffer);
+                _aes.Dispose();
+            }
+            base.Dispose(disposing);
+        }
+
+        public override void Flush() => _output.Flush();
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => !_finished;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
     }
 
     /// <summary>Profiles use a persisted random key wrapped for this Windows account, independent of the vault password.</summary>

@@ -16,6 +16,35 @@ public static class LoginHealth
 
     public sealed record Report(bool NeedsAttention, string Reason);
 
+    public static async Task<Report> VerifySuccessAsync(
+        IPage page, string successSelector, string successUrlContains, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (string.IsNullOrWhiteSpace(successSelector) && string.IsNullOrWhiteSpace(successUrlContains))
+            return new Report(true, "Configure a login success selector or URL condition before running follow-up steps.");
+
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(successSelector))
+            {
+                var locator = page.Locator(successSelector).First;
+                if (await locator.CountAsync().ConfigureAwait(false) == 0 ||
+                    !await locator.IsVisibleAsync().ConfigureAwait(false))
+                    return new Report(true, "The configured login success element is not visible.");
+            }
+            if (!string.IsNullOrWhiteSpace(successUrlContains) &&
+                !page.Url.Contains(successUrlContains, StringComparison.OrdinalIgnoreCase))
+                return new Report(true, "The expected signed-in URL was not reached.");
+
+            return new Report(false, "Configured login success conditions passed.");
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception)
+        {
+            return new Report(true, "Login verification failed. Check the browser before continuing.");
+        }
+    }
+
     public static async Task<Report> InspectAsync(IPage page, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();

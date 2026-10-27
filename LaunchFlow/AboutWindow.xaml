@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="About LaunchFlow" Width="480" Height="420" MinWidth="440" MinHeight="380"
         ResizeMode="NoResize" WindowStartupLocation="CenterOwner"
-        Background="#111A2A" Foreground="#E9F1FB" FontFamily="Segoe UI" FontSize="13"
+        Background="#0D1725" Foreground="#EEF6FA" FontFamily="Segoe UI" FontSize="13"
         Icon="pack://application:,,,/Assets/LaunchFlow.ico">
   <Grid Margin="28,24">
     <Grid.RowDefinitions>
@@ -15,14 +15,14 @@
       <Image Source="pack://application:,,,/Assets/LaunchFlow.png" Width="56" Height="56" Margin="0,0,16,0"/>
       <StackPanel VerticalAlignment="Center">
         <TextBlock Text="LaunchFlow" FontSize="26" FontWeight="SemiBold"/>
-        <TextBlock x:Name="VersionText" Text="Version" Foreground="#91A1B7" Margin="0,4,0,0"/>
+        <TextBlock x:Name="VersionText" Text="Version" Foreground="#9AB6C8" Margin="0,4,0,0"/>
       </StackPanel>
     </StackPanel>
     <StackPanel Grid.Row="1" Margin="0,22,0,0">
       <TextBlock TextWrapping="Wrap" Foreground="#C5D5E8" LineHeight="20"
                  Text="Open your websites on the right screens, sign in from a local encrypted vault, and run everything with one shortcut — including after Windows unlock."/>
       <TextBlock Margin="0,14,0,0" FontWeight="SemiBold" Text="Privacy"/>
-      <TextBlock Margin="0,6,0,0" Foreground="#91A1B7" TextWrapping="Wrap"
+      <TextBlock Margin="0,6,0,0" Foreground="#9AB6C8" TextWrapping="Wrap"
                  Text="Your saved logins stay on this computer. LaunchFlow does not upload your passwords."/>
     </StackPanel>
     <DockPanel Grid.Row="2">

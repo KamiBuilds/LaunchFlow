@@ -10,14 +10,33 @@ try
     var profile = Path.Combine(ProfileVaultService.ProfilesRoot, Guid.NewGuid().ToString("N"));
     Directory.CreateDirectory(profile);
     File.WriteAllText(Path.Combine(profile, "cookie.txt"), "fixture-only-cookie");
+    var largeFixture = new byte[256 * 1024 + 17];
+    RandomNumberGenerator.Fill(largeFixture);
+    File.WriteAllBytes(Path.Combine(profile, "large.bin"), largeFixture);
     ProfileVaultService.SealAll();
     Assert(!Directory.Exists(profile), "successful sealing removes the plaintext profile");
+    var firstArchive = Path.Combine(ProfileVaultService.SealedRoot, Path.GetFileName(profile) + ".profile.aes");
+    Assert(File.ReadAllBytes(firstArchive).AsSpan(0, 5).SequenceEqual("LFPS2"u8),
+        "new profile archive uses bounded streaming format");
     ProfileVaultService.UnsealAll();
+    Assert(File.ReadAllBytes(Path.Combine(profile, "large.bin")).SequenceEqual(largeFixture),
+        "chunked archive restores data across multiple encryption blocks");
     Assert(File.Exists(Path.Combine(profile, "cookie.txt")), "profile decrypts after randomized DPAPI wrapping");
     Assert(File.ReadAllText(Path.Combine(profile, "cookie.txt")) == "fixture-only-cookie", "profile round trip retains exact synthetic cookie data");
     ProfileVaultService.SealAll();
     ProfileVaultService.UnsealAll();
     Assert(CrashLog.Failures.Count == 0, "repeated profile lock/unlock reports no failures");
+    var tamperedId = Guid.NewGuid().ToString("N");
+    var tamperedPath = Path.Combine(ProfileVaultService.SealedRoot, tamperedId + ".profile.aes");
+    var tampered = File.ReadAllBytes(firstArchive);
+    tampered[24] ^= 0x01;
+    File.WriteAllBytes(tamperedPath, tampered);
+    var rejectedTamper = false;
+    try { ProfileVaultService.UnsealAll(); }
+    catch (AggregateException) { rejectedTamper = true; }
+    Assert(rejectedTamper && !Directory.Exists(Path.Combine(ProfileVaultService.ProfilesRoot, tamperedId)),
+        "tampered authenticated chunks never publish a browser profile");
+    File.Delete(tamperedPath);
     var invalidId = Guid.NewGuid().ToString("N");
     using var zip = new MemoryStream();
     using (var archive = new ZipArchive(zip, ZipArchiveMode.Create, leaveOpen: true))

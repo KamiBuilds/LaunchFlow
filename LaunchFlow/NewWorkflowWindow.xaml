@@ -1,9 +1,9 @@
 <Window x:Class="LaunchFlow.NewWorkflowWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="New workflow" Width="520" Height="520" MinWidth="480" MinHeight="480"
+        Title="New workflow" Width="560" Height="570" MinWidth="480" MinHeight="480"
         ResizeMode="CanResize" WindowStartupLocation="CenterScreen" ShowInTaskbar="True"
-        Background="#111A2A" Foreground="#E9F1FB" FontFamily="Segoe UI" FontSize="13"
+        Background="#0D1725" Foreground="#EEF6FA" FontFamily="Segoe UI" FontSize="13"
         Icon="pack://application:,,,/Assets/LaunchFlow.ico">
   <Grid Margin="24,20">
     <Grid.RowDefinitions>
@@ -14,7 +14,7 @@
     <StackPanel>
       <TextBlock Text="Create a workflow" FontSize="22" FontWeight="SemiBold"/>
       <TextBlock Text="Add a website, choose where it opens, and optionally save a login."
-                 Margin="0,8,0,0" Foreground="#A8BED6" TextWrapping="Wrap"/>
+                 Margin="0,8,0,0" Foreground="#B4CCDB" TextWrapping="Wrap"/>
     </StackPanel>
     <ScrollViewer Grid.Row="1" Margin="0,16,0,12" VerticalScrollBarVisibility="Auto">
       <StackPanel>
@@ -49,7 +49,7 @@
           </StackPanel>
         </Grid>
         <TextBlock Text="Examples: example.com, 192.168.1.50:8080 or localhost:3000. Auto uses HTTP for local addresses and HTTPS for websites. Pasted full URLs keep their protocol."
-                   FontSize="11" Foreground="#A8BED6" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                   FontSize="11" Foreground="#B4CCDB" TextWrapping="Wrap" Margin="0,0,0,6"/>
         <TextBlock Text="HTTP isn't encrypted. Use HTTPS for sensitive logins whenever possible."
                    FontSize="11" Foreground="#E6B96F" TextWrapping="Wrap" Margin="0,0,0,12"/>
         <TextBlock Text="Browser" FontWeight="SemiBold"/>
@@ -68,7 +68,7 @@
         <PasswordBox x:Name="PasswordBox" Margin="0,6,0,0" Height="36" Background="#0D1522"
                      Foreground="White" BorderBrush="#354358" Padding="10,8"/>
         <TextBlock Text="Using KeePassXC? After creating this website, open Passwords and choose your KeePassXC login. No paths to type."
-                   Foreground="#A8BED6" Margin="0,12,0,0" TextWrapping="Wrap"/>
+                   Foreground="#B4CCDB" Margin="0,12,0,0" TextWrapping="Wrap"/>
       </StackPanel>
     </ScrollViewer>
     <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">

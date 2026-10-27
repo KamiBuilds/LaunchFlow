@@ -17,7 +17,11 @@ public partial class StepEditorWindow : Window
     public StepEditorWindow(WorkflowStep existing)
     {
         InitializeComponent();
-        Loaded += (_, _) => DarkWindowChrome.Apply(this);
+        Loaded += (_, _) =>
+        {
+            DarkWindowChrome.Apply(this);
+            ApplyLanguage();
+        };
         Result = new WorkflowStep
         {
             Type = existing.Type,
@@ -31,11 +35,27 @@ public partial class StepEditorWindow : Window
         DescriptionBox.Text = Result.Description ?? "";
     }
 
+    private void ApplyLanguage()
+    {
+        string T(string value) => LocalizationService.Text(value);
+        Title = T("Workflow step");
+        Heading.Text = T("Workflow step");
+        TypeLabel.Text = T("Type");
+        TargetLabel.Text = T("Target (URL, CSS selector, key, or milliseconds)");
+        ValueLabel.Text = T("Value (for Fill)");
+        DescriptionLabel.Text = T("Description (optional)");
+        SecretsWarning.Text = T("Never store passwords or access tokens as Fill values. Use the Passwords tab.");
+        CancelButton.Content = T("Cancel");
+        SaveButton.Content = T("Save");
+        foreach (ComboBoxItem item in TypeCombo.Items)
+            if (item.Tag is string action) item.Content = T(action);
+    }
+
     private void SelectType(string type)
     {
         for (int i = 0; i < TypeCombo.Items.Count; i++)
         {
-            if ((TypeCombo.Items[i] as ComboBoxItem)?.Content?.ToString() == type)
+            if ((TypeCombo.Items[i] as ComboBoxItem)?.Tag?.ToString() == type)
             {
                 TypeCombo.SelectedIndex = i;
                 return;
@@ -46,7 +66,7 @@ public partial class StepEditorWindow : Window
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {
-        var type = (TypeCombo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Navigate";
+        var type = (TypeCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Navigate";
         var target = TargetBox.Text.Trim();
         if (string.IsNullOrWhiteSpace(target))
         {
@@ -54,7 +74,7 @@ public partial class StepEditorWindow : Window
             return;
         }
 
-        if (type == "Navigate")
+        if (type is "Navigate" or "WaitForURL")
         {
             try { AutomationEngine.ValidateUrl(target); }
             catch (Exception ex)

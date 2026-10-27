@@ -1,3 +1,15 @@
+# v0.7.20 — Workspace UI refresh and selection fixes (testing build)
+
+- Redesigned the main window with clearer navigation, compact workflow actions, improved visual hierarchy and a consistent dark teal theme.
+- Rebuilt the Workspace Profiles panel with a selectable saved-workspace dropdown and a separate field for naming workspaces.
+- Fixed workspace selection, preview, save and launch behavior; running a saved workspace no longer depends on editable ComboBox text.
+- Improved dropdown labels and popup presentation, workflow editor spacing, credential settings, and dialog consistency.
+- Added in-app version indicators and improved the update-settings presentation.
+- Preserved existing encrypted vault data, workflow IDs and the stable Inno Setup application identity.
+- Added WPF XML, UI-control wiring and release-version checks to CI.
+
+**Release status:** Experimental branch. The app only discovers updates from published GitHub Releases; changing the branch version alone does not publish an update. Verify native Windows UI behavior, installation and profile compatibility before releasing.
+
 # v0.7.19 — Teal switches and multi-click recording
 
 - Removed checkmark icons from checkbox controls, replacing them with compact on/off switches in LaunchFlow teal.

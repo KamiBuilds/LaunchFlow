@@ -27,7 +27,7 @@ permissions:
 
 concurrency:
   group: windows-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
   portable-regressions:
@@ -43,6 +43,10 @@ jobs:
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
+      - name: Validate WPF UI and v0.7.20 packaging contracts
+        run: python3 tests/ui/verify_ui.py
+      - name: Validate source invariants
+        run: python3 tools/Verify-LaunchFlow-Source.py
       - name: Build runtime harness
         run: dotnet build tests/runtime/RuntimeTests.csproj -c Release -warnaserror
       - name: Install isolated development Chromium
@@ -52,6 +56,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Development Chromium installation failed' }
       - name: Exercise production automation with synthetic browser fixtures
         run: dotnet run --project tests/runtime/RuntimeTests.csproj -c Release --no-build
+      - name: Exercise privacy-safe diagnostic export
+        run: dotnet run --project tests/diagnostics/DiagnosticTests.csproj -c Release
       - name: Exercise profile recovery with simulated DPAPI
         run: dotnet run --project tests/profiles/ProfileTests.csproj -c Release -p:TreatWarningsAsErrors=true
       - name: Exercise recorder capture and production replay
@@ -165,6 +171,16 @@ jobs:
         with:
           name: LaunchFlow-v${{ needs.windows.outputs.version }}-${{ github.sha }}-Windows
           path: dist
+      - name: Require approved Authenticode signatures before draft publication
+        shell: pwsh
+        env:
+          SIGNING_THUMBPRINT: ${{ vars.LAUNCHFLOW_SIGNING_THUMBPRINT }}
+          LF_VERSION: ${{ needs.windows.outputs.version }}
+        run: |
+          ./scripts/Verify-SignedArtifacts.ps1 -ExpectedThumbprint $env:SIGNING_THUMBPRINT -Paths @(
+            "dist/LaunchFlow-Setup-v$env:LF_VERSION-x64.exe",
+            'dist/LaunchFlow-Universal-Installer.exe'
+          )
       - name: Create and verify a new draft without updating any existing release
         shell: pwsh
         env:

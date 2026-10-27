@@ -1,0 +1,29 @@
+<Window x:Class="LaunchFlow.WorkspacePreviewWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Workspace preview" Width="670" Height="490" MinWidth="540" MinHeight="360"
+        ResizeMode="CanResize" WindowStartupLocation="CenterOwner"
+        Background="#0D1725" Foreground="#EEF6FA" FontFamily="Segoe UI" FontSize="13"
+        Icon="pack://application:,,,/Assets/LaunchFlow.ico">
+  <DockPanel Margin="24">
+    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
+      <TextBlock x:Name="Heading" FontSize="23" FontWeight="SemiBold"/>
+      <TextBlock Text="Read-only preview. No windows, credentials or website sessions are opened."
+                 TextWrapping="Wrap" Foreground="#ABC1D8" Margin="0,8,0,0"/>
+    </StackPanel>
+    <Button DockPanel.Dock="Bottom" Content="Close" IsCancel="True" HorizontalAlignment="Right"
+            Margin="0,14,0,0" Padding="20,8" Click="Close_Click"
+            AutomationProperties.Name="Close workspace preview"/>
+    <ListView x:Name="WorkflowRows" Background="#172B3E" Foreground="#E8F4FB"
+              BorderThickness="0" AutomationProperties.Name="Workspace browser and monitor assignments">
+      <ListView.View>
+        <GridView>
+          <GridViewColumn Header="Workflow" DisplayMemberBinding="{Binding Name}" Width="170"/>
+          <GridViewColumn Header="Monitor" DisplayMemberBinding="{Binding Monitor}" Width="185"/>
+          <GridViewColumn Header="Browser" DisplayMemberBinding="{Binding Browser}" Width="90"/>
+          <GridViewColumn Header="Status" DisplayMemberBinding="{Binding Status}" Width="125"/>
+        </GridView>
+      </ListView.View>
+    </ListView>
+  </DockPanel>
+</Window>

@@ -4,7 +4,7 @@ using Microsoft.Playwright;
 
 namespace LaunchFlow.Services;
 
-public sealed class AutomationEngine : IAsyncDisposable
+public sealed partial class AutomationEngine : IAsyncDisposable
 {
     private readonly CredentialVault _vault;
     private readonly object _gate = new();
@@ -359,6 +359,17 @@ public sealed class AutomationEngine : IAsyncDisposable
                 Log($"Login needs attention for '{workflow.Name}': {health.Reason} Pausing further steps for this site.");
                 return new LoginAttention(workflow.Id, workflow.Name, health.Reason);
             }
+            if (workflow.Steps.Count > 0 || !string.IsNullOrWhiteSpace(workflow.DestinationUrl))
+            {
+                var verified = await LoginHealth.VerifySuccessAsync(
+                    page, workflow.LoginSuccessSelector, workflow.LoginSuccessUrlContains, ct)
+                    .ConfigureAwait(false);
+                if (verified.NeedsAttention)
+                {
+                    Log($"Login not verified for '{workflow.Name}'. Follow-up actions were paused.");
+                    return new LoginAttention(workflow.Id, workflow.Name, verified.Reason);
+                }
+            }
         }
 
         foreach (var step in workflow.Steps)
@@ -525,8 +536,8 @@ public sealed class AutomationEngine : IAsyncDisposable
                 ValidateUrl(origin);
                 RequireCredentialAccess();
                 RequireAutomationUrl(origin);
-                if (EnterprisePolicy.Current.RequireHttpsForCredentials && new Uri(origin).Scheme != Uri.UriSchemeHttps)
-                    throw new InvalidOperationException("HTTPS is required for credentials by your organization's policy.");
+                if (new Uri(origin).Scheme != Uri.UriSchemeHttps)
+                    throw new InvalidOperationException("Automatic credentials require HTTPS. Use manual sign-in for HTTP sites.");
                 if (Volatile.Read(ref navigated) != 0)
                     throw new InvalidOperationException("Credential document changed. Retry sign-in manually.");
                 return origin;
@@ -617,7 +628,18 @@ public sealed class AutomationEngine : IAsyncDisposable
                 if (int.TryParse(step.Target, out var ms))
                     await Task.Delay(Math.Clamp(ms, 0, 60_000), ct).ConfigureAwait(false);
                 else
-                    await page.Locator(step.Target).First.WaitForAsync().ConfigureAwait(false);
+                    await page.Locator(step.Target).First.WaitForAsync().WaitAsync(ct).ConfigureAwait(false);
+                break;
+            case "AssertVisible":
+                if (!await page.Locator(step.Target).First.IsVisibleAsync().ConfigureAwait(false))
+                    throw new InvalidOperationException("Expected element is not visible.");
+                break;
+            case "WaitForURL":
+                ValidateUrl(step.Target);
+                RequireAutomationUrl(step.Target);
+                await page.WaitForURLAsync(url =>
+                    string.Equals(url, step.Target, StringComparison.OrdinalIgnoreCase),
+                    new PageWaitForURLOptions { Timeout = 60_000 }).WaitAsync(ct).ConfigureAwait(false);
                 break;
             default:
                 throw new InvalidOperationException("Unsupported workflow step.");
@@ -645,181 +667,17 @@ public sealed class AutomationEngine : IAsyncDisposable
         {
             if (EnterprisePolicy.Current.DisableCredentialFill)
                 throw new InvalidOperationException("Fill actions are disabled by your organization's policy.");
+            var inputType = await element.GetAttributeAsync("type").ConfigureAwait(false);
+            var autocomplete = await element.GetAttributeAsync("autocomplete").ConfigureAwait(false);
+            if (string.Equals(inputType, "password", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(autocomplete, "current-password", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(autocomplete, "new-password", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Use vault credentials instead of storing passwords in workflow steps.");
+            ct.ThrowIfCancellationRequested();
             await element.FillAsync(step.Value ?? "").ConfigureAwait(false);
         }
         else await element.ClickAsync().ConfigureAwait(false);
     }
-
-    private async Task<IPage> GetOrCreatePageAsync(WebsiteWorkflow workflow, CancellationToken ct)
-    {
-        await _sessionGate.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            lock (_gate) CheckSessionAdmission();
-            await EnsurePlaywrightAsync().ConfigureAwait(false);
-            return await GetOrCreatePageCoreAsync(workflow, ct).ConfigureAwait(false);
-        }
-        finally { _sessionGate.Release(); }
-    }
-
-    private async Task<IPage> GetOrCreatePageCoreAsync(WebsiteWorkflow workflow, CancellationToken ct)
-    {
-        ct.ThrowIfCancellationRequested();
-        RequireAutomationUrl(workflow.StartUrl);
-        if (_sessions.TryGetValue(workflow.Id, out var existing))
-        {
-            if (!existing.Page.IsClosed) return existing.Page;
-            try
-            {
-                await existing.Context.CloseAsync().ConfigureAwait(false);
-                _sessions.Remove(workflow.Id);
-            }
-            catch
-            {
-                lock (_gate) _cleanupRequired = true;
-                throw new InvalidOperationException("The previous browser session could not be closed. Retry closing sessions before continuing.");
-            }
-        }
-
-        var browserType = ResolveBrowserType(workflow.Browser);
-        var profileDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "LaunchFlow", "profiles-v2", workflow.Id.ToString("N"));
-        // Do not replace a failed restore with an empty browser profile and overwrite its sealed data on the next lock.
-        var sealedPath = Path.Combine(ProfileVaultService.SealedRoot, workflow.Id.ToString("N") + ".profile.aes");
-        if (!Directory.Exists(profileDir) && File.Exists(sealedPath))
-            throw new InvalidOperationException("This browser profile could not be restored. Its encrypted files were retained; do not replace them.");
-        Directory.CreateDirectory(profileDir);
-
-        var options = new BrowserTypeLaunchPersistentContextOptions
-        {
-            Headless = false,
-            ViewportSize = ViewportSize.NoViewport
-        };
-        var channel = ResolveChannel(workflow.Browser);
-        if (channel is not null) options.Channel = channel;
-        if (!workflow.Browser.Contains("Firefox", StringComparison.OrdinalIgnoreCase))
-        {
-            options.IgnoreDefaultArgs = new[] { "--enable-automation" };
-            options.Args = new[] { "--disable-blink-features=AutomationControlled" };
-        }
-
-        var context = await LaunchContextWithRecoveryAsync(browserType, workflow, profileDir, options, ct).ConfigureAwait(false);
-        _unclaimedContexts.Add(context);
-        try
-        {
-            // Launch has no cancellation-token API. Own its result before inspecting or publishing any page.
-            ct.ThrowIfCancellationRequested();
-            lock (_gate) CheckSessionAdmission();
-            RequireAutomationUrl(workflow.StartUrl);
-            var page = context.Pages.FirstOrDefault() ?? await context.NewPageAsync().ConfigureAwait(false);
-            lock (_gate)
-            {
-                ct.ThrowIfCancellationRequested();
-                CheckSessionAdmission();
-                _sessions[workflow.Id] = new TrackedSession(context, page);
-                _unclaimedContexts.Remove(context);
-            }
-            return page;
-        }
-        catch
-        {
-            try
-            {
-                await context.CloseAsync().ConfigureAwait(false);
-                _unclaimedContexts.Remove(context);
-            }
-            catch { lock (_gate) _cleanupRequired = true; }
-            throw;
-        }
-    }
-
-    private async Task<IBrowserContext> LaunchContextWithRecoveryAsync(
-        IBrowserType browserType,
-        WebsiteWorkflow workflow,
-        string profileDir,
-        BrowserTypeLaunchPersistentContextOptions options,
-        CancellationToken ct)
-    {
-        ct.ThrowIfCancellationRequested();
-        try
-        {
-            return await browserType.LaunchPersistentContextAsync(profileDir, options).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (LooksLikeProfileInUse(ex))
-        {
-            // An active profile belongs to its running browser. Removing locks or copying SQLite files can corrupt it.
-            throw new InvalidOperationException(
-                $"The browser profile for '{workflow.Name}' is already in use. Close that workflow's browser window and try again.", ex);
-        }
-    }
-
-    private static bool LooksLikeProfileInUse(Exception ex)
-    {
-        var message = ex.Message ?? string.Empty;
-        return message.Contains("existing browser session", StringComparison.OrdinalIgnoreCase) ||
-               message.Contains("profile is already in use", StringComparison.OrdinalIgnoreCase) ||
-               message.Contains("singleton", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private async Task PositionWindowAsync(IPage page, WebsiteWorkflow workflow)
-    {
-        try
-        {
-            var monitors = MonitorService.GetMonitors();
-            var monitor = MonitorService.Resolve(workflow, monitors);
-            var bounds = monitor.Bounds;
-            // Chromium-only CDP window placement; Firefox quietly skips.
-            var cdp = await page.Context.NewCDPSessionAsync(page).ConfigureAwait(false);
-            var windowJson = await cdp.SendAsync("Browser.getWindowForTarget").ConfigureAwait(false);
-            if (!windowJson.HasValue) return;
-            var windowId = windowJson.Value.GetProperty("windowId").GetInt32();
-            await cdp.SendAsync("Browser.setWindowBounds", new Dictionary<string, object>
-            {
-                ["windowId"] = windowId,
-                ["bounds"] = new Dictionary<string, object>
-                {
-                    ["left"] = bounds.Left + 8,
-                    ["top"] = bounds.Top + 8,
-                    ["width"] = Math.Max(800, bounds.Width - 16),
-                    ["height"] = Math.Max(600, bounds.Height - 16),
-                    ["windowState"] = "normal"
-                }
-            }).ConfigureAwait(false);
-        }
-        catch (Exception)
-        {
-            Log("Could not position browser on the selected monitor.");
-        }
-    }
-
-    private async Task EnsurePlaywrightAsync()
-    {
-        if (_playwright is not null) return;
-        _playwright = await Playwright.CreateAsync().ConfigureAwait(false);
-    }
-
-    private IBrowserType ResolveBrowserType(string browser)
-    {
-        if (_playwright is null) throw new InvalidOperationException("Playwright is not initialized.");
-        return browser.Contains("Firefox", StringComparison.OrdinalIgnoreCase)
-            ? _playwright.Firefox
-            : browser.Contains("Chrome", StringComparison.OrdinalIgnoreCase) ||
-              browser.Contains("Edge", StringComparison.OrdinalIgnoreCase)
-                ? _playwright.Chromium
-                : _playwright.Chromium;
-    }
-
-    private static string? ResolveChannel(string browser)
-    {
-        if (browser.Contains("Edge", StringComparison.OrdinalIgnoreCase)) return "msedge";
-        if (browser.Contains("Chrome", StringComparison.OrdinalIgnoreCase)) return "chrome";
-        return null;
-    }
-
-    private static bool IsDefaultBrowserOpenOnly(string browser) =>
-        browser.Contains("Default", StringComparison.OrdinalIgnoreCase) ||
-        browser.Contains("open only", StringComparison.OrdinalIgnoreCase);
 
     private static string GetOrigin(string url)
     {
@@ -833,7 +691,7 @@ public sealed class AutomationEngine : IAsyncDisposable
     private void Log(string message) => OnLog?.Invoke(message);
     private void Status(WebsiteWorkflow workflow, WorkflowRunState state) => OnWorkflowStatus?.Invoke(workflow.Name, state);
 
-    private static string PublicStepType(string type) => type is "Navigate" or "Click" or "Fill" or "Press" or "Wait"
+    private static string PublicStepType(string type) => type is "Navigate" or "Click" or "Fill" or "Press" or "Wait" or "AssertVisible" or "WaitForURL"
         ? type : "Unsupported";
 
     private sealed record TrackedSession(IBrowserContext Context, IPage Page);
