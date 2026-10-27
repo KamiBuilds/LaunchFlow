@@ -10,9 +10,17 @@ try
     var profile = Path.Combine(ProfileVaultService.ProfilesRoot, Guid.NewGuid().ToString("N"));
     Directory.CreateDirectory(profile);
     File.WriteAllText(Path.Combine(profile, "cookie.txt"), "fixture-only-cookie");
+    var largeFixture = new byte[256 * 1024 + 17];
+    RandomNumberGenerator.Fill(largeFixture);
+    File.WriteAllBytes(Path.Combine(profile, "large.bin"), largeFixture);
     ProfileVaultService.SealAll();
     Assert(!Directory.Exists(profile), "successful sealing removes the plaintext profile");
+    var firstArchive = Path.Combine(ProfileVaultService.SealedRoot, Path.GetFileName(profile) + ".profile.aes");
+    Assert(File.ReadAllBytes(firstArchive).AsSpan(0, 5).SequenceEqual("LFPS2"u8),
+        "new profile archive uses bounded streaming format");
     ProfileVaultService.UnsealAll();
+    Assert(File.ReadAllBytes(Path.Combine(profile, "large.bin")).SequenceEqual(largeFixture),
+        "chunked archive restores data across multiple encryption blocks");
     Assert(File.Exists(Path.Combine(profile, "cookie.txt")), "profile decrypts after randomized DPAPI wrapping");
     Assert(File.ReadAllText(Path.Combine(profile, "cookie.txt")) == "fixture-only-cookie", "profile round trip retains exact synthetic cookie data");
     ProfileVaultService.SealAll();
