@@ -932,10 +932,8 @@ public partial class MainWindow : Window
             return;
 
         // Modal confirmations pump UI events: import may replace the saved configuration.
-        if (revision != _workspaceRevision ||
-            !ReferenceEquals(existing, WorkspaceCatalog.FindByName(_configuration, name)) ||
-            !_configuration.Workflows.Where(workflow => workflow.Enabled).Select(workflow => workflow.Id)
-                .SequenceEqual(savedWorkflowIds))
+        if (!WorkspaceCatalog.ConfirmationStillValid(
+            _configuration, name, existing, revision, _workspaceRevision, savedWorkflowIds))
         {
             MessageBox.Show(this, "Workspace data changed while confirmation was open. Review the current workspaces and save again.",
                 "Workspace changed", MessageBoxButton.OK, MessageBoxImage.Information);
