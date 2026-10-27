@@ -129,10 +129,10 @@ public sealed partial class AutomationEngine
                 ["windowId"] = windowId,
                 ["bounds"] = new Dictionary<string, object>
                 {
-                    ["left"] = bounds.Left + 8,
-                    ["top"] = bounds.Top + 8,
-                    ["width"] = Math.Max(800, bounds.Width - 16),
-                    ["height"] = Math.Max(600, bounds.Height - 16),
+                    ["left"] = bounds.Left,
+                    ["top"] = bounds.Top,
+                    ["width"] = Math.Max(1, bounds.Width),
+                    ["height"] = Math.Max(1, bounds.Height),
                     ["windowState"] = "normal"
                 }
             }).ConfigureAwait(false);
