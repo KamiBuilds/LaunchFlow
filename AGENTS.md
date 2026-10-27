@@ -1,6 +1,6 @@
 # LaunchFlow rescue contract
 
-LaunchFlow is the user's active engineering priority. Work on `hermes`, based on the user's latest `chatgpt` snapshot (`0df5185`, v0.7.19), not on `chatgpt` or `main`. Earlier rescue work from `feature/kiss-rule-sol` (`5645305`) remains isolated in sibling worktrees and may be integrated only after compatibility review. Preserve original product identity and licensing; do not invent a license or new product.
+LaunchFlow is the user's active engineering priority. The current stabilization pass works only on `hermes-next`, based on `both-3` at `25df42a7e2ce844b47a716891e214283ff4c1983` (v0.7.20). Preserve `both`, `both-2`, `both-3` and collaborator branches. Follow `docs/HERMES-NEXT-STABILIZATION.md`; v0.7.21 is a proposed future release, not permission to bump versions or publish. Earlier rescue work from `feature/kiss-rule-sol` (`5645305`) remains isolated in sibling worktrees and may be integrated only after compatibility review. Preserve original product identity and licensing; do not invent a license or new product.
 
 ## Acceptance gates
 

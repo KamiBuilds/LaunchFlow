@@ -4,8 +4,8 @@ import pathlib
 import re
 
 root = pathlib.Path(__file__).resolve().parents[2]
-source = (root / "LaunchFlow/MainWindow.xaml.cs").read_text()
-names = ["RunEnabledAsync", "RequestCrashCleanup", "RecordSteps_Click", "SecureVaultLockAsync", "SecureVaultLockCoreAsync", "UpdateRunButtons", "RequireMasterPassword", "SaveTaughtStepsAsync", "ChooseKeePassEntry_Click", "DescribeCredentialStatus", "NeedsKeePassForRun", "EnsureKeePassPasswordForRun", "LoadCredentialEditor", "SaveCredentials_Click", "ConfirmLoginOriginAsync", "AutomationAllowed", "TeachAllowed", "CredentialReadAllowed", "LoginModeIndex", "SelectedLoginMode", "QueueWorkflowStatus", "OfferRepairForLoginAttentionAsync", "OfferRepairForStepAttention", "RepairLoginCoreAsync"]
+source = "\n".join(path.read_text() for path in sorted((root / "LaunchFlow").glob("MainWindow*.cs")))
+names = ["RunEnabledAsync", "RequestCrashCleanup", "RecordSteps_Click", "SecureVaultLockAsync", "SecureVaultLockCoreAsync", "UpdateRunButtons", "RequireMasterPassword", "SaveTaughtStepsAsync", "ChooseKeePassEntry_Click", "DescribeCredentialStatus", "NeedsKeePassForRun", "EnsureKeePassPasswordForRun", "LoadCredentialEditor", "SaveCredentials_Click", "ConfirmLoginOriginAsync", "AutomationAllowed", "TeachAllowed", "CredentialReadAllowed", "LoginModeIndex", "SelectedLoginMode", "QueueWorkflowStatus", "OfferRepairForLoginAttentionAsync", "OfferRepairForStepAttention", "RepairLoginCoreAsync", "OnWindowsLocked", "OnWindowsUnlockedAsync", "RunAfterUnlockAsync", "LockAfterThresholdAsync"]
 methods = []
 for name in names:
     match = re.search(r"^    (?:private|internal) (?:async )?[^\n]+\b" + name + r"\([^)]*\)\s*\n    \{", source, re.M)
@@ -33,6 +33,9 @@ partial class UiFixture
     public void SaveCredential() => SaveCredentials_Click(this, new RoutedEventArgs());
     public Task<bool> Approve(WebsiteWorkflow w, string origin) => ConfirmLoginOriginAsync(w, origin);
     public Task Repair() => RepairLoginCoreAsync();
+    public void WindowsLock() => OnWindowsLocked();
+    public Task WindowsUnlock() => OnWindowsUnlockedAsync();
+    public Task AfterUnlock() => RunAfterUnlockAsync();
 METHODS
 }
 """.replace("METHODS", "\n".join(methods))

@@ -3,6 +3,113 @@ using LaunchFlow.Services;
 
 var tests = new List<(string Name, Func<Task> Body)>
 {
+    ("superseded Windows unlock cannot dispatch after a later lock-unlock cycle", async () =>
+    {
+        var ui = new UiFixture();
+        ui._configuration.RunOnUnlock = true;
+        ui._configuration.UnlockDelaySeconds = 0;
+        ui._runner.RunRelease.SetResult(new());
+        var cleanup = new TaskCompletionSource();
+        ui._vaultLockTask = cleanup.Task;
+        using var dispatcher = new PumpContext();
+        var previous = SynchronizationContext.Current;
+        Task oldUnlock, currentUnlock;
+        SynchronizationContext.SetSynchronizationContext(dispatcher);
+        try
+        {
+            ui.WindowsLock();
+            oldUnlock = ui.WindowsUnlock();
+            ui.WindowsLock();
+            currentUnlock = ui.WindowsUnlock();
+        }
+        finally { SynchronizationContext.SetSynchronizationContext(previous); }
+        cleanup.SetResult();
+        dispatcher.Drain();
+        await Task.WhenAll(oldUnlock, currentUnlock).WaitAsync(TimeSpan.FromSeconds(3));
+        Check(ui._runner.RunCalls == 1, $"stale unlock ran workflows again: {ui._runner.RunCalls} dispatches");
+    }),
+    ("a master-password dialog from an old Windows session cannot authorize after relock-unlock", async () =>
+    {
+        var ui = new UiFixture();
+        ui._configuration.RunOnUnlock = true;
+        ui._configuration.UnlockDelaySeconds = 0;
+        ui._runner.RunRelease.SetResult(new());
+        VaultDatabase.Current.IsUnlocked = false;
+        Task? newUnlock = null;
+        ui.UnlockHook = () =>
+        {
+            ui.UnlockHook = null;
+            ui.WindowsLock();
+            newUnlock = ui.WindowsUnlock();
+        };
+        ui.WindowsLock();
+        await ui.WindowsUnlock();
+        if (newUnlock is not null) await newUnlock;
+        Check(ui._master.Verifications == 1 && ui._runner.RunCalls == 1,
+            $"old dialog reauthorized after a new Windows session: {ui._master.Verifications} verifications, {ui._runner.RunCalls} runs");
+    }),
+    ("a completed unlock delay queued across relock cannot dispatch stale automation", async () =>
+    {
+        var ui = new UiFixture();
+        ui._configuration.UnlockDelaySeconds = 1;
+        ui._runner.RunRelease.SetResult(new());
+        using var dispatcher = new PumpContext();
+        var previous = SynchronizationContext.Current;
+        Task delayed;
+        SynchronizationContext.SetSynchronizationContext(dispatcher);
+        try { delayed = ui.AfterUnlock(); }
+        finally { SynchronizationContext.SetSynchronizationContext(previous); }
+        Check(dispatcher.Ready.Wait(TimeSpan.FromSeconds(5)), "delay did not reach the queued UI continuation");
+        ui.WindowsLock();
+        await ui.WindowsUnlock();
+        dispatcher.Drain();
+        await delayed.WaitAsync(TimeSpan.FromSeconds(3));
+        Check(ui._runner.RunCalls == 0, "canceled completed delay dispatched after a newer lock-unlock");
+    }),
+    ("short Windows lock preserves the vault and duplicate lock events share one timer", async () =>
+    {
+        var ui = new UiFixture();
+        ui.WindowsLock();
+        var timer = ui._lockTimeoutCancellation;
+        var start = ui._lockedSinceUtc;
+        ui.WindowsLock();
+        Check(ReferenceEquals(timer, ui._lockTimeoutCancellation) && start == ui._lockedSinceUtc,
+            "duplicate lock replaced the timeout or its starting time");
+        await ui.WindowsUnlock();
+        await ui.WindowsUnlock();
+        Check(VaultDatabase.Current.IsUnlocked && ui.Prompts == 0 && ProfileVaultService.Seals == 0,
+            "short lock unnecessarily sealed or reauthorized the vault");
+    }),
+    ("late unlock revokes keys before browser cleanup and requires a fresh master password", async () =>
+    {
+        var ui = new UiFixture();
+        ui.WindowsLock();
+        ui._lockedSinceUtc = DateTimeOffset.UtcNow.AddMinutes(-11);
+        var unlock = ui.WindowsUnlock();
+        await ui._runner.CloseEntered.Task;
+        try
+        {
+            Check(!VaultDatabase.Current.IsUnlocked && ui.Prompts == 0 && ProfileVaultService.Seals == 0,
+                "late unlock prompted or sealed profiles before the browser barrier");
+            await ui.WindowsUnlock();
+        }
+        finally { ui._runner.CloseRelease.TrySetResult(); await unlock.WaitAsync(TimeSpan.FromSeconds(3)); }
+        Check(ui._master.Verifications == 1 && ProfileVaultService.Seals == 1 && VaultDatabase.Current.IsUnlocked,
+            "elapsed threshold did not seal and require one explicit master-password verification");
+    }),
+    ("failed browser cleanup on Windows unlock keeps profiles and credential automation blocked", async () =>
+    {
+        var ui = new UiFixture();
+        ui._configuration.RunOnUnlock = true;
+        ui._runner.CloseFailure = true;
+        ui._runner.CloseRelease.SetResult();
+        ui.WindowsLock();
+        ui._lockedSinceUtc = DateTimeOffset.UtcNow.AddMinutes(-11);
+        await ui.WindowsUnlock();
+        Check(ui._vaultLockInProgress && !VaultDatabase.Current.IsUnlocked && ui.Prompts == 0 &&
+            ui._runner.RunCalls == 0 && ProfileVaultService.Seals == 0 && ui.Notifications.Count > 0,
+            "cleanup failure reopened credentials, sealed a live profile or omitted its warning");
+    }),
     ("vault key and editor lock immediately while slow browser cleanup yields to the UI", async () =>
     {
         var ui = new UiFixture();
@@ -409,6 +516,11 @@ partial class UiFixture
     public Task<AutomationEngine.RunResult>? _activeRunTask = null;
     public Task<Microsoft.Playwright.IPage>? _activeTeachTask = null;
     public Task _vaultLockTask = Task.CompletedTask;
+    public DateTimeOffset? _lockedSinceUtc;
+    public long _windowsSessionGeneration;
+    public CancellationTokenSource? _lockTimeoutCancellation;
+    public CancellationTokenSource? _unlockCancellation;
+    public TimeSpan LockTimeout => TimeSpan.FromMinutes(Math.Clamp(_configuration.VaultLockMinutes, 1, 120));
     public string? _keepassMasterPassword;
     public readonly Control StopButton = new() { IsEnabled = false }, RunAllButton = new(), RunSelectedButton = new(), RunWorkspaceButton = new(), TeachButton = new(), RepairButton = new(), MainTabs = new();
     public readonly Control WorkflowStatusLabel = new();
@@ -484,6 +596,20 @@ sealed class KeePassEntryPickerWindow(List<string> entries)
     public string SelectedPath => entries[0];
     public bool? ShowDialog() { MessageBox.Hook?.Invoke(); return true; }
 }
+sealed class PumpContext : SynchronizationContext, IDisposable
+{
+    private readonly System.Collections.Concurrent.ConcurrentQueue<(SendOrPostCallback Callback, object? State)> _pending = new();
+    public ManualResetEventSlim Ready { get; } = new();
+    public override void Post(SendOrPostCallback callback, object? state) { _pending.Enqueue((callback, state)); Ready.Set(); }
+    public void Drain()
+    {
+        var previous = Current;
+        SetSynchronizationContext(this);
+        try { while (_pending.TryDequeue(out var item)) item.Callback(item.State); }
+        finally { SetSynchronizationContext(previous); }
+    }
+    public void Dispose() => Ready.Dispose();
+}
 sealed class AsyncVoidTracker : SynchronizationContext
 {
     private readonly TaskCompletionSource _done = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -525,7 +651,9 @@ sealed class FakeDispatcher
     public readonly Queue<Action> Pending = new();
     public void BeginInvoke(Action callback) => Pending.Enqueue(callback);
     public Task<T> InvokeAsync<T>(Func<T> callback) => Task.FromResult(callback());
+    public FakeOperation<Task> InvokeAsync(Func<Task> callback) => new(Task.FromResult(callback()));
 }
+sealed record FakeOperation<T>(Task<T> Task);
 namespace Microsoft.Playwright { public interface IPage { } public sealed class FakePage : IPage { } }
 enum Visibility { Visible, Collapsed }
 sealed class Control
