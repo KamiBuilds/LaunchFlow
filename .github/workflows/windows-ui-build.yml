@@ -2,7 +2,7 @@ name: LaunchFlow Windows UI and installer smoke
 
 on:
   push:
-    branches: [both-2, both-3]
+    branches: [both-2, both-3, chatgpt-next]
   pull_request:
     branches: [both]
 
@@ -29,6 +29,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'UI source contract check failed' }
           python tools/Verify-LaunchFlow-Source.py
           if ($LASTEXITCODE -ne 0) { throw 'Source invariants failed' }
+      - name: Run production-linked workspace model regressions
+        run: dotnet run --project tests/workspaces/WorkspaceTests.csproj -c Release -p:TreatWarningsAsErrors=true
+      - name: Run production-linked UI orchestration regressions
+        shell: pwsh
+        run: |
+          python tests/workspaces/extract-ui-methods.py
+          if ($LASTEXITCODE -ne 0) { throw 'UI method extraction failed' }
+          dotnet run --project tests/workspaces/UiTests.csproj -c Release -p:TreatWarningsAsErrors=true
+          if ($LASTEXITCODE -ne 0) { throw 'UI orchestration tests failed' }
       - name: Compile LaunchFlow WPF application
         run: dotnet build LaunchFlow/LaunchFlow.csproj --configuration Release -warnaserror
       - name: Install Inno Setup on builder
