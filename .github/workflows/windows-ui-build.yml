@@ -2,7 +2,7 @@ name: LaunchFlow Windows UI and installer smoke
 
 on:
   push:
-    branches: [both-2]
+    branches: [both-2, both-3]
   pull_request:
     branches: [both]
 
@@ -51,7 +51,7 @@ jobs:
       - name: Upload unsigned UI test installer
         uses: actions/upload-artifact@v6
         with:
-          name: LaunchFlow-v0.7.20-both-2-UI-${{ github.sha }}
+          name: LaunchFlow-v0.7.20-UI-${{ github.sha }}
           path: |
             dist/LaunchFlow-Setup-v0.7.20-x64.exe
             dist/UI-SHA256SUMS.txt
