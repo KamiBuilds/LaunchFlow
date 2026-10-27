@@ -11,30 +11,30 @@
       <RowDefinition Height="*"/>
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
-    <TextBlock Text="Workflow step" FontSize="20" FontWeight="SemiBold"/>
+    <TextBlock x:Name="Heading" Text="Workflow step" FontSize="20" FontWeight="SemiBold"/>
     <StackPanel Grid.Row="1" Margin="0,16,0,12">
-      <TextBlock Text="Type" FontWeight="SemiBold"/>
+      <TextBlock x:Name="TypeLabel" Text="Type" FontWeight="SemiBold"/>
       <ComboBox x:Name="TypeCombo" AutomationProperties.Name="Step action type" Margin="0,6,0,12" SelectedIndex="0">
-        <ComboBoxItem Content="Navigate"/>
-        <ComboBoxItem Content="Click"/>
-        <ComboBoxItem Content="Fill"/>
-        <ComboBoxItem Content="Wait"/>
-        <ComboBoxItem Content="Press"/>
-        <ComboBoxItem Content="AssertVisible"/>
-        <ComboBoxItem Content="WaitForURL"/>
+        <ComboBoxItem Content="Navigate" Tag="Navigate"/>
+        <ComboBoxItem Content="Click" Tag="Click"/>
+        <ComboBoxItem Content="Fill" Tag="Fill"/>
+        <ComboBoxItem Content="Wait" Tag="Wait"/>
+        <ComboBoxItem Content="Press" Tag="Press"/>
+        <ComboBoxItem Content="AssertVisible" Tag="AssertVisible"/>
+        <ComboBoxItem Content="WaitForURL" Tag="WaitForURL"/>
       </ComboBox>
-      <TextBlock Text="Target (URL, CSS selector, key, or milliseconds)" FontWeight="SemiBold"/>
+      <TextBlock x:Name="TargetLabel" Text="Target (URL, CSS selector, key, or milliseconds)" FontWeight="SemiBold"/>
       <TextBox x:Name="TargetBox" AutomationProperties.Name="Step target or condition" Margin="0,6,0,12"/>
-      <TextBlock Text="Value (for Fill)" FontWeight="SemiBold"/>
+      <TextBlock x:Name="ValueLabel" Text="Value (for Fill)" FontWeight="SemiBold"/>
       <TextBox x:Name="ValueBox" AutomationProperties.Name="Non-secret fill value" Margin="0,6,0,12" ToolTip="Never put passwords, tokens or one-time codes in workflow steps. Use the encrypted vault for login."/>
-      <TextBlock Text="Never store passwords or access tokens as Fill values. Use the Passwords tab."
+      <TextBlock x:Name="SecretsWarning" Text="Never store passwords or access tokens as Fill values. Use the Passwords tab."
                  Foreground="#A6BFD2" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6"/>
-      <TextBlock Text="Description (optional)" FontWeight="SemiBold"/>
+      <TextBlock x:Name="DescriptionLabel" Text="Description (optional)" FontWeight="SemiBold"/>
       <TextBox x:Name="DescriptionBox" Margin="0,6,0,0"/>
     </StackPanel>
     <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
-      <Button Content="Cancel" Width="90" Height="36" Margin="0,0,10,0" IsCancel="True" Click="Cancel_Click"/>
-      <Button Content="Save" Width="90" Height="36" Style="{StaticResource PrimaryButton}"
+      <Button x:Name="CancelButton" Content="Cancel" Width="90" Height="36" Margin="0,0,10,0" IsCancel="True" Click="Cancel_Click"/>
+      <Button x:Name="SaveButton" Content="Save" Width="90" Height="36" Style="{StaticResource PrimaryButton}"
               IsDefault="True" Click="Save_Click"/>
     </StackPanel>
   </Grid>
