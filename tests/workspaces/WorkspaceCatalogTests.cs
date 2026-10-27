@@ -82,6 +82,57 @@ internal static class WorkspaceCatalogTests
                 "stale workspace selection was treated as current");
         });
 
+        yield return ("import during workspace overwrite confirmation rejects detached old profile", () =>
+        {
+            var oldWorkflow = new WebsiteWorkflow { Name = "old workflow" };
+            var oldProfile = new WorkspaceProfile { Name = "NOC", WorkflowIds = new() { oldWorkflow.Id } };
+            var config = new Configuration
+            {
+                Workflows = new() { oldWorkflow },
+                Workspaces = new() { oldProfile }
+            };
+            var capturedRevision = 2L;
+            var enabledIds = new[] { oldWorkflow.Id };
+            Check(WorkspaceCatalog.ConfirmationStillValid(config, "NOC", oldProfile,
+                capturedRevision, capturedRevision, enabledIds),
+                "unchanged overwrite confirmation should be permitted");
+
+            // Simulate an encrypted import while the synchronous WPF confirmation is open.
+            var importedWorkflow = new WebsiteWorkflow { Name = "imported workflow" };
+            var importedProfile = new WorkspaceProfile { Name = "NOC", WorkflowIds = new() { importedWorkflow.Id } };
+            config.Workspaces.Clear();
+            config.Workspaces.Add(importedProfile);
+            config.Workflows.Clear();
+            config.Workflows.Add(importedWorkflow);
+            Check(!WorkspaceCatalog.ConfirmationStillValid(config, "NOC", oldProfile,
+                capturedRevision, capturedRevision + 1, enabledIds),
+                "a confirmation for a detached workspace was allowed to overwrite imported data");
+            Check(!WorkspaceCatalog.ConfirmationStillValid(config, "NOC", oldProfile,
+                capturedRevision, capturedRevision, enabledIds),
+                "same-name imported workspace was accepted via stale reference");
+            Check(ReferenceEquals(config.Workspaces.Single(), importedProfile) &&
+                importedProfile.WorkflowIds.SequenceEqual(new[] { importedWorkflow.Id }),
+                "read-only confirmation validation mutated the imported profile");
+        });
+
+        yield return ("post-confirmation workflow changes and empty-state imports invalidate approval", () =>
+        {
+            var workflow = new WebsiteWorkflow();
+            var profile = new WorkspaceProfile { Name = "NOC" };
+            var config = new Configuration { Workflows = new() { workflow }, Workspaces = new() { profile } };
+            var original = new[] { workflow.Id };
+            workflow.Enabled = false;
+            Check(!WorkspaceCatalog.ConfirmationStillValid(config, "NOC", profile, 1, 1, original),
+                "workflow selection changed during dialog but still passed");
+
+            config.Workspaces.Clear();
+            config.Workflows.Clear();
+            Check(!WorkspaceCatalog.ConfirmationStillValid(config, "NOC", profile, 1, 2, original),
+                "empty imported workspace state did not invalidate old approval");
+            Check(!WorkspaceCatalog.ConfirmationStillValid(config, "NOC", null, 1, 2, Array.Empty<Guid>()),
+                "empty imports reused an old confirmation because both states were empty");
+        });
+
         yield return ("workspace name validation happens before any mutation or persistence", () =>
         {
             var config = new Configuration();
