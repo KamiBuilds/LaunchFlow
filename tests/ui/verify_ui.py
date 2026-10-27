@@ -35,6 +35,9 @@ check(selector is not None and selector.get("IsEditable") == "False"
       "saved workspaces use selectable non-editable dropdown")
 check(selector is not None and named["WorkspaceNameBox"] is not selector,
       "workspace creation uses a separate text field")
+check(named["WorkspaceNameBox"].get("TextChanged") == "WorkspaceNameBox_TextChanged" and
+      "PreviewWorkspaceButton" in named,
+      "typing another workspace name revokes the previous selection")
 source = (root / "LaunchFlow/MainWindow.xaml.cs").read_text(encoding="utf-8")
 check(all(handler in source for handler in
           ("WorkspaceCombo_SelectionChanged", "SaveWorkspace_Click",
@@ -42,6 +45,10 @@ check(all(handler in source for handler in
       "workspace selection, save, preview and run handlers present")
 check('WorkspaceCombo.Text.Trim()' not in source,
       "workspace execution no longer relies on ComboBox text")
+check('WorkspaceCatalog.Save(_configuration, name' in source and
+      'WorkspaceCatalog.IsCurrentSelection' in source and
+      'PreviewWorkspaceButton.IsEnabled = available && savedWorkspaceSelected' in source,
+      "workspace save, preview and run share rollback-safe validated selection")
 style = (root / "LaunchFlow/App.xaml").read_text(encoding="utf-8")
 check('SelectionBoxItemTemplate' in style and 'PART_Popup' in style
       and 'ItemsPresenter' in style,
