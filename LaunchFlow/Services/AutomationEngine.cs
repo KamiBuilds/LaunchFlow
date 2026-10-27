@@ -359,6 +359,17 @@ public sealed class AutomationEngine : IAsyncDisposable
                 Log($"Login needs attention for '{workflow.Name}': {health.Reason} Pausing further steps for this site.");
                 return new LoginAttention(workflow.Id, workflow.Name, health.Reason);
             }
+            if (workflow.Steps.Count > 0 || !string.IsNullOrWhiteSpace(workflow.DestinationUrl))
+            {
+                var verified = await LoginHealth.VerifySuccessAsync(
+                    page, workflow.LoginSuccessSelector, workflow.LoginSuccessUrlContains, ct)
+                    .ConfigureAwait(false);
+                if (verified.NeedsAttention)
+                {
+                    Log($"Login not verified for '{workflow.Name}'. Follow-up actions were paused.");
+                    return new LoginAttention(workflow.Id, workflow.Name, verified.Reason);
+                }
+            }
         }
 
         foreach (var step in workflow.Steps)
@@ -525,8 +536,8 @@ public sealed class AutomationEngine : IAsyncDisposable
                 ValidateUrl(origin);
                 RequireCredentialAccess();
                 RequireAutomationUrl(origin);
-                if (EnterprisePolicy.Current.RequireHttpsForCredentials && new Uri(origin).Scheme != Uri.UriSchemeHttps)
-                    throw new InvalidOperationException("HTTPS is required for credentials by your organization's policy.");
+                if (new Uri(origin).Scheme != Uri.UriSchemeHttps)
+                    throw new InvalidOperationException("Automatic credentials require HTTPS. Use manual sign-in for HTTP sites.");
                 if (Volatile.Read(ref navigated) != 0)
                     throw new InvalidOperationException("Credential document changed. Retry sign-in manually.");
                 return origin;
@@ -698,12 +709,7 @@ public sealed class AutomationEngine : IAsyncDisposable
         };
         var channel = ResolveChannel(workflow.Browser);
         if (channel is not null) options.Channel = channel;
-        if (!workflow.Browser.Contains("Firefox", StringComparison.OrdinalIgnoreCase))
-        {
-            options.IgnoreDefaultArgs = new[] { "--enable-automation" };
-            options.Args = new[] { "--disable-blink-features=AutomationControlled" };
-        }
-
+        // Use Playwright's standard supported browser automation configuration.
         var context = await LaunchContextWithRecoveryAsync(browserType, workflow, profileDir, options, ct).ConfigureAwait(false);
         _unclaimedContexts.Add(context);
         try
