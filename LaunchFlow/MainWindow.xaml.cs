@@ -152,12 +152,14 @@ public partial class MainWindow : Window
             (WorkflowsNav, "Workflows"), (PasswordsNav, "Passwords"), (SettingsNav, "Settings"),
             (SaveWorkspaceButton, "Save workspace"), (RunWorkspaceButton, "Run selected workspace"),
             (RunAllButton, "Run all enabled websites"), (StopButton, "Stop"),
-            (WorkspaceCombo, "Workspace profiles"), (LanguageCombo, "Application language"),
+            (WorkspaceCombo, "Saved workspace selector"), (WorkspaceNameBox, "Workspace name"),
+            (LanguageCombo, "Application language"),
             (NameBox, "Workflow name"), (StartUrlBox, "Website start URL"), (MonitorCombo, "Screen"),
             (WorkflowStatusLabel, "Workflow status"), (EnabledCheck, "Enable or disable this workflow"),
             (StepList, "Workflow steps after sign-in")
         }) System.Windows.Automation.AutomationProperties.SetName(control, Text(name));
-        WorkspaceCombo.ToolTip = Text("Choose or type a workspace name");
+        WorkspaceCombo.ToolTip = Text("Select a saved workspace");
+        WorkspaceNameBox.ToolTip = Text("Enter a workspace name");
         SaveWorkspaceButton.ToolTip = Text("Save enabled websites as a workspace");
         RunWorkspaceButton.ToolTip = Text("Run selected workspace");
         if (!_runInProgress) WorkflowStatusLabel.Text = Text("Ready");
@@ -886,37 +888,55 @@ public partial class MainWindow : Window
         RefreshSteps(); StepList.SelectedIndex = dest;
     }
 
+    private void WorkspaceCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (WorkspaceCombo.SelectedItem is WorkspaceProfile profile)
+            WorkspaceNameBox.Text = profile.Name;
+    }
+
     private void SaveWorkspace_Click(object sender, RoutedEventArgs e)
     {
-        var name = WorkspaceCombo.Text.Trim();
+        var name = WorkspaceNameBox.Text.Trim();
         if (name.Length is < 1 or > 64)
         {
-            MessageBox.Show(this, "Enter a workspace name (1–64 characters).", "Workspace", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, "Enter a workspace name (1–64 characters).", "Workspace",
+                MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
         if (!SaveAll()) return;
+
         var existing = _configuration.Workspaces.FirstOrDefault(profile =>
             string.Equals(profile.Name, name, StringComparison.OrdinalIgnoreCase));
         if (existing is not null && MessageBox.Show(this,
             "Replace the workflow selection in this workspace?", "Update workspace",
-            MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+            MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes)
+            return;
+
         var previousName = existing?.Name;
         var previousIds = existing?.WorkflowIds;
         var profile = WorkspaceProfile.Capture(_configuration, name);
-        try { _store.Save(_configuration); }
+        try
+        {
+            _store.Save(_configuration);
+        }
         catch (Exception ex)
         {
             if (existing is null) _configuration.Workspaces.Remove(profile);
             else { existing.Name = previousName!; existing.WorkflowIds = previousIds!; }
-            MessageBox.Show(this, ex.Message, "Workspace not saved", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, ex.Message, "Workspace not saved",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
         }
+
         WorkspaceCombo.Items.Refresh();
-        WorkspaceCombo.SelectedItem = existing is null && !_configuration.Workspaces.Contains(profile) ? null : profile;
+        WorkspaceCombo.SelectedItem = profile;
+        WorkspaceNameBox.Text = profile.Name;
     }
 
     private void PreviewWorkspace_Click(object sender, RoutedEventArgs e)
     {
-        if (WorkspaceCombo.SelectedItem is not WorkspaceProfile selected)
+        if (WorkspaceCombo.SelectedItem is not WorkspaceProfile selected ||
+            !_configuration.Workspaces.Contains(selected))
         {
             MessageBox.Show(this, "Select a saved workspace first.");
             return;
@@ -927,7 +947,7 @@ public partial class MainWindow : Window
     private void RunWorkspace_Click(object sender, RoutedEventArgs e)
     {
         if (WorkspaceCombo.SelectedItem is not WorkspaceProfile profile ||
-            !string.Equals(WorkspaceCombo.Text.Trim(), profile.Name, StringComparison.OrdinalIgnoreCase))
+            !_configuration.Workspaces.Contains(profile))
         {
             MessageBox.Show(this, "Select a saved workspace first.", "Workspace", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
@@ -2095,7 +2115,7 @@ public partial class MainWindow : Window
             _configuration.Workspaces.AddRange(imported.Config.Workspaces);
             WorkspaceCombo.Items.Refresh();
             WorkspaceCombo.SelectedItem = null;
-            WorkspaceCombo.Text = "";
+            WorkspaceNameBox.Clear();
             _configuration.UiLanguage = imported.Config.UiLanguage;
             _configuration.AdditionalSettings = imported.Config.AdditionalSettings;
             LanguageCombo.SelectedIndex = _configuration.UiLanguage switch { "en" => 1, "nl" => 2, _ => 0 };
