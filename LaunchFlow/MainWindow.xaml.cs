@@ -207,7 +207,11 @@ public partial class MainWindow : Window
         bool available = !_runInProgress && !_vaultLockInProgress && !_teachingInProgress && !_windowsLocked && !_exiting;
         RunAllButton.IsEnabled = available;
         RunSelectedButton.IsEnabled = available;
-        RunWorkspaceButton.IsEnabled = available;
+        var savedWorkspaceSelected = _configuration is not null &&
+            WorkspaceCatalog.IsCurrentSelection(_configuration,
+                WorkspaceCombo.SelectedItem as WorkspaceProfile, WorkspaceNameBox.Text);
+        RunWorkspaceButton.IsEnabled = available && savedWorkspaceSelected;
+        PreviewWorkspaceButton.IsEnabled = available && savedWorkspaceSelected;
         TeachButton.IsEnabled = available;
         RepairButton.IsEnabled = available;
         StopButton.IsEnabled = _runInProgress && _runCancellation is { IsCancellationRequested: false } && !_vaultLockInProgress;
@@ -894,6 +898,16 @@ public partial class MainWindow : Window
     {
         if (WorkspaceCombo.SelectedItem is WorkspaceProfile profile)
             WorkspaceNameBox.Text = profile.Name;
+        if (_configuration is not null) UpdateRunButtons();
+    }
+
+    private void WorkspaceNameBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_configuration is null) return;
+        if (WorkspaceCombo.SelectedItem is WorkspaceProfile profile &&
+            !WorkspaceCatalog.IsCurrentSelection(_configuration, profile, WorkspaceNameBox.Text))
+            WorkspaceCombo.SelectedItem = null;
+        UpdateRunButtons();
     }
 
     private void SaveWorkspace_Click(object sender, RoutedEventArgs e)
@@ -907,24 +921,20 @@ public partial class MainWindow : Window
         }
         if (!SaveAll()) return;
 
-        var existing = _configuration.Workspaces.FirstOrDefault(profile =>
-            string.Equals(profile.Name, name, StringComparison.OrdinalIgnoreCase));
+        var existing = WorkspaceCatalog.FindByName(_configuration, name);
         if (existing is not null && MessageBox.Show(this,
             "Replace the workflow selection in this workspace?", "Update workspace",
             MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes)
             return;
 
-        var previousName = existing?.Name;
-        var previousIds = existing?.WorkflowIds;
-        var profile = WorkspaceProfile.Capture(_configuration, name);
+        WorkspaceProfile profile;
         try
         {
-            _store.Save(_configuration);
+            profile = WorkspaceCatalog.Save(_configuration, name,
+                () => _store.Save(_configuration));
         }
         catch (Exception ex)
         {
-            if (existing is null) _configuration.Workspaces.Remove(profile);
-            else { existing.Name = previousName!; existing.WorkflowIds = previousIds!; }
             MessageBox.Show(this, ex.Message, "Workspace not saved",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
@@ -938,7 +948,7 @@ public partial class MainWindow : Window
     private void PreviewWorkspace_Click(object sender, RoutedEventArgs e)
     {
         if (WorkspaceCombo.SelectedItem is not WorkspaceProfile selected ||
-            !_configuration.Workspaces.Contains(selected))
+            !WorkspaceCatalog.IsCurrentSelection(_configuration, selected, WorkspaceNameBox.Text))
         {
             MessageBox.Show(this, "Select a saved workspace first.");
             return;
@@ -949,7 +959,7 @@ public partial class MainWindow : Window
     private void RunWorkspace_Click(object sender, RoutedEventArgs e)
     {
         if (WorkspaceCombo.SelectedItem is not WorkspaceProfile profile ||
-            !_configuration.Workspaces.Contains(profile))
+            !WorkspaceCatalog.IsCurrentSelection(_configuration, profile, WorkspaceNameBox.Text))
         {
             MessageBox.Show(this, "Select a saved workspace first.", "Workspace", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
