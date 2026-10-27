@@ -18,7 +18,7 @@ check(bool(re.fullmatch(r'\d+\.\d+\.\d+', version or '')), 'valid csproj version
 iss=(root/'installer/LaunchFlow.iss').read_text(encoding='utf-8')
 check('#define AppVersion "'+version+'"' in iss,'installer matches project version')
 check('AppId={{9B1A7C15-093B-4DBA-BDA7-BF43A2E67320}' in iss,'stable upgrade AppId')
-check('VersionInfoVersion='+version+'.0' in iss,'installer Windows version')
+check('VersionInfoVersion={#AppVersion}.0' in iss,'installer Windows version')
 check('return v is null ? "'+version+'"' in
       (root/'LaunchFlow/Services/AppInfo.cs').read_text(encoding='utf-8'),
       'display version fallback matches installer and project')
@@ -27,7 +27,10 @@ check('System.Windows.Media.Color.FromRgb' in cs,'WPF Color disambiguation')
 app=(root/'LaunchFlow/App.xaml.cs').read_text(encoding='utf-8')
 check(app.count('_ = Dispatcher.BeginInvoke(')>=3,'dispatcher callbacks handle file opening, activation and build shutdown')
 auto=(root/'LaunchFlow/Services/AutomationEngine.cs').read_text(encoding='utf-8')
-check('new Dictionary<string, object?>' not in auto and auto.count('new Dictionary<string, object>')>=2,'Playwright CDP argument nullability')
+browser_engine=(root/'LaunchFlow/Services/AutomationEngine.Browser.cs').read_text(encoding='utf-8')
+check(browser_engine.count('new Dictionary<string, object>')>=2 and
+      'Browser.setWindowBounds' in browser_engine,
+      'Playwright CDP uses correctly typed browser-window arguments')
 workflow=(root/'.github/workflows/windows.yml').read_text(encoding='utf-8')
 check('LaunchFlow-Setup-v${{ env.LF_VERSION }}-x64.exe' in workflow and 'publish_release' in workflow, 'CI artifact and manual release use csproj version')
 check((root/'BUILD-INSTALLER.cmd').is_file() and (root/'BUILD-INSTALLER.ps1').is_file(),'installer builders included')
@@ -43,7 +46,9 @@ main_code=(root/'LaunchFlow/MainWindow.xaml.cs').read_text(encoding='utf-8')
 recorder_code=(root/'LaunchFlow/VisualRecorderWindow.xaml.cs').read_text(encoding='utf-8')
 check('ShowRecorderAsync(recorder)' in main_code and 'recorder.ShowDialog()' not in main_code,
       'Teach runs modeless so windows can move')
-check('ExposeBindingAsync<string>' in recorder_code and 'AddInitScriptAsync' in recorder_code,
+teach_service=(root/'LaunchFlow/Services/TeachRecorder.cs').read_text(encoding='utf-8')
+teach_script=(root/'LaunchFlow/Services/TeachRecorderScript.cs').read_text(encoding='utf-8')
+check('ExposeBindingAsync' in teach_service and 'AddInitScriptAsync' in teach_service,
       'Teach records clicks through page navigation')
 check((root/'LaunchFlow/TutorialWindow.xaml').is_file() and 'new TutorialWindow' in main_code,
       'beginner tutorial is available')
@@ -56,9 +61,9 @@ build_script=(root/'BUILD-INSTALLER.ps1').read_text(encoding='utf-8')
 check('FirstOrDefault(w => w.Id == workflow.Id)' in main_code,
       'Teach persists clicks only to its original website')
 check('_teachingInProgress' in main_code, 'overlapping Teach sessions are blocked')
-check('(() => {' in recorder_code and '})()' in recorder_code,
+check('TeachRecorderScript.Install' in teach_service and 'internal const string Install' in teach_script,
       'recorder page-initialization script is invoked')
-check('LaunchFlow-Setup-v$projectVersion-x64.exe' in build_script,
+check('Get-LaunchFlowSetupPath -Root $PSScriptRoot -Version $projectVersion' in build_script,
       'builder selects the exact versioned installer')
 check('coreclr.dll' in build_script and 'Microsoft.Playwright.dll' in build_script,
       'builder validates bundled application components')
@@ -75,8 +80,9 @@ check('BuildWebsiteUrl()' in new_workflow and 'IsLocalAddress(' in new_workflow,
       'local IP and website normalization implemented')
 check('System.Windows.Clipboard.GetText()' in new_workflow,
       'WPF Clipboard namespace is unambiguous')
-check('Stop-RunningLaunchFlow' in build_script and 'EXIT_FOR_BUILD' in app,
-      'builder requests LaunchFlow shutdown through session IPC')
+check('Building artifacts must not stop the installed app' in build_script and
+      'AppMutex=LaunchFlow.Windows.SingleInstance' in iss,
+      'build leaves running installations alone and setup manages app closure')
 main_xaml=(root/'LaunchFlow/MainWindow.xaml').read_text(encoding='utf-8')
 keepass_code=(root/'LaunchFlow/Services/KeePassXcService.cs').read_text(encoding='utf-8')
 picker_code=(root/'LaunchFlow/KeePassEntryPickerWindow.xaml.cs').read_text(encoding='utf-8')
@@ -109,12 +115,13 @@ check('Value="#46DACB"' in styles and 'Value="#46DACB"' in main_xaml,
 check('x:Name="Check"' not in styles and 'x:Name="Thumb"' in styles,
       'checkbox controls have no checkmark glyph')
 recorder=(root/'LaunchFlow/VisualRecorderWindow.xaml.cs').read_text(encoding='utf-8')
-check('_context.ExposeBindingAsync<string>' in recorder and '_context.AddInitScriptAsync' in recorder,
-      'Teach listens across browser tabs and navigation')
-check("document.addEventListener('pointerdown'" in recorder and
-      "document.addEventListener('click'" in recorder,
+check('ExposeBindingAsync' in teach_service and 'AddInitScriptAsync' in teach_service,
+      'Teach installs navigation-safe listeners')
+check("document.addEventListener('pointerdown'" in teach_script and
+      "document.addEventListener('click'" in teach_script,
       'Teach captures pointer and keyboard clicks')
-check('element.value' not in recorder and 'input,select,textarea' in recorder,
+check('element.value' not in teach_script and 'event.target' in teach_script and
+      'const record = event =>' in teach_script,
       'Teach records form-control clicks without text values')
 check('ImportLaunchFlowFile' in main_code and 'SecureTransferService.Export' in main_code,
       'protected import and export remain available')
