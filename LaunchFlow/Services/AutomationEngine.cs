@@ -59,6 +59,28 @@ public sealed class AutomationEngine : IAsyncDisposable
             throw new ArgumentException("A valid HTTP or HTTPS URL is required.");
     }
 
+    private static void RequireAutomationUrl(string url)
+    {
+        var policy = EnterprisePolicy.Current;
+        if (policy.DisableAutomation || !policy.IsUrlAllowed(url))
+            throw new InvalidOperationException("This website is blocked by your organization's policy.");
+    }
+
+    private static void RequireCredentialAccess()
+    {
+        var policy = EnterprisePolicy.Current;
+        if (policy.DisableAutomation)
+            throw new InvalidOperationException("Automation is disabled by your organization's policy.");
+        policy.RequireCredentialRead();
+    }
+
+    private static void RequireTeachUrl(string url)
+    {
+        var policy = EnterprisePolicy.Current;
+        if (policy.DisableAutomation || policy.DisableTeachMode || !policy.IsUrlAllowed(url))
+            throw new InvalidOperationException("Teach is blocked by your organization's policy.");
+    }
+
     public Task<RunResult> RunAsync(
         IEnumerable<WebsiteWorkflow> workflows,
         CancellationToken cancellationToken,
@@ -66,6 +88,8 @@ public sealed class AutomationEngine : IAsyncDisposable
         Configuration? configuration = null,
         string? keepassMasterPassword = null)
     {
+        if (EnterprisePolicy.Current.DisableAutomation)
+            throw new InvalidOperationException("Automation is disabled by your organization's policy.");
         var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Task<RunResult> task;
         lock (_gate)
@@ -149,12 +173,14 @@ public sealed class AutomationEngine : IAsyncDisposable
 
     public async Task<IPage> GetPageForRecorderAsync(WebsiteWorkflow workflow)
     {
+        RequireTeachUrl(workflow.StartUrl);
         lock (_gate) CheckSessionAdmission();
         await _sessionGate.WaitAsync().ConfigureAwait(false);
         try
         {
             lock (_gate) CheckSessionAdmission();
             ValidateUrl(workflow.StartUrl);
+            RequireTeachUrl(workflow.StartUrl);
             await EnsurePlaywrightAsync().ConfigureAwait(false);
             var page = await GetOrCreatePageCoreAsync(workflow, CancellationToken.None).ConfigureAwait(false);
             // Keep any sign-in progress in the browser during Teach or Repair.
@@ -167,6 +193,7 @@ public sealed class AutomationEngine : IAsyncDisposable
                     Timeout = 60_000
                 }).ConfigureAwait(false);
             }
+            RequireTeachUrl(page.Url);
             lock (_gate) CheckSessionAdmission();
             return page;
         }
@@ -274,8 +301,12 @@ public sealed class AutomationEngine : IAsyncDisposable
         ct.ThrowIfCancellationRequested();
         Log($"Starting '{workflow.Name}'…");
         ValidateUrl(workflow.StartUrl);
+        RequireAutomationUrl(workflow.StartUrl);
         if (!string.IsNullOrWhiteSpace(workflow.DestinationUrl))
+        {
             ValidateUrl(workflow.DestinationUrl);
+            RequireAutomationUrl(workflow.DestinationUrl);
+        }
 
         if (IsDefaultBrowserOpenOnly(workflow.Browser))
         {
@@ -289,7 +320,7 @@ public sealed class AutomationEngine : IAsyncDisposable
         }
 
         var page = await GetOrCreatePageAsync(workflow, ct).ConfigureAwait(false);
-        await PositionWindowAsync(page, workflow.MonitorIndex).ConfigureAwait(false);
+        await PositionWindowAsync(page, workflow).ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
 
         var currentUrl = page.Url;
@@ -313,6 +344,7 @@ public sealed class AutomationEngine : IAsyncDisposable
         }
 
         ct.ThrowIfCancellationRequested();
+        RequireAutomationUrl(page.Url);
         if (workflow.AutoLogin &&
             !string.Equals(workflow.LoginMode, "None", StringComparison.OrdinalIgnoreCase))
         {
@@ -342,6 +374,7 @@ public sealed class AutomationEngine : IAsyncDisposable
         ct.ThrowIfCancellationRequested();
         if (!string.IsNullOrWhiteSpace(workflow.DestinationUrl))
         {
+            RequireAutomationUrl(workflow.DestinationUrl);
             await page.GotoAsync(workflow.DestinationUrl, new PageGotoOptions
             {
                 WaitUntil = WaitUntilState.DOMContentLoaded,
@@ -349,6 +382,7 @@ public sealed class AutomationEngine : IAsyncDisposable
             }).ConfigureAwait(false);
         }
 
+        RequireAutomationUrl(page.Url);
         Log($"Finished '{workflow.Name}'.");
         return null;
     }
@@ -361,6 +395,7 @@ public sealed class AutomationEngine : IAsyncDisposable
         string? keepassMasterPassword)
     {
         ct.ThrowIfCancellationRequested();
+        RequireCredentialAccess();
         var credential = _vault.Read(workflow, configuration, keepassMasterPassword);
         if (credential is null)
         {
@@ -488,6 +523,10 @@ public sealed class AutomationEngine : IAsyncDisposable
                     }
                     """, document).ConfigureAwait(false);
                 ValidateUrl(origin);
+                RequireCredentialAccess();
+                RequireAutomationUrl(origin);
+                if (EnterprisePolicy.Current.RequireHttpsForCredentials && new Uri(origin).Scheme != Uri.UriSchemeHttps)
+                    throw new InvalidOperationException("HTTPS is required for credentials by your organization's policy.");
                 if (Volatile.Read(ref navigated) != 0)
                     throw new InvalidOperationException("Credential document changed. Retry sign-in manually.");
                 return origin;
@@ -551,10 +590,14 @@ public sealed class AutomationEngine : IAsyncDisposable
     private static async Task ExecuteStepAsync(IPage page, WorkflowStep step, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+        RequireAutomationUrl(page.Url);
+        if (step.Type == "Fill" && EnterprisePolicy.Current.DisableCredentialFill)
+            throw new InvalidOperationException("Fill actions are disabled by your organization's policy.");
         switch (step.Type)
         {
             case "Navigate":
                 ValidateUrl(step.Target);
+                RequireAutomationUrl(step.Target);
                 await page.GotoAsync(step.Target, new PageGotoOptions
                 {
                     WaitUntil = WaitUntilState.DOMContentLoaded,
@@ -562,10 +605,10 @@ public sealed class AutomationEngine : IAsyncDisposable
                 }).ConfigureAwait(false);
                 break;
             case "Click":
-                await page.Locator(step.Target).First.ClickAsync().ConfigureAwait(false);
+                await ExecuteElementActionAsync(page, step, ct).ConfigureAwait(false);
                 break;
             case "Fill":
-                await page.Locator(step.Target).First.FillAsync(step.Value ?? "").ConfigureAwait(false);
+                await ExecuteElementActionAsync(page, step, ct).ConfigureAwait(false);
                 break;
             case "Press":
                 await page.Keyboard.PressAsync(step.Target).ConfigureAwait(false);
@@ -579,6 +622,32 @@ public sealed class AutomationEngine : IAsyncDisposable
             default:
                 throw new InvalidOperationException("Unsupported workflow step.");
         }
+        RequireAutomationUrl(page.Url);
+    }
+
+    private static async Task ExecuteElementActionAsync(IPage page, WorkflowStep step, CancellationToken ct)
+    {
+        // Resolve once, then authorize the document owning that element. Navigation cannot retarget this handle.
+        await using var element = await page.Locator(step.Target).First.ElementHandleAsync().ConfigureAwait(false);
+        if (element is null) throw new InvalidOperationException("Workflow action target is unavailable.");
+        ct.ThrowIfCancellationRequested();
+        var url = await element.EvaluateAsync<string>("""
+            element => {
+                const document = element.ownerDocument;
+                if (!element.isConnected || document.defaultView?.document !== document)
+                    throw new Error('Workflow document changed');
+                return document.location.href;
+            }
+            """).ConfigureAwait(false);
+        RequireAutomationUrl(url);
+        ct.ThrowIfCancellationRequested();
+        if (step.Type == "Fill")
+        {
+            if (EnterprisePolicy.Current.DisableCredentialFill)
+                throw new InvalidOperationException("Fill actions are disabled by your organization's policy.");
+            await element.FillAsync(step.Value ?? "").ConfigureAwait(false);
+        }
+        else await element.ClickAsync().ConfigureAwait(false);
     }
 
     private async Task<IPage> GetOrCreatePageAsync(WebsiteWorkflow workflow, CancellationToken ct)
@@ -596,6 +665,7 @@ public sealed class AutomationEngine : IAsyncDisposable
     private async Task<IPage> GetOrCreatePageCoreAsync(WebsiteWorkflow workflow, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+        RequireAutomationUrl(workflow.StartUrl);
         if (_sessions.TryGetValue(workflow.Id, out var existing))
         {
             if (!existing.Page.IsClosed) return existing.Page;
@@ -641,6 +711,7 @@ public sealed class AutomationEngine : IAsyncDisposable
             // Launch has no cancellation-token API. Own its result before inspecting or publishing any page.
             ct.ThrowIfCancellationRequested();
             lock (_gate) CheckSessionAdmission();
+            RequireAutomationUrl(workflow.StartUrl);
             var page = context.Pages.FirstOrDefault() ?? await context.NewPageAsync().ConfigureAwait(false);
             lock (_gate)
             {
@@ -691,12 +762,12 @@ public sealed class AutomationEngine : IAsyncDisposable
                message.Contains("singleton", StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task PositionWindowAsync(IPage page, int monitorIndex)
+    private async Task PositionWindowAsync(IPage page, WebsiteWorkflow workflow)
     {
         try
         {
             var monitors = MonitorService.GetMonitors();
-            var monitor = monitors[Math.Clamp(monitorIndex, 0, monitors.Count - 1)];
+            var monitor = MonitorService.Resolve(workflow, monitors);
             var bounds = monitor.Bounds;
             // Chromium-only CDP window placement; Firefox quietly skips.
             var cdp = await page.Context.NewCDPSessionAsync(page).ConfigureAwait(false);

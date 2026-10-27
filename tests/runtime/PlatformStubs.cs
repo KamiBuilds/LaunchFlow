@@ -13,10 +13,3 @@ public sealed class CredentialVault
         return Credential;
     }
 }
-
-public static class MonitorService
-{
-    public sealed record Bounds(int Left, int Top, int Width, int Height);
-    public sealed record Monitor(Bounds Bounds);
-    public static List<Monitor> GetMonitors() => new() { new(new(0, 0, 1024, 768)) };
-}

@@ -9,6 +9,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Playwright" Version="1.63.0" />
     <Compile Include="$(AutomationEngineSource)" Link="AutomationEngine.cs" />
+    <Compile Include="../../LaunchFlow/Services/EnterprisePolicy.cs" Link="EnterprisePolicy.cs" />
+    <Compile Include="../../LaunchFlow/Services/MonitorService.cs" Link="MonitorService.cs" />
     <Compile Include="../../LaunchFlow/Services/ProfileVaultService.cs" Link="ProfileVaultService.cs" />
     <Compile Include="../profiles/PlatformStubs.cs" Link="ProfilePlatformStubs.cs" />
     <Compile Include="../../LaunchFlow/Services/LoginHealth.cs" Link="LoginHealth.cs" />
