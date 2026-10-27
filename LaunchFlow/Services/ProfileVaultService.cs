@@ -169,23 +169,23 @@ public static class ProfileVaultService
     {
         using var aes = new AesGcm(key, 16);
         long index = 0;
+        Span<byte> size = stackalloc byte[4];
+        Span<byte> nonce = stackalloc byte[12];
+        Span<byte> tag = stackalloc byte[16];
+        Span<byte> aad = stackalloc byte[12];
         while (true)
         {
-            Span<byte> size = stackalloc byte[4];
             source.ReadExactly(size);
             var length = BinaryPrimitives.ReadInt32LittleEndian(size);
             if (length is < 0 or > 64 * 1024)
                 throw new CryptographicException("Invalid browser-profile chunk length.");
-            Span<byte> nonce = stackalloc byte[12];
             source.ReadExactly(nonce);
             var ciphertext = new byte[length];
             var plaintext = new byte[length];
-            Span<byte> tag = stackalloc byte[16];
             try
             {
                 source.ReadExactly(ciphertext);
                 source.ReadExactly(tag);
-                Span<byte> aad = stackalloc byte[12];
                 BinaryPrimitives.WriteInt64LittleEndian(aad, index);
                 BinaryPrimitives.WriteInt32LittleEndian(aad[8..], length);
                 aes.Decrypt(nonce, ciphertext, tag, plaintext, aad);
