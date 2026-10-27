@@ -5,8 +5,9 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="Program.cs" /><Compile Include="PlatformStubs.cs" />
+    <Compile Include="Program.cs" /><Compile Include="WorkspaceCatalogTests.cs" /><Compile Include="PlatformStubs.cs" />
     <Compile Include="../../LaunchFlow/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
+    <Compile Include="../../LaunchFlow/Services/WorkspaceCatalog.cs" Link="WorkspaceCatalog.cs" />
     <Compile Include="../../LaunchFlow/Services/MonitorService.cs" Link="MonitorService.cs" />
     <Compile Include="../../LaunchFlow/Services/LocalizationService.cs" Link="LocalizationService.cs" Condition="Exists('../../LaunchFlow/Services/LocalizationService.cs')" />
   </ItemGroup>
