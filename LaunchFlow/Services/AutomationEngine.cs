@@ -667,6 +667,13 @@ public sealed partial class AutomationEngine : IAsyncDisposable
         {
             if (EnterprisePolicy.Current.DisableCredentialFill)
                 throw new InvalidOperationException("Fill actions are disabled by your organization's policy.");
+            var inputType = await element.GetAttributeAsync("type").ConfigureAwait(false);
+            var autocomplete = await element.GetAttributeAsync("autocomplete").ConfigureAwait(false);
+            if (string.Equals(inputType, "password", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(autocomplete, "current-password", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(autocomplete, "new-password", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Use vault credentials instead of storing passwords in workflow steps.");
+            ct.ThrowIfCancellationRequested();
             await element.FillAsync(step.Value ?? "").ConfigureAwait(false);
         }
         else await element.ClickAsync().ConfigureAwait(false);
