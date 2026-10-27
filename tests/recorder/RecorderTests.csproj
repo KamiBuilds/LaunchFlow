@@ -12,6 +12,7 @@
     <Compile Include="../../LaunchFlow/Services/AutomationEngine.cs" Link="Services/AutomationEngine.cs" />
     <Compile Include="../../LaunchFlow/Services/LoginHealth.cs" Link="Services/LoginHealth.cs" />
     <Compile Include="../../LaunchFlow/Services/EnterprisePolicy.cs" Link="Services/EnterprisePolicy.cs" />
+    <Compile Include="../../LaunchFlow/Services/MonitorService.cs" Link="Services/MonitorService.cs" />
     <Compile Include="../../LaunchFlow/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

@@ -16,8 +16,10 @@ This is a development branch, not a release or a promise of native Windows readi
 - **Included:** a regression-tested initial stop-on-failed-step repair (`4faa258`), preventing subsequent actions after an uncertain browser state.
 - **Integrated, awaiting final review:** named workspaces, saved monitor identity/fallback, partial English/Dutch UI, accessibility names and asynchronous vault-lock UI (`f8419c4`). Native UI/session-lock behavior is not verified.
 - **Integrated, awaiting cross-layer wiring:** strict administrator policy parsing, direct vault/transfer checks and privacy-safe diagnostic events (`554315b`). Engine, Teach and UI policy enforcement is still pending; do not treat this checkpoint as fully policy-enforced.
-- **Resuming after a usage-limit interruption:** detailed step-repair results, execution status, SSO handling and cancellation/session-close lifecycle hardening. Source and regression evidence were retained; these changes are not yet integrated here.
-- **Pending:** final engine integration, policy/monitor/UI wiring, final combined regressions and an independent review of frozen combined source.
+- **Integrated, awaiting independent review:** detailed step-repair results, execution status, credential-free SSO and cancellation/session-close lifecycle hardening. The quota-interrupted engine work was resumed from disk and integrated, not discarded.
+- **Integrated and locally regression-tested:** cross-layer engine/UI/recorder policy wiring, live monitor resolution, post-dialog authorization, close-before-run-wait locking, no profile sealing after failed browser cleanup, and guarded crash recovery. See the bounded integration documents for guarantees and limits.
+- **Passed locally on the combined checkout:** runtime/profile, workspace/UI, recorder/replay, actual encrypted vault policy, old/new/old data compatibility, installer/form/PowerShell and app/bootstrapper cross-build gates. Linux/browser and simulated native seams are not native Windows verification.
+- **Pending:** independent review of frozen combined source, any required repairs, and a fresh successful CI run of the final committed bytes. The earlier engine checkpoint exposed a timing-only test synchronization race; its locally verified correction remains part of these final changes.
 
 ## Required acceptance gates
 

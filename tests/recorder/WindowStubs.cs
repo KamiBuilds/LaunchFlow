@@ -41,12 +41,6 @@ namespace LaunchFlow.Services
     {
         public static string SealedRoot => throw new NotSupportedException("Recorder replay tests must not open persistent browser profiles.");
     }
-    public static class MonitorService
-    {
-        public sealed record Bounds(int Left, int Top, int Width, int Height);
-        public sealed record Monitor(Bounds Bounds);
-        public static List<Monitor> GetMonitors() => throw new NotSupportedException("Recorder replay tests must not position native windows.");
-    }
 }
 namespace LaunchFlow
 {
