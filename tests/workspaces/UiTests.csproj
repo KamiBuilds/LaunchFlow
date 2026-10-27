@@ -10,6 +10,7 @@
     <Compile Include="../../LaunchFlow/Services/EnterprisePolicy.cs" Link="EnterprisePolicy.cs" />
     <Compile Include="../../LaunchFlow/Services/CredentialVault.cs" Link="CredentialVault.cs" />
     <Compile Include="../../LaunchFlow/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
+    <Compile Include="../../LaunchFlow/Services/WorkspaceCatalog.cs" Link="WorkspaceCatalog.cs" />
     <Compile Include="../../LaunchFlow/Services/MonitorService.cs" Link="MonitorService.cs" />
     <Compile Include="../../LaunchFlow/Services/LocalizationService.cs" Link="LocalizationService.cs" />
   </ItemGroup>
