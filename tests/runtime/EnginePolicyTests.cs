@@ -336,6 +336,7 @@ internal static class EnginePolicyTests
     {
         private readonly System.Net.HttpListener _listener = new();
         private readonly Task _serving;
+        private bool _stopping;
         public string StartUrl { get; }
         public string DestinationUrl { get; }
         public RedirectServer()
@@ -376,9 +377,14 @@ internal static class EnginePolicyTests
                     response.Close();
                 }
             }
-            catch (Exception ex) when (!_listener.IsListening && ex is System.Net.HttpListenerException or ObjectDisposedException) { }
+            catch (Exception ex) when (Volatile.Read(ref _stopping) && ex is System.Net.HttpListenerException or ObjectDisposedException) { }
         }
-        public async ValueTask DisposeAsync() { _listener.Close(); await _serving; }
+        public async ValueTask DisposeAsync()
+        {
+            Volatile.Write(ref _stopping, true);
+            _listener.Close();
+            await _serving;
+        }
     }
 
     private sealed class Fixture : IAsyncDisposable

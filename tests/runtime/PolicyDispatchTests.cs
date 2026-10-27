@@ -25,6 +25,8 @@ internal static class PolicyDispatchTests
         {
             await using var context = await browser.NewContextAsync();
             context.SetDefaultTimeout(2500);
+            // Navigation is fixture setup, not an action-policy/readiness deadline.
+            context.SetDefaultNavigationTimeout(30_000);
             await context.RouteAsync("**/*", r => r.FulfillAsync(new()
             {
                 ContentType = "text/html",

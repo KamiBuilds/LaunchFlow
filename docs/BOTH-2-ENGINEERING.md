@@ -2,6 +2,11 @@
 
 Branch: `both-2`, based on `both`. Development work only; not a release candidate.
 
+> Historical both-2 handoff. On `both-3`, profile writes and restore privacy are
+> superseded by [BOTH-3-PROFILES.md](BOTH-3-PROFILES.md), and current acceptance
+> status is in [BOTH-3-HARDENING.md](BOTH-3-HARDENING.md). New writes are legacy
+> compatible; LFPS2 is read-only compatibility support with no plaintext ZIP spill.
+
 ## P0 — before release
 
 | Area | Implemented | Remaining acceptance |
