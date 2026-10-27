@@ -68,6 +68,7 @@ internal static class EngineBehaviorTests
             "SSO manual challenge pauses follow-up and destination with WaitingForSignIn status");
         await page.SetContentAsync("<h1>Ready</h1><button id='followup' onclick=\"document.body.dataset.followed='yes'\">follow up</button>");
         workflow.DestinationUrl = "";
+        workflow.LoginSuccessSelector = "#followup";
         var completed = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
         Check(vault.ReadCount == 0 && completed.FinishedCount == 1 && await page.GetAttributeAsync("body", "data-followed") == "yes",
             "SSO without a detected challenge continues without touching the vault");
