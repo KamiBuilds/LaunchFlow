@@ -69,6 +69,13 @@ internal static class WorkflowExecutionTests
         var rejected = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
         Check(rejected.FailedCount == 1 && rejected.StepsNeedAttention.Single().StepType == "AssertVisible",
             "failed readiness assertion stops safely and reports its bounded step type");
+        await page.SetContentAsync("<input id='password' type='password'>");
+        workflow.Steps.Clear();
+        workflow.Steps.Add(new() { Type = "Fill", Target = "#password", Value = "synthetic-private-test" });
+        var protectedPassword = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(protectedPassword.FailedCount == 1 &&
+              await page.InputValueAsync("#password") == "",
+              "generic Fill steps cannot insert embedded secrets into password fields");
     }
 
     private static void Check(bool condition, string description) => EngineBehaviorTests.Check(condition, description);
