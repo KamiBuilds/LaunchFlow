@@ -410,7 +410,8 @@ partial class UiFixture
     public Task<Microsoft.Playwright.IPage>? _activeTeachTask = null;
     public Task _vaultLockTask = Task.CompletedTask;
     public string? _keepassMasterPassword;
-    public readonly Control StopButton = new() { IsEnabled = false }, RunAllButton = new(), RunSelectedButton = new(), RunWorkspaceButton = new(), TeachButton = new(), RepairButton = new(), MainTabs = new();
+    public readonly Control StopButton = new() { IsEnabled = false }, RunAllButton = new(), RunSelectedButton = new(), RunWorkspaceButton = new(), PreviewWorkspaceButton = new(), TeachButton = new(), RepairButton = new(), MainTabs = new();
+    public readonly Control WorkspaceCombo = new(), WorkspaceNameBox = new();
     public readonly Control WorkflowStatusLabel = new();
     public Action? PromptHook;
     public int Prompts;
