@@ -19,6 +19,9 @@ iss=(root/'installer/LaunchFlow.iss').read_text(encoding='utf-8')
 check('#define AppVersion "'+version+'"' in iss,'installer matches project version')
 check('AppId={{9B1A7C15-093B-4DBA-BDA7-BF43A2E67320}' in iss,'stable upgrade AppId')
 check('VersionInfoVersion='+version+'.0' in iss,'installer Windows version')
+check('return v is null ? "'+version+'"' in
+      (root/'LaunchFlow/Services/AppInfo.cs').read_text(encoding='utf-8'),
+      'display version fallback matches installer and project')
 cs=(root/'LaunchFlow/Services/DarkWindowChrome.cs').read_text(encoding='utf-8')
 check('System.Windows.Media.Color.FromRgb' in cs,'WPF Color disambiguation')
 app=(root/'LaunchFlow/App.xaml.cs').read_text(encoding='utf-8')
@@ -33,6 +36,9 @@ for xaml in (root/'LaunchFlow').glob('*.xaml'):
     try: ET.parse(xaml)
     except ET.ParseError as ex: errors.append(f'Invalid XAML XML {xaml.name}: {ex}')
 check(len(list((root/'LaunchFlow').glob('*.xaml')))>=5,'XAML files parsed')
+check('IsEditable="False"' in (root/'LaunchFlow/MainWindow.xaml').read_text(encoding='utf-8') and
+      'x:Name="WorkspaceNameBox"' in (root/'LaunchFlow/MainWindow.xaml').read_text(encoding='utf-8'),
+      'workspace selection remains separate from workspace naming')
 main_code=(root/'LaunchFlow/MainWindow.xaml.cs').read_text(encoding='utf-8')
 recorder_code=(root/'LaunchFlow/VisualRecorderWindow.xaml.cs').read_text(encoding='utf-8')
 check('ShowRecorderAsync(recorder)' in main_code and 'recorder.ShowDialog()' not in main_code,
@@ -98,7 +104,7 @@ check('VaultBackupService' not in main_code and 'VaultBackupService' not in db,
       'automatic database backup calls removed')
 check(not (root/'LaunchFlow/Services/VaultBackupService.cs').exists(),
       'unused database backup service removed')
-check('Value="#55D8C8"' in styles and 'Value="#55D8C8"' in main_xaml,
+check('Value="#46DACB"' in styles and 'Value="#46DACB"' in main_xaml,
       'switches use the same LaunchFlow teal')
 check('x:Name="Check"' not in styles and 'x:Name="Thumb"' in styles,
       'checkbox controls have no checkmark glyph')
