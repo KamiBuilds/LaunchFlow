@@ -37,6 +37,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - name: Install .NET 8 SDK (builder only)
         uses: actions/setup-dotnet@v6
         with:
@@ -54,6 +56,12 @@ jobs:
         run: dotnet run --project tests/profiles/ProfileTests.csproj -c Release -p:TreatWarningsAsErrors=true
       - name: Exercise recorder capture and production replay
         run: dotnet run --project tests/recorder/RecorderTests.csproj -c Release -p:TreatWarningsAsErrors=true
+      - name: Exercise workspace, localization and UI behavioral seams
+        run: DOTNET=dotnet bash tests/workspaces/run.sh
+      - name: Exercise policy and production vault boundaries
+        run: DOTNET=dotnet bash tests/policy/run.sh -c Release
+      - name: Verify baseline-to-new-to-baseline encrypted data compatibility
+        run: DOTNET=dotnet bash tests/policy/run-compatibility.sh
 
   windows:
     needs: portable-regressions

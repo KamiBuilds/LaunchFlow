@@ -14,10 +14,10 @@ This is a development branch, not a release or a promise of native Windows readi
 - **Included:** the repaired profile/vault/KeePass foundation, recorder lifetime/target handling, self-contained installer safeguards and cached-downgrade checks from `hermes`.
 - **Included, awaiting independent final review:** document-bound username/password approval and insertion (`ae1373b`). Local real-Chromium tests cover document/frame replacement, delayed navigation, readiness, cancellation and positive SSO. These tests use synthetic credentials and routed pages, not real accounts.
 - **Included:** a regression-tested initial stop-on-failed-step repair (`4faa258`), preventing subsequent actions after an uncertain browser state.
-- **In progress:** named workspaces, stable monitor selection/fallback, English/Dutch UI, accessibility and asynchronous vault-lock UI integration.
-- **In progress:** administrator controls and privacy-safe diagnostics, with enforcement below UI toggles.
-- **In progress:** detailed step-repair results, execution status, SSO handling and cancellation/session-close lifecycle hardening.
-- **Pending:** integration of those isolated workstreams, final policy/monitor/UI wiring, final combined regressions and an independent review of frozen combined source.
+- **Integrated, awaiting final review:** named workspaces, saved monitor identity/fallback, partial English/Dutch UI, accessibility names and asynchronous vault-lock UI (`f8419c4`). Native UI/session-lock behavior is not verified.
+- **Integrated, awaiting cross-layer wiring:** strict administrator policy parsing, direct vault/transfer checks and privacy-safe diagnostic events (`554315b`). Engine, Teach and UI policy enforcement is still pending; do not treat this checkpoint as fully policy-enforced.
+- **Resuming after a usage-limit interruption:** detailed step-repair results, execution status, SSO handling and cancellation/session-close lifecycle hardening. Source and regression evidence were retained; these changes are not yet integrated here.
+- **Pending:** final engine integration, policy/monitor/UI wiring, final combined regressions and an independent review of frozen combined source.
 
 ## Required acceptance gates
 
