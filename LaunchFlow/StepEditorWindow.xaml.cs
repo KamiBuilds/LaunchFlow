@@ -54,7 +54,7 @@ public partial class StepEditorWindow : Window
             return;
         }
 
-        if (type == "Navigate")
+        if (type is "Navigate" or "WaitForURL")
         {
             try { AutomationEngine.ValidateUrl(target); }
             catch (Exception ex)
