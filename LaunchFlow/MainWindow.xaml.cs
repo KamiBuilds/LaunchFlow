@@ -136,6 +136,7 @@ public partial class MainWindow : Window
 
     private void ApplyUiLanguage()
     {
+        LocalizationService.ActiveLanguage = _configuration.UiLanguage;
         string Text(string english) => LocalizationService.Text(english, _configuration.UiLanguage);
         WorkflowsNav.Content = Text("Workflows");
         PasswordsNav.Content = Text("Passwords");
