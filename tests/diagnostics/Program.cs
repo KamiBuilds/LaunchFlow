@@ -15,8 +15,8 @@ try
     var output = Path.Combine(root, "report.txt");
     DiagnosticReportService.Export(output);
     var contents = File.ReadAllText(output);
-    if (!contents.Contains("[Browser] Failure", StringComparison.Ordinal) ||
-        !contents.Contains("[Vault] Event", StringComparison.Ordinal) ||
+    if (!contents.Contains("[CloseSessions] Failure", StringComparison.Ordinal) ||
+        !contents.Contains("[ProfileSeal] Event", StringComparison.Ordinal) ||
         contents.Contains("synthetic-secret", StringComparison.Ordinal) ||
         contents.Contains("internal.example.test", StringComparison.Ordinal))
         throw new Exception("Diagnostic redaction regression.");
