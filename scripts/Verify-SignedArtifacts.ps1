@@ -20,9 +20,11 @@ foreach ($path in $Paths) {
     if ($actual -cne $expected) {
         throw 'Release artifact is signed by an unexpected publisher.'
     }
-    $eku = $signature.SignerCertificate.EnhancedKeyUsageList |
-        Where-Object { $_.ObjectId -eq '1.3.6.1.5.5.7.3.3' }
-    if (-not $eku) {
+    $usageExtensions = @($signature.SignerCertificate.Extensions |
+        Where-Object { $_ -is [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension] })
+    $eku = @($usageExtensions | ForEach-Object { $_.EnhancedKeyUsages } |
+        Where-Object { $_.Value -eq '1.3.6.1.5.5.7.3.3' })
+    if ($eku.Count -eq 0) {
         throw 'Release signing certificate is missing the code-signing purpose.'
     }
     Write-Host ('Verified signed release artifact: ' + (Split-Path $path -Leaf))
