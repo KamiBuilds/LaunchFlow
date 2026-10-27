@@ -6,7 +6,8 @@ namespace System.Windows
     public enum MessageBoxImage { Warning, Information }
     public static class MessageBox
     {
-        public static void Show(object owner, string message, string title, MessageBoxButton buttons, MessageBoxImage image) { }
+        public static readonly List<string> Messages = new();
+        public static void Show(object owner, string message, string title, MessageBoxButton buttons, MessageBoxImage image) => Messages.Add(message);
     }
     public class Window
     {
@@ -61,9 +62,10 @@ namespace LaunchFlow
     }
     public class StepEditorWindow : System.Windows.Window
     {
+        public static Func<Models.WorkflowStep, bool?>? OnShow { get; set; }
         public Models.WorkflowStep Result { get; }
         public StepEditorWindow(Models.WorkflowStep step) => Result = step;
-        public bool? ShowDialog() => false;
+        public bool? ShowDialog() => OnShow?.Invoke(Result) ?? false;
     }
     public partial class VisualRecorderWindow
     {
@@ -82,6 +84,7 @@ namespace LaunchFlow
         public void TestPauseWithoutDrain() => _recorder.Pause();
         public void TestClear() => Clear_Click(this, new());
         public void TestCaptureUrl() => CaptureUrl_Click(this, new());
+        public void TestEditStep(string type, string target) => EditNew(new Models.WorkflowStep { Type = type, Target = target });
         public Task TestWaitForUpdatesAsync() => _recorder.SynchronizeAsync();
         public bool TestToggleEnabled => CaptureToggle.IsEnabled;
         public string? TestStatus => CaptureStatus.Text;

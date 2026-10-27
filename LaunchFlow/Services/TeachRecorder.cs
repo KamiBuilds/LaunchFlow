@@ -13,14 +13,20 @@ public sealed class TeachRecorder : IDisposable
     private readonly Bridge _bridge;
     private readonly IPage _page;
     private readonly Queue<string> _pending = new();
+    // Keep provenance after Drain so a live host restriction can revoke already displayed clicks too.
+    private readonly HashSet<string> _acceptedUrls = new(StringComparer.Ordinal);
     private readonly string _id = Guid.NewGuid().ToString("N");
     private long _epoch;
     private bool _active = true;
     private bool _disposed;
     private bool _unsupportedTargetObserved;
+    private bool _policyDenied;
 
     public TeachRecorder(IPage page)
     {
+        var policy = EnterprisePolicy.Current;
+        if (policy.DisableTeachMode || policy.DisableAutomation || !policy.IsUrlAllowed(page.Url))
+            throw new InvalidOperationException("Teach recording is disabled by your organization.");
         _page = page;
         _bridge = Bridges.GetValue(page.Context, context => new Bridge(context));
         lock (_bridge.Gate)
@@ -30,11 +36,36 @@ public sealed class TeachRecorder : IDisposable
         }
     }
 
-    public bool IsCapturing { get { lock (_bridge.Gate) return _active && !_disposed && !_page.IsClosed; } }
+    public bool IsCapturing { get { lock (_bridge.Gate) return CheckPolicy() && _active && !_disposed && !_page.IsClosed; } }
+
+    public bool CheckPolicy(params string[] additionalUrls)
+    {
+        lock (_bridge.Gate)
+        {
+            if (_disposed) return false;
+            var policy = EnterprisePolicy.Current;
+            if (!policy.DisableTeachMode && !policy.DisableAutomation && policy.IsUrlAllowed(_page.Url) &&
+                _acceptedUrls.All(policy.IsUrlAllowed) && additionalUrls.All(policy.IsUrlAllowed))
+            {
+                return !_policyDenied;
+            }
+            _policyDenied = true;
+            _active = false;
+            _epoch++;
+            _pending.Clear();
+            _acceptedUrls.Clear();
+            _bridge.Revision++;
+            return false;
+        }
+    }
 
     public bool UnsupportedTargetObserved { get { lock (_bridge.Gate) return _unsupportedTargetObserved; } }
 
-    public Task SynchronizeAsync() => _bridge.SynchronizeAsync();
+    public Task SynchronizeAsync()
+    {
+        CheckPolicy();
+        return _bridge.SynchronizeAsync();
+    }
 
     public void Pause() => SetActive(false);
     public void Resume() => SetActive(true);
@@ -43,6 +74,11 @@ public sealed class TeachRecorder : IDisposable
     {
         lock (_bridge.Gate)
         {
+            if (active)
+            {
+                _policyDenied = false;
+                if (!CheckPolicy()) return;
+            }
             if (_disposed || _page.IsClosed || _active == active) return;
             _active = active;
             _epoch++;
@@ -54,6 +90,7 @@ public sealed class TeachRecorder : IDisposable
     {
         lock (_bridge.Gate)
         {
+            if (!CheckPolicy()) return Array.Empty<string>();
             var result = _pending.ToArray();
             _pending.Clear();
             return result;
@@ -68,6 +105,7 @@ public sealed class TeachRecorder : IDisposable
             _disposed = true;
             _active = false;
             _pending.Clear();
+            _acceptedUrls.Clear();
             _bridge.Sessions.Remove(_id);
             _bridge.Revision++;
         }
@@ -121,8 +159,12 @@ public sealed class TeachRecorder : IDisposable
                         // WorkflowStep has no frame/page identity: never persist a selector against a different target.
                         if (type == "Unsupported" || source.Page != session._page || source.Frame != session._page.MainFrame)
                             session._unsupportedTargetObserved = true;
-                        else
+                        if (!session.CheckPolicy(source.Page.Url, source.Frame.Url)) return "null";
+                        if (type == "Click" && source.Page == session._page && source.Frame == session._page.MainFrame)
+                        {
+                            session._acceptedUrls.Add(source.Frame.Url);
                             session._pending.Enqueue(target!);
+                        }
                     }
                 }
             }

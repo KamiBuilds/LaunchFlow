@@ -10,6 +10,7 @@ if (args is ["--binding-api"])
     return;
 }
 
+using var policyProvider = RecorderPolicyTests.Provider();
 using var playwright = await Playwright.CreateAsync();
 await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
 await using var context = await browser.NewContextAsync();
@@ -33,9 +34,19 @@ if (args is ["--legacy-script", var path])
     return;
 }
 
+await page.GotoAsync("https://recorder.test/initial");
+RecorderPolicyTests.Construction(page);
+if (args is ["--policy-construction"]) return;
+await RecorderPolicyTests.DrainPolicy(page);
+if (args is ["--policy-drain"]) return;
+await RecorderPolicyTests.NativeAcceptance(page);
+if (args is ["--policy-native"]) return;
+await RecorderPolicyTests.WindowPolicy(page);
+if (args is ["--policy-window"]) return;
+
 using (var gesture = new TeachRecorder(page))
 {
-    await page.GotoAsync("data:text/html," + Uri.EscapeDataString("<button onclick='window.activations=(window.activations||0)+1'>Target</button>"));
+    await Fixture(page, "<button onclick='window.activations=(window.activations||0)+1'>Target</button>");
     await gesture.SynchronizeAsync();
     await Flush(page);
     var box = (await page.Locator("button").BoundingBoxAsync())!;
@@ -50,7 +61,7 @@ using (var gesture = new TeachRecorder(page))
 
 using var first = new TeachRecorder(page);
 await first.SynchronizeAsync();
-await page.GotoAsync("data:text/html,<button id='go'>Go</button>");
+await Fixture(page, "<button id='go'>Go</button>");
 await Flush(page);
 await page.ClickAsync("#go");
 await Flush(page);
@@ -86,7 +97,7 @@ Assert(first.Drain().Count == 1 && second.Drain().Count == 1, "resume captures o
 
 first.Pause();
 await first.SynchronizeAsync();
-await page.GotoAsync("data:text/html,<button>After navigation</button>");
+await Fixture(page, "<button>After navigation</button>");
 await Flush(page);
 await page.ClickAsync("button");
 await Flush(page);
@@ -114,13 +125,13 @@ Assert(await page.EvaluateAsync<int>("Object.keys(window).filter(k => k === '__l
 
 using var privacy = new TeachRecorder(page);
 await privacy.SynchronizeAsync();
-await page.GotoAsync("data:text/html," + Uri.EscapeDataString("""
+await Fixture(page, """
     <input id="plain"><input id="password" type="password"><textarea></textarea>
     <select><option>typed-private-marker</option></select>
     <div contenteditable="true">typed-private-marker</div>
     <div role="textbox" tabindex="0">typed-private-marker</div>
     <button id="typed-private-marker" aria-label="typed-private-marker"><span>typed-private-marker</span></button>
-    """));
+    """);
 await Flush(page);
 await page.FillAsync("#plain", "typed-private-marker");
 await page.FillAsync("#password", "typed-private-marker");
@@ -219,7 +230,7 @@ using (var scoped = new TeachRecorder(page))
 {
     await scoped.SynchronizeAsync();
     var popup = await context.NewPageAsync();
-    await popup.GotoAsync("data:text/html,<button>Popup</button>");
+    await Fixture(popup, "<button>Popup</button>");
     Assert(await popup.EvaluateAsync<bool>("typeof window.__launchFlowTeachDispatchV1 === 'function'"),
         "shared context bridge is installed in new pages without reinjection");
     await Flush(popup);
@@ -250,7 +261,7 @@ await otherPage.CloseAsync();
 using (var shadow = new TeachRecorder(page))
 {
     await shadow.SynchronizeAsync();
-    await page.GotoAsync("data:text/html,<div id='host'></div>");
+    await Fixture(page, "<div id='host'></div>");
     await Flush(page);
     await page.EvaluateAsync("() => document.querySelector('#host').attachShadow({mode:'open'}).innerHTML = '<button>Shadow</button>'");
     await page.ClickAsync("#host button");
@@ -262,12 +273,12 @@ using (var shadow = new TeachRecorder(page))
 using (var pointer = new TeachRecorder(page))
 {
     await pointer.SynchronizeAsync();
-    await page.GotoAsync("data:text/html," + Uri.EscapeDataString("<button onpointerdown='this.remove()'>Navigate</button>"));
+    await Fixture(page, "<button onpointerdown='this.remove()'>Navigate</button>");
     await Flush(page);
     await page.ClickAsync("button");
     await Flush(page);
     Assert(pointer.Drain().Count == 0, "target removal before a completed click never produces a phantom action");
-    await page.GotoAsync("data:text/html," + Uri.EscapeDataString("<button onclick='this.remove()'>Complete then remove</button>"));
+    await Fixture(page, "<button onclick='this.remove()'>Complete then remove</button>");
     await Flush(page);
     await page.ClickAsync("button");
     await Flush(page);
@@ -277,7 +288,7 @@ using (var pointer = new TeachRecorder(page))
 var pausedWindow = new VisualRecorderWindow(page);
 pausedWindow.TestLoad();
 await WaitUntil(() => pausedWindow.TestToggleEnabled);
-await page.GotoAsync("data:text/html,<button>Pending</button>");
+await Fixture(page, "<button>Pending</button>");
 await Flush(page);
 await page.ClickAsync("button");
 await Flush(page);
@@ -291,7 +302,7 @@ await pausedWindow.TestWaitForUpdatesAsync();
 using (var framed = new TeachRecorder(page))
 {
     await framed.SynchronizeAsync();
-    await page.GotoAsync("data:text/html," + Uri.EscapeDataString("<button>Main</button><iframe srcdoc='<button>Frame</button>'></iframe>"));
+    await Fixture(page, "<button>Main</button><iframe src='https://recorder.test/child-frame'></iframe>");
     await Flush(page);
     var frame = page.Frames.Single(f => f != page.MainFrame);
     await frame.WaitForSelectorAsync("button");
@@ -308,10 +319,10 @@ using (var framed = new TeachRecorder(page))
 using (var popupRecorder = new TeachRecorder(page))
 {
     await popupRecorder.SynchronizeAsync();
-    await page.GotoAsync("data:text/html," + Uri.EscapeDataString("<button onclick=\"window.open('about:blank')\">Open popup</button>"));
+    await Fixture(page, "<button onclick=\"window.open('about:blank')\">Open popup</button>");
     await Flush(page);
     var popup = await page.RunAndWaitForPopupAsync(() => page.ClickAsync("button"));
-    await popup.GotoAsync("data:text/html,<button>Popup target</button>");
+    await Fixture(popup, "<button>Popup target</button>");
     await Flush(popup);
     Assert(popupRecorder.Drain().Count == 1, "real popup opener is captured once on the original page");
     await popup.ClickAsync("button");
@@ -323,7 +334,7 @@ using (var popupRecorder = new TeachRecorder(page))
 
 var concurrent = Enumerable.Range(0, 8).Select(_ => new TeachRecorder(page)).ToArray();
 await Task.WhenAll(concurrent.Select(s => s.SynchronizeAsync()));
-await page.GotoAsync("data:text/html,<button>Keyboard</button>");
+await Fixture(page, "<button>Keyboard</button>");
 await Flush(page);
 await page.ClickAsync("button");
 await page.FocusAsync("button");
@@ -337,10 +348,11 @@ Assert(System.Text.Json.JsonDocument.Parse(snapshot).RootElement.GetProperty("se
     "closed sessions are detached from the context-wide bridge");
 
 var closingPage = await context.NewPageAsync();
+await Fixture(closingPage, "<button>Before close</button>");
 using (var closing = new TeachRecorder(closingPage))
 {
     await closing.SynchronizeAsync();
-    await closingPage.GotoAsync("data:text/html,<button>Before close</button>");
+    await Fixture(closingPage, "<button>Before close</button>");
     await Flush(closingPage);
     await closingPage.ClickAsync("button");
     await Flush(closingPage);
@@ -351,6 +363,7 @@ using (var closing = new TeachRecorder(closingPage))
 }
 
 var closedWindowPage = await context.NewPageAsync();
+await Fixture(closedWindowPage, "<button>Before close</button>");
 var closedWindow = new VisualRecorderWindow(closedWindowPage);
 closedWindow.TestLoad();
 await WaitUntil(() => closedWindow.TestToggleEnabled);
@@ -391,6 +404,13 @@ static WeakReference<TeachRecorder> CreateDisposedSession(IPage page)
     var session = new TeachRecorder(page);
     session.Dispose();
     return new WeakReference<TeachRecorder>(session);
+}
+
+static async Task Fixture(IPage page, string html)
+{
+    var url = "https://recorder.test/fixture/" + Guid.NewGuid().ToString("N");
+    await page.RouteAsync(url, route => route.FulfillAsync(new() { ContentType = "text/html", Body = html }));
+    await page.GotoAsync(url);
 }
 
 static Task Flush(IPage page) => page.EvaluateAsync("() => window.__launchFlowTeachDispatchV1('{\"type\":\"hello\"}')");

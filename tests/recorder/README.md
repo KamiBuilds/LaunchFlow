@@ -17,6 +17,12 @@ PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/launchflow/recorder-browsers" \
 
 This is a developer regression harness, not an end-user installation requirement.
 
+## Administrator policy
+
+The harness also links the actual `EnterprisePolicy.cs`, with a scoped live-value provider installed **before** Playwright creation so native callbacks observe policy changes. The default suite runs all 58 existing recorder checks plus 35 policy checks (93 total), not a policy-only subset. Construction/start, native acceptance, Drain/displayed-click provenance, manual editing/current URL capture, and Save are guarded. See [BOTH-RECORDER-POLICY.md](../../docs/BOTH-RECORDER-POLICY.md) for the contract, RED/GREEN evidence, fixture-preservation audit and native/integration limits.
+
+Capture fixtures use locally fulfilled HTTP(S) navigation instead of `data:` URLs; all original assertions remain unchanged. The iframe fixture uses a routed HTTP(S) child rather than `srcdoc`. There is no production policy bypass for fixtures.
+
 ## Capture contract
 
 - One shared binding and init script live for each browser context, not each recorder window. Closed sessions detach synchronously. A semaphore serializes installation/state updates; versioned snapshots and per-session epochs reject stale updates/events. No per-window init-script accumulation or binding removal/reinstallation race is required.
