@@ -343,5 +343,27 @@
         </Setter.Value>
       </Setter>
     </Style>
+    <Style TargetType="GridViewColumnHeader">
+      <Setter Property="Background" Value="#1A3042"/>
+      <Setter Property="Foreground" Value="#C4DAE5"/>
+      <Setter Property="BorderBrush" Value="#29465A"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Padding" Value="11,9"/>
+      <Setter Property="FontSize" Value="12"/>
+    </Style>
+    <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+      <Setter Property="Margin" Value="0,1"/>
+    </Style>
+    <Style TargetType="Expander">
+      <Setter Property="Foreground" Value="#C2DBE4"/>
+      <Setter Property="Background" Value="#172B3E"/>
+      <Setter Property="Padding" Value="8"/>
+    </Style>
+    <Style TargetType="ToolTip">
+      <Setter Property="Background" Value="#1B3447"/>
+      <Setter Property="Foreground" Value="#F0F8FB"/>
+      <Setter Property="BorderBrush" Value="#355C6D"/>
+      <Setter Property="Padding" Value="10,8"/>
+    </Style>
   </Application.Resources>
 </Application>
