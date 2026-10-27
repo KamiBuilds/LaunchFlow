@@ -20,6 +20,8 @@
         <ComboBoxItem Content="Fill"/>
         <ComboBoxItem Content="Wait"/>
         <ComboBoxItem Content="Press"/>
+        <ComboBoxItem Content="AssertVisible"/>
+        <ComboBoxItem Content="WaitForURL"/>
       </ComboBox>
       <TextBlock Text="Target (URL, CSS selector, key, or milliseconds)" FontWeight="SemiBold"/>
       <TextBox x:Name="TargetBox" Margin="0,6,0,12"/>
