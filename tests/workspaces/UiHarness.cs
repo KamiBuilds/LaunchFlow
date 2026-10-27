@@ -32,6 +32,34 @@ var tests = new List<(string Name, Func<Task> Body)>
         Check(ui.RunAllButton.IsEnabled && ui.RunSelectedButton.IsEnabled && !ui.StopButton.IsEnabled, "controls not restored");
         Check(ui.Notifications.All(n => !n.Contains("Finished")), "cancelled run announced completion");
     }),
+    ("workspace Run and Preview require the currently selected saved name", () =>
+    {
+        var ui = new UiFixture();
+        var profile = new WorkspaceProfile { Name = "Morning" };
+        ui._configuration.Workspaces.Add(profile);
+
+        ui.RefreshControls();
+        Check(!ui.RunWorkspaceButton.IsEnabled && !ui.PreviewWorkspaceButton.IsEnabled,
+            "workspace actions enabled with no selected saved profile");
+
+        ui.WorkspaceCombo.SelectedItem = profile;
+        ui.WorkspaceNameBox.Text = "  morning ";
+        ui.RefreshControls();
+        Check(ui.RunWorkspaceButton.IsEnabled && ui.PreviewWorkspaceButton.IsEnabled,
+            "valid selected workspace actions unavailable");
+
+        ui.WorkspaceNameBox.Text = "Unsaved name";
+        ui.RefreshControls();
+        Check(!ui.RunWorkspaceButton.IsEnabled && !ui.PreviewWorkspaceButton.IsEnabled,
+            "typing another profile name left a stale workspace action enabled");
+
+        ui.WorkspaceNameBox.Text = "Morning";
+        ui._runInProgress = true;
+        ui.RefreshControls();
+        Check(!ui.RunWorkspaceButton.IsEnabled && !ui.PreviewWorkspaceButton.IsEnabled,
+            "active run allowed another workspace action");
+        return Task.CompletedTask;
+    }),
     ("modal vault prompt cannot reenter a run before engine IsRunning is set", async () =>
     {
         var ui = new UiFixture();
@@ -431,6 +459,7 @@ partial class UiFixture
     public Task<bool> ShowRecorderAsync(VisualRecorderWindow recorder) { Recorder = recorder; return RecorderResult.Task; }
     public void RefreshSteps() { }
     public bool SaveAll() => true;
+    public void RefreshControls() => UpdateRunButtons();
     public Action? KeePassHook;
     public bool EnsureKeePass() => EnsureKeePassPasswordForRun(_configuration.Workflows);
     public void ShowFromTray() { }
