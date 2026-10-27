@@ -44,7 +44,8 @@ internal static class MonitorPlacementTests
                 captured = null;
                 object preference = placement.GetParameters()[1].ParameterType == typeof(int) ? workflow.MonitorIndex : workflow;
                 await (Task)placement.Invoke(engine, new object[] { ownedPage, preference })!;
-                var passed = captured is not null && (int)captured["left"] == expected + 8 && workflow.MonitorDeviceName == "screen-b";
+                var passed = captured is not null && (int)captured["left"] == expected &&
+                    (int)captured["width"] == 1200 && (int)captured["height"] == 800 && workflow.MonitorDeviceName == "screen-b";
                 Console.WriteLine((passed ? "PASS " : "FAIL ") + "production window placement resolves " + scenario + " at dispatch time");
                 failed |= !passed;
             }
