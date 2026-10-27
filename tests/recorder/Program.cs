@@ -139,7 +139,11 @@ await page.FillAsync("textarea", "typed-private-marker");
 foreach (var selector in new[] { "#plain", "#password", "textarea", "select", "[contenteditable]", "[role=textbox]" })
     await page.ClickAsync(selector);
 await Flush(page);
-Assert(privacy.Drain().Count == 0, "typed input, passwords and editable controls are never captured");
+var formClicks = privacy.Drain();
+Assert(formClicks.Count == 6 && formClicks.All(target => !target.Contains("typed-private-marker")),
+    "form-field clicks are captured without values, labels or private attributes");
+foreach (var target in formClicks)
+    Assert(await page.Locator(target).CountAsync() == 1, "recorded form click resolves to one element");
 await page.ClickAsync("button span");
 await Flush(page);
 var targets = privacy.Drain();
