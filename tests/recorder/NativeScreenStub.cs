@@ -6,4 +6,5 @@ public sealed class Screen
     public string DeviceName { get; init; } = "";
     public bool Primary { get; init; }
     public System.Drawing.Rectangle Bounds { get; init; }
+    public System.Drawing.Rectangle WorkingArea => Bounds;
 }
