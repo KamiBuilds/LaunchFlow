@@ -52,6 +52,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Development Chromium installation failed' }
       - name: Exercise production automation with synthetic browser fixtures
         run: dotnet run --project tests/runtime/RuntimeTests.csproj -c Release --no-build
+      - name: Exercise privacy-safe diagnostic export
+        run: dotnet run --project tests/diagnostics/DiagnosticTests.csproj -c Release
       - name: Exercise profile recovery with simulated DPAPI
         run: dotnet run --project tests/profiles/ProfileTests.csproj -c Release -p:TreatWarningsAsErrors=true
       - name: Exercise recorder capture and production replay
