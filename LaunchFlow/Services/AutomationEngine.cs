@@ -628,7 +628,18 @@ public sealed partial class AutomationEngine : IAsyncDisposable
                 if (int.TryParse(step.Target, out var ms))
                     await Task.Delay(Math.Clamp(ms, 0, 60_000), ct).ConfigureAwait(false);
                 else
-                    await page.Locator(step.Target).First.WaitForAsync().ConfigureAwait(false);
+                    await page.Locator(step.Target).First.WaitForAsync().WaitAsync(ct).ConfigureAwait(false);
+                break;
+            case "AssertVisible":
+                if (!await page.Locator(step.Target).First.IsVisibleAsync().ConfigureAwait(false))
+                    throw new InvalidOperationException("Expected element is not visible.");
+                break;
+            case "WaitForURL":
+                ValidateUrl(step.Target);
+                RequireAutomationUrl(step.Target);
+                await page.WaitForURLAsync(url =>
+                    string.Equals(url, step.Target, StringComparison.OrdinalIgnoreCase),
+                    new PageWaitForURLOptions { Timeout = 60_000 }).WaitAsync(ct).ConfigureAwait(false);
                 break;
             default:
                 throw new InvalidOperationException("Unsupported workflow step.");
@@ -673,7 +684,7 @@ public sealed partial class AutomationEngine : IAsyncDisposable
     private void Log(string message) => OnLog?.Invoke(message);
     private void Status(WebsiteWorkflow workflow, WorkflowRunState state) => OnWorkflowStatus?.Invoke(workflow.Name, state);
 
-    private static string PublicStepType(string type) => type is "Navigate" or "Click" or "Fill" or "Press" or "Wait"
+    private static string PublicStepType(string type) => type is "Navigate" or "Click" or "Fill" or "Press" or "Wait" or "AssertVisible" or "WaitForURL"
         ? type : "Unsupported";
 
     private sealed record TrackedSession(IBrowserContext Context, IPage Page);
