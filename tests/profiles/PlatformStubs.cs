@@ -30,11 +30,13 @@ namespace System.Security.Cryptography
             aes.Encrypt(result.AsSpan(0, 12), input, result.AsSpan(12, input.Length), result.AsSpan(12 + input.Length));
             return result;
         }
+        public static byte[]? LastUnprotected { get; private set; }
         public static byte[] Unprotect(byte[] input, byte[]? entropy, DataProtectionScope scope)
         {
             var result = new byte[input.Length - 28];
             using var aes = new AesGcm(TestWrappingKey, 16);
             aes.Decrypt(input.AsSpan(0, 12), input.AsSpan(12, result.Length), input.AsSpan(12 + result.Length), result);
+            LastUnprotected = result;
             return result;
         }
     }
