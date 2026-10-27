@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Teach LaunchFlow" Width="520" Height="460" MinWidth="455" MinHeight="365"
         WindowStartupLocation="CenterOwner" ResizeMode="CanResize" ShowInTaskbar="True"
-        Background="#111A2A" Foreground="#E9F1FB" FontFamily="Segoe UI" FontSize="13"
+        Background="#0D1725" Foreground="#EEF6FA" FontFamily="Segoe UI" FontSize="13"
         Icon="pack://application:,,,/Assets/LaunchFlow.ico" Closed="Window_Closed">
   <Grid Margin="20,16">
     <Grid.RowDefinitions>
@@ -26,7 +26,7 @@
       <Button Content="Add current page" Click="CaptureUrl_Click" Margin="0,0,8,5"
               ToolTip="Remember the current website address as a step"/>
     </WrapPanel>
-    <TextBlock Grid.Row="2" x:Name="CaptureStatus" Foreground="#6EE7D7" Margin="0,0,0,9" TextWrapping="Wrap"
+    <TextBlock Grid.Row="2" x:Name="CaptureStatus" Foreground="#46DACB" Margin="0,0,0,9" TextWrapping="Wrap"
                Text="Connecting to the browser…"/>
     <Grid Grid.Row="3">
       <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
