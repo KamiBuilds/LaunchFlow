@@ -40,6 +40,7 @@ public partial class MainWindow : Window
     private bool _vaultLockInProgress;
     private bool _vaultCleanupFailed;
     private bool _monitorSelectionChanged;
+    private long _workspaceRevision;
     private Task _vaultLockTask = Task.CompletedTask;
     private Task<AutomationEngine.RunResult>? _activeRunTask;
     private Task<IPage>? _activeTeachTask;
@@ -922,10 +923,24 @@ public partial class MainWindow : Window
         if (!SaveAll()) return;
 
         var existing = WorkspaceCatalog.FindByName(_configuration, name);
+        var revision = _workspaceRevision;
+        var savedWorkflowIds = _configuration.Workflows.Where(workflow => workflow.Enabled)
+            .Select(workflow => workflow.Id).ToArray();
         if (existing is not null && MessageBox.Show(this,
             "Replace the workflow selection in this workspace?", "Update workspace",
             MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes)
             return;
+
+        // Modal confirmations pump UI events: import may replace the saved configuration.
+        if (revision != _workspaceRevision ||
+            !ReferenceEquals(existing, WorkspaceCatalog.FindByName(_configuration, name)) ||
+            !_configuration.Workflows.Where(workflow => workflow.Enabled).Select(workflow => workflow.Id)
+                .SequenceEqual(savedWorkflowIds))
+        {
+            MessageBox.Show(this, "Workspace data changed while confirmation was open. Review the current workspaces and save again.",
+                "Workspace changed", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
 
         WorkspaceProfile profile;
         try
@@ -940,6 +955,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        _workspaceRevision++;
         WorkspaceCombo.Items.Refresh();
         WorkspaceCombo.SelectedItem = profile;
         WorkspaceNameBox.Text = profile.Name;
@@ -2121,6 +2137,7 @@ public partial class MainWindow : Window
             // Database transaction replaces both workflows and encrypted credentials
             // atomically; partial import never corrupts existing settings.
             VaultDatabase.Current.ReplaceSnapshot(imported.Config, imported.Credentials);
+            _workspaceRevision++;
             _configuration.Workflows.Clear();
             _configuration.Workflows.AddRange(imported.Config.Workflows);
             _configuration.Workspaces.Clear();
