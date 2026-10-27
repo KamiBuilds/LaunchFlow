@@ -142,6 +142,9 @@
                   Padding="9,7" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
           <Button x:Name="StopButton" Content="■ Stop" Click="Stop_Click" IsEnabled="False"
                   Padding="9,7" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+          <Button x:Name="RetryVaultLockButton" Content="Retry Lock vault" Click="LockPasswords_Click" Visibility="Collapsed"
+                  AutomationProperties.Name="Retry browser cleanup and vault lock" Padding="9,7"
+                  shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
           <Button Content="Help" Click="Help_Click" Padding="9,7"
                   ToolTip="How to set up your first website" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
           <Button Content="About" Click="About_Click" Padding="9,7" Margin="0"
@@ -285,10 +288,11 @@
                            TextChanged="KeePassEntryTextChanged"
                            ToolTip="Only needed for unusual KeePassXC database layouts"/>
                 </Expander>
-                <TextBlock Text="Login type is detected automatically (email first, Next, password, SSO or MFA)." Style="{StaticResource FieldLabel}" Margin="0,9,0,6" TextWrapping="Wrap" Visibility="Collapsed"/>
-                <ComboBox x:Name="LoginModeCombo" SelectedIndex="0" Visibility="Collapsed">
-                  <ComboBoxItem Content="Automatic"/>
-                  <ComboBoxItem Content="None"/>
+                <TextBlock Text="Sign-in mode" Style="{StaticResource FieldLabel}" Margin="0,9,0,6"/>
+                <ComboBox x:Name="LoginModeCombo" SelectedIndex="0" AutomationProperties.Name="Sign-in mode">
+                  <ComboBoxItem Content="Automatic" Tag="Auto"/>
+                  <ComboBoxItem Content="No automatic sign-in" Tag="None"/>
+                  <ComboBoxItem Content="SSO — browser sign-in only (no saved credential fill)" Tag="SSO"/>
                 </ComboBox>
                 <TextBlock Text="LaunchFlow detects username/Next/password steps. If your company uses SSO, you may need to approve its login address once and complete MFA yourself." TextWrapping="Wrap" Foreground="#BED2E5" FontSize="12" Margin="0,8,0,0"/>
                 <Grid Margin="0,12,0,0">

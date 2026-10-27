@@ -5,33 +5,46 @@ import re
 
 root = pathlib.Path(__file__).resolve().parents[2]
 source = (root / "LaunchFlow/MainWindow.xaml.cs").read_text()
-names = ["RunEnabledAsync", "SecureVaultLock", "SecureVaultLockAsync", "SecureVaultLockCoreAsync", "UpdateRunButtons", "RequireMasterPassword", "SaveTaughtStepsAsync"]
+names = ["RunEnabledAsync", "RequestCrashCleanup", "RecordSteps_Click", "SecureVaultLockAsync", "SecureVaultLockCoreAsync", "UpdateRunButtons", "RequireMasterPassword", "SaveTaughtStepsAsync", "ChooseKeePassEntry_Click", "DescribeCredentialStatus", "NeedsKeePassForRun", "EnsureKeePassPasswordForRun", "LoadCredentialEditor", "SaveCredentials_Click", "ConfirmLoginOriginAsync", "AutomationAllowed", "TeachAllowed", "CredentialReadAllowed", "LoginModeIndex", "SelectedLoginMode", "QueueWorkflowStatus", "OfferRepairForLoginAttentionAsync", "OfferRepairForStepAttention", "RepairLoginCoreAsync"]
 methods = []
 for name in names:
-    match = re.search(r"^    private (?:async )?[^\n]+\b" + name + r"\([^\n]*\)\s*\n    \{", source, re.M)
+    match = re.search(r"^    (?:private|internal) (?:async )?[^\n]+\b" + name + r"\([^)]*\)\s*\n    \{", source, re.M)
     if match:
         end = source.index("\n    }", match.end()) + len("\n    }")
         methods.append(source[match.start():end])
-lock = "SecureVaultLockAsync(message)" if "private Task SecureVaultLockAsync" in source or "private async Task SecureVaultLockAsync" in source else "LegacyLock(message)"
-legacy = "private Task LegacyLock(string message) { SecureVaultLock(message); return Task.CompletedTask; }" if lock.startswith("Legacy") else ""
-workspace = ", workspace" if re.search(r"RunEnabledAsync\(bool onlySelected = false, WorkspaceProfile\? workspace", source) else ""
+    else:
+        raise RuntimeError("Production method missing or unsupported signature: " + name)
 output = """// Generated from current production MainWindow. Do not edit.
 #nullable enable
+using System.IO;
 using LaunchFlow.Models;
 using LaunchFlow.Services;
 using Microsoft.Playwright;
 using Forms = System.Windows.Forms;
 partial class UiFixture
 {
-    public Task Run(bool selected = false, WorkspaceProfile? workspace = null) => RunEnabledAsync(selectedWORKSPACE);
-    public Task Lock(string message = "test") => LOCK;
+    public Task Run(bool selected = false, WorkspaceProfile? workspace = null) => RunEnabledAsync(selected, workspace);
+    public Task Lock(string message = "test") => SecureVaultLockAsync(message);
     public Task Teach(WebsiteWorkflow workflow) => SaveTaughtStepsAsync(workflow, new FakePage());
     public bool Unlock(bool forcePrompt = true) => RequireMasterPassword(forcePrompt);
-LEGACY
+    public string Status(WebsiteWorkflow w) => DescribeCredentialStatus(w);
+    public bool NeedsKeePass(WebsiteWorkflow w) => NeedsKeePassForRun(w);
+    public void Load(WebsiteWorkflow w) => LoadCredentialEditor(w);
+    public void SaveCredential() => SaveCredentials_Click(this, new RoutedEventArgs());
+    public Task<bool> Approve(WebsiteWorkflow w, string origin) => ConfirmLoginOriginAsync(w, origin);
+    public Task Repair() => RepairLoginCoreAsync();
 METHODS
 }
-""".replace("WORKSPACE", workspace).replace("LOCK", lock).replace("LEGACY", legacy).replace("METHODS", "\n".join(methods))
+""".replace("METHODS", "\n".join(methods))
 target = root / "tests/workspaces/obj/UiMethods.g.cs"
 target.parent.mkdir(parents=True, exist_ok=True)
+app = (root / "LaunchFlow/App.xaml.cs").read_text()
+callbacks = []
+for event, wrapper in [("DispatcherUnhandledException", "DispatcherFailure"), ("AppDomain.CurrentDomain.UnhandledException", "FatalFailure")]:
+    marker = event + " += (_, args) =>\n        {"
+    start = app.index(marker) + len(marker)
+    end = app.index("\n        };", start)
+    callbacks.append("    public void " + wrapper + "(FailureArgs args)\n    {" + app[start:end] + "\n    }")
+output += "\npartial class CrashFixture\n{\n" + "\n".join(callbacks) + "\n}\n"
 target.write_text(output)
-print("Extracted production methods: " + ", ".join(re.findall(r"private (?:async )?[^\n]+\b(\w+)\([^\n]*\)\s*\n    \{", "\n".join(methods))))
+print(f"Extracted {len(methods)} production methods and {len(callbacks)} App crash callbacks: " + ", ".join(names))

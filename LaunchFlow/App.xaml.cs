@@ -32,37 +32,34 @@ public partial class App : Application
 
         DispatcherUnhandledException += (_, args) =>
         {
-            CrashLog.Write("UI", args.Exception);
-            MessageBox.Show(
-                "LaunchFlow hit an unexpected problem and will try to keep your vault safe.\n\n" + args.Exception.Message,
-                "LaunchFlow", MessageBoxButton.OK, MessageBoxImage.Error);
+            // Fatal callbacks have no browser-close barrier. Revoke the key before
+            // diagnostics/UI, but never wrap or delete a potentially live profile here.
+            try { VaultDatabase.Current.Lock(); } catch { /* best effort on a failing process */ }
+            try { CrashLog.Write("UI", args.Exception); } catch { /* diagnostics must not prevent revocation */ }
             try
             {
-                try { ProfileVaultService.SealAll(); } catch { /* best effort */ }
-                VaultDatabase.Current.Lock();
+                if (MainWindow is LaunchFlow.MainWindow window) window.RequestCrashCleanup();
             }
-            catch { /* best effort */ }
+            catch { /* best effort: coordinated cleanup may be unavailable */ }
+            MessageBox.Show(
+                "LaunchFlow hit an unexpected problem. Vault access was revoked. Browser cleanup is best effort; profiles are retained unless coordinated cleanup completes. Retry Lock vault before continuing.",
+                "LaunchFlow", MessageBoxButton.OK, MessageBoxImage.Error);
             args.Handled = true;
         };
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
         {
-            if (args.ExceptionObject is Exception ex) CrashLog.Write("Fatal", ex);
+            // A terminating thread cannot safely await the engine or use the dispatcher.
+            // Leave profile sources untouched for recovery; cleanup is not guaranteed.
+            try { VaultDatabase.Current.Lock(); } catch { /* best effort on a failing process */ }
+            if (args.ExceptionObject is Exception ex)
+                try { CrashLog.Write("Fatal", ex); } catch { /* diagnostics are best effort */ }
             try
             {
-                try { ProfileVaultService.SealAll(); } catch { /* best effort */ }
-                VaultDatabase.Current.Lock();
+                MessageBox.Show(
+                    "LaunchFlow needs to close after an unexpected error. Vault access was revoked. Browser profiles were not sealed by this fatal callback and may need cleanup after restart.",
+                    "LaunchFlow", MessageBoxButton.OK, MessageBoxImage.Error);
             }
-            catch { /* best effort */ }
-            if (args.ExceptionObject is Exception fatal)
-            {
-                try
-                {
-                    MessageBox.Show(
-                        "LaunchFlow needs to close after an unexpected error.\n\n" + fatal.Message,
-                        "LaunchFlow", MessageBoxButton.OK, MessageBoxImage.Error);
-                }
-                catch { /* UI may be unavailable */ }
-            }
+            catch { /* UI may be unavailable */ }
         };
 
         _pendingOpenPath = FindOpenablePath(e.Args);

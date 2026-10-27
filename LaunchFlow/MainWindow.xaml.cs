@@ -36,7 +36,9 @@ public partial class MainWindow : Window
     private bool _sidebarCollapsed;
     private bool _teachingInProgress;
     private bool _runInProgress;
+    private bool _runStatusActive;
     private bool _vaultLockInProgress;
+    private bool _vaultCleanupFailed;
     private bool _monitorSelectionChanged;
     private Task _vaultLockTask = Task.CompletedTask;
     private Task<AutomationEngine.RunResult>? _activeRunTask;
@@ -90,6 +92,7 @@ public partial class MainWindow : Window
         RefreshKeePassStatus();
         _runner = new AutomationEngine(_vault);
         _runner.ApproveLoginOriginAsync = ConfirmLoginOriginAsync;
+        _runner.OnWorkflowStatus += QueueWorkflowStatus;
         _runner.OnLog += line => Dispatcher.BeginInvoke(new Action(() => AppendLog(line)));
 
         StartupCheck.IsChecked = _configuration.StartWithWindows;
@@ -164,6 +167,36 @@ public partial class MainWindow : Window
         if (!_loadingEditor) _monitorSelectionChanged = true;
     }
 
+    private void QueueWorkflowStatus(string workflowName, AutomationEngine.WorkflowRunState state)
+    {
+        // The engine supplies a display name, not an identity. Never use it to select a repair.
+        var cancellation = _runCancellation;
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!_runInProgress || !_runStatusActive || _vaultLockInProgress || _windowsLocked || _exiting ||
+                cancellation is null || cancellation.IsCancellationRequested || !ReferenceEquals(_runCancellation, cancellation)) return;
+            var text = state switch
+            {
+                AutomationEngine.WorkflowRunState.WaitingForSignIn => "Sign-in needs attention",
+                AutomationEngine.WorkflowRunState.Completed => "Finished",
+                AutomationEngine.WorkflowRunState.Failed => "Failed",
+                AutomationEngine.WorkflowRunState.Cancelled => "Stopped",
+                _ => "Running"
+            };
+            WorkflowStatusLabel.Text = $"{workflowName} · {LocalizationService.Text(text, _configuration.UiLanguage)}";
+        }));
+    }
+
+    private static int LoginModeIndex(string mode)
+    {
+        return mode switch { "None" => 1, "SSO" => 2, _ => 0 };
+    }
+
+    private static string SelectedLoginMode(int index)
+    {
+        return index switch { 1 => "None", 2 => "SSO", _ => "Auto" };
+    }
+
     private void UpdateRunButtons()
     {
         bool available = !_runInProgress && !_vaultLockInProgress && !_teachingInProgress && !_windowsLocked && !_exiting;
@@ -174,6 +207,9 @@ public partial class MainWindow : Window
         RepairButton.IsEnabled = available;
         StopButton.IsEnabled = _runInProgress && _runCancellation is { IsCancellationRequested: false } && !_vaultLockInProgress;
         MainTabs.IsEnabled = !_vaultLockInProgress;
+        RetryVaultLockButton.Visibility = _vaultCleanupFailed ? Visibility.Visible : Visibility.Collapsed;
+        if (_vaultCleanupFailed)
+            WorkflowStatusLabel.Text = "Browser cleanup did not complete; profiles retained and automation blocked. Retry Lock vault.";
     }
 
     private static System.Drawing.Icon CreateTrayIcon()
@@ -240,6 +276,12 @@ public partial class MainWindow : Window
         Close();
     }
 
+    internal void RequestCrashCleanup()
+    {
+        // Dispatcher recovery can use the normal close barrier; the fatal callback cannot.
+        _ = SecureVaultLockAsync("Unexpected UI error: vault locked; browser cleanup is best effort.");
+    }
+
     internal void RequestShutdownForBuild()
     {
         // Stop automation and close LaunchFlow before installing a new build.
@@ -301,7 +343,7 @@ public partial class MainWindow : Window
         MonitorCombo.ItemsSource = monitors;
         MonitorCombo.SelectedItem = MonitorService.Resolve(w, monitors);
         _monitorSelectionChanged = false;
-        LoginModeCombo.SelectedIndex = w.LoginMode == "None" ? 1 : 0;
+        LoginModeCombo.SelectedIndex = LoginModeIndex(w.LoginMode);
         UsernameContinueBox.Text = w.UsernameContinueSelector;
         PasswordOriginBox.Text = w.PasswordCredentialOrigin;
         AutoLoginCheck.IsChecked = w.AutoLogin;
@@ -333,6 +375,11 @@ public partial class MainWindow : Window
     private void LoadCredentialEditor(WebsiteWorkflow w)
     {
         ClearCredentialEditor();
+        if (!CredentialReadAllowed())
+        {
+            CredentialStatus.Text = "Credential access is disabled by your organization.";
+            return;
+        }
         try
         {
             // Never put saved usernames or passwords into UI controls, even masked ones.
@@ -393,7 +440,7 @@ public partial class MainWindow : Window
             w.MonitorIndex = monitor.Index;
             w.MonitorDeviceName = monitor.DeviceName;
         }
-        w.LoginMode = BrowserSelection(LoginModeCombo);
+        w.LoginMode = SelectedLoginMode(LoginModeCombo.SelectedIndex);
         w.UsernameContinueSelector = UsernameContinueBox.Text.Trim();
         w.PasswordCredentialOrigin = PasswordOriginBox.Text.Trim();
         w.AutoLogin = AutoLoginCheck.IsChecked == true;
@@ -654,6 +701,14 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (!CredentialReadAllowed())
+        {
+            ClearCredentialEditor();
+            CredentialStatus.Text = "Credential access is disabled by your organization.";
+            MessageBox.Show(this, "Credential access is disabled by your organization. Existing credentials were not changed.",
+                "Credentials unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
         try
         {
             var existing = _vault.Read(_selected.Id);
@@ -757,10 +812,20 @@ public partial class MainWindow : Window
 
     private async Task<bool> ConfirmLoginOriginAsync(WebsiteWorkflow workflow, string newOrigin)
     {
-        // Display a one-time, visible consent request; don't harvest credentials from arbitrary redirects.
+        var cancellation = _runCancellation;
+        bool Authorized()
+        {
+            var policy = EnterprisePolicy.Current;
+            return cancellation is { IsCancellationRequested: false } && ReferenceEquals(_runCancellation, cancellation) &&
+                !_vaultLockInProgress && !_windowsLocked && !_exiting && VaultDatabase.Current.IsUnlocked &&
+                !policy.DisableAutomation && !policy.DisableCredentialFill && !policy.DisableCredentialStorage &&
+                policy.IsUrlAllowed(workflow.StartUrl) && policy.IsUrlAllowed(newOrigin) &&
+                (!policy.RequireHttpsForCredentials || newOrigin.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) &&
+                _configuration.Workflows.Any(w => ReferenceEquals(w, workflow));
+        }
         return await Dispatcher.InvokeAsync(() =>
         {
-            // A first-run SSO permission question must be visible even when running in tray.
+            if (!Authorized()) return false;
             var wasHidden = !IsVisible;
             if (wasHidden) ShowFromTray();
             var result = MessageBox.Show(this,
@@ -770,9 +835,17 @@ public partial class MainWindow : Window
                 "Confirm SSO login website", MessageBoxButton.YesNo, MessageBoxImage.Question,
                 MessageBoxResult.No);
             if (wasHidden) Hide();
-            if (result != MessageBoxResult.Yes) return false;
-            workflow.ApprovedLoginOrigins.Add(newOrigin);
-            _store.Save(_configuration);
+            // ShowDialog pumps the dispatcher: lock, Stop and machine policy can change.
+            if (result != MessageBoxResult.Yes || !Authorized()) return false;
+            bool added = !workflow.ApprovedLoginOrigins.Contains(newOrigin);
+            if (added) workflow.ApprovedLoginOrigins.Add(newOrigin);
+            try { _store.Save(_configuration); }
+            catch (Exception ex)
+            {
+                if (added) workflow.ApprovedLoginOrigins.Remove(newOrigin);
+                AppendLog("Sign-in approval was not saved: " + ex.GetType().Name);
+                return false;
+            }
             AppendLog($"Approved a sign-in provider for '{workflow.Name}'.");
             return true;
         });
@@ -865,9 +938,10 @@ public partial class MainWindow : Window
 
     private async Task SaveTaughtStepsAsync(WebsiteWorkflow workflow, IPage page)
     {
+        if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow)) return;
         var recorder = new VisualRecorderWindow(page) { Owner = this };
         if (!await ShowRecorderAsync(recorder) || recorder.RecordedSteps.Count == 0) return;
-        if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked) return;
+        if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow)) return;
 
         // Teach remains modeless; the selected website may have changed.
         var original = _configuration.Workflows.FirstOrDefault(w => w.Id == workflow.Id);
@@ -893,7 +967,7 @@ public partial class MainWindow : Window
 
     private async void RecordSteps_Click(object sender, RoutedEventArgs e)
     {
-        if (_teachingInProgress || _runInProgress || _vaultLockInProgress || _windowsLocked || _exiting || _selected is null || !SaveAll()) return;
+        if (_teachingInProgress || _runInProgress || _vaultLockInProgress || _windowsLocked || _exiting || _selected is null || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(_selected) || !SaveAll()) return;
         var workflow = _selected;
         _teachingInProgress = true;
         UpdateRunButtons();
@@ -901,7 +975,7 @@ public partial class MainWindow : Window
         {
             _activeTeachTask = _runner.GetPageForRecorderAsync(workflow);
             var page = await _activeTeachTask;
-            if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked) return;
+            if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow)) return;
             await SaveTaughtStepsAsync(workflow, page);
         }
         catch (Exception ex)
@@ -928,10 +1002,11 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task RepairLoginCoreAsync()
+    private async Task RepairLoginCoreAsync(WebsiteWorkflow? target = null)
     {
-        if (_teachingInProgress || _vaultLockInProgress || _windowsLocked || _exiting || _selected is null || !SaveAll()) return;
-        var workflow = _selected;
+        var workflow = target ?? _selected;
+        if (_teachingInProgress || _vaultLockInProgress || _windowsLocked || _exiting || workflow is null ||
+            !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow) || !SaveAll()) return;
         _teachingInProgress = true;
         UpdateRunButtons();
         try
@@ -942,9 +1017,10 @@ public partial class MainWindow : Window
                 "3. Return to Teach and click Save clicks.\n\n" +
                 "Use Passwords to save a login; Teach does not record passwords.",
                 "Repair login", MessageBoxButton.OK, MessageBoxImage.Information);
+            if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow)) return;
             _activeTeachTask = _runner.GetPageForRecorderAsync(workflow);
             var page = await _activeTeachTask;
-            if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked) return;
+            if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow)) return;
             var health = await LoginHealth.InspectAsync(page);
             if (health.NeedsAttention) AppendLog($"Repair login: {health.Reason}");
             await SaveTaughtStepsAsync(workflow, page);
@@ -965,7 +1041,7 @@ public partial class MainWindow : Window
 
     private async Task RunEnabledAsync(bool onlySelected = false, WorkspaceProfile? workspace = null)
     {
-        if (_runInProgress || _runner.IsRunning || _vaultLockInProgress || _windowsLocked || _teachingInProgress || _exiting) return;
+        if (_runInProgress || _runner.IsRunning || _vaultLockInProgress || _windowsLocked || _teachingInProgress || _exiting || !AutomationAllowed()) return;
         // Own the UI operation before any modal prompt can pump another hotkey/tray event.
         _runInProgress = true;
         UpdateRunButtons();
@@ -984,8 +1060,10 @@ public partial class MainWindow : Window
                     ? workspace.Resolve(_configuration).ToList()
                     : _configuration.Workflows.Where(workflow => workflow.Enabled).ToList();
             if (toRun.Count == 0) { AppendLog("No enabled workflows to run."); return; }
+            if (toRun.Any(workflow => !AutomationAllowed(workflow))) return;
             if (!EnsureKeePassPasswordForRun(toRun)) return;
-            if (_windowsLocked || _vaultLockInProgress || _exiting || !VaultDatabase.Current.IsUnlocked)
+            if (_windowsLocked || _vaultLockInProgress || _exiting || !VaultDatabase.Current.IsUnlocked ||
+                toRun.Any(workflow => !AutomationAllowed(workflow)))
             {
                 _keepassMasterPassword = null;
                 return;
@@ -997,20 +1075,21 @@ public partial class MainWindow : Window
             _runCancellation = cancellation;
             UpdateRunButtons();
             WorkflowStatusLabel.Text = LocalizationService.Text("Running", _configuration.UiLanguage);
+            _runStatusActive = true;
             _activeRunTask = _runner.RunAsync(toRun, cancellation.Token,
                 includeDisabled: onlySelected, configuration: _configuration, keepassMasterPassword: _keepassMasterPassword);
             var result = await _activeRunTask;
+            _runStatusActive = false;
             if (cancellation.IsCancellationRequested || _windowsLocked || _vaultLockInProgress || _exiting) return;
-            if (result.LoginNeedsAttention is { Count: > 0 } attention)
+            var attention = result.LoginNeedsAttention;
+            var steps = result.StepsNeedAttention;
+            if (result.FailedCount > 0 || steps.Count > 0 || attention.Count > 0)
             {
-                WorkflowStatusLabel.Text = LocalizationService.Text("Sign-in needs attention", _configuration.UiLanguage);
-                NotifyTray("Sign-in needs attention", $"{attention.Count} site(s) may still need MFA/SSO or Repair login.", Forms.ToolTipIcon.Warning);
-                await OfferRepairForLoginAttentionAsync(attention);
-            }
-            else if (result.FailedCount > 0)
-            {
-                WorkflowStatusLabel.Text = LocalizationService.Text("Failed", _configuration.UiLanguage);
-                NotifyTray("LaunchFlow", $"{result.FailedCount} workflow(s) failed. Review the website steps before running again.", Forms.ToolTipIcon.Warning);
+                WorkflowStatusLabel.Text = $"{LocalizationService.Text("Failed", _configuration.UiLanguage)}: {result.FailedCount} · " +
+                    $"{LocalizationService.Text("Sign-in needs attention", _configuration.UiLanguage)}: {attention.Count} · Steps needing repair: {steps.Count}";
+                NotifyTray("LaunchFlow", $"{result.FailedCount} workflow(s) failed; {attention.Count} sign-in(s) need attention; {steps.Count} step repair(s). Nothing is rerun automatically.", Forms.ToolTipIcon.Warning);
+                if (attention.Count > 0) await OfferRepairForLoginAttentionAsync(attention);
+                if (steps.Count > 0) OfferRepairForStepAttention(steps);
             }
             else
             {
@@ -1031,6 +1110,7 @@ public partial class MainWindow : Window
         }
         finally
         {
+            _runStatusActive = false;
             if (cancellation?.IsCancellationRequested == true)
                 WorkflowStatusLabel.Text = LocalizationService.Text("Stopped", _configuration.UiLanguage);
             if (ReferenceEquals(_runCancellation, cancellation)) _runCancellation = null;
@@ -1048,7 +1128,7 @@ public partial class MainWindow : Window
         MainTabs.SelectedIndex = 0;
         foreach (var item in items)
         {
-            if (_vaultLockInProgress || _windowsLocked || _exiting || _runCancellation?.IsCancellationRequested == true) return;
+            if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked || _runCancellation?.IsCancellationRequested == true) return;
             var workflow = _configuration.Workflows.FirstOrDefault(w => w.Id == item.WorkflowId);
             if (workflow is null) continue;
             WorkflowList.SelectedItem = workflow;
@@ -1059,14 +1139,34 @@ public partial class MainWindow : Window
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning);
             if (answer != MessageBoxResult.Yes) continue;
+            if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked ||
+                _runCancellation?.IsCancellationRequested == true || !TeachAllowed(workflow) ||
+                !_configuration.Workflows.Any(w => ReferenceEquals(w, workflow))) return;
             try
             {
-                await RepairLoginCoreAsync();
+                await RepairLoginCoreAsync(workflow);
             }
             catch (Exception ex)
             {
                 MessageBox.Show(this, MakeBrowserFriendlyMessage(ex), "Repair login", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
+        }
+    }
+
+    private void OfferRepairForStepAttention(IReadOnlyList<AutomationEngine.StepAttention> items)
+    {
+        foreach (var item in items)
+        {
+            if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked ||
+                _runCancellation?.IsCancellationRequested == true) return;
+            var workflow = _configuration.Workflows.FirstOrDefault(w => w.Id == item.WorkflowId);
+            if (workflow is null) continue;
+            ShowFromTray();
+            MainTabs.SelectedIndex = 0;
+            WorkflowList.SelectedItem = workflow;
+            MessageBox.Show(this, $"“{item.WorkflowName}” stopped at a {item.StepType} step.\n\n" +
+                "Review this workflow's steps or use Teach clicks to repair it. No later steps or destination navigation ran after the failure. Nothing will rerun automatically.",
+                "Workflow steps need repair", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -1133,35 +1233,49 @@ public partial class MainWindow : Window
     private Task SecureVaultLockAsync(string message)
     {
         if (!_vaultLockTask.IsCompleted) return _vaultLockTask;
-        _vaultLockTask = SecureVaultLockCoreAsync(message);
-        return _vaultLockTask;
+        // Publish ownership before cancellation callbacks or modal reentrancy can lock again.
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _vaultLockTask = completion.Task;
+        async Task CleanupAsync()
+        {
+            try { await SecureVaultLockCoreAsync(message); completion.TrySetResult(); }
+            catch (Exception ex) { completion.TrySetException(ex); }
+        }
+        _ = CleanupAsync();
+        return completion.Task;
     }
 
     private async Task SecureVaultLockCoreAsync(string message)
     {
         _vaultLockInProgress = true;
-        UpdateRunButtons();
-        _runCancellation?.Cancel();
+        _vaultCleanupFailed = false;
         _keepassMasterPassword = null;
+        bool cleanupComplete = false;
+        var pendingRun = _activeRunTask;
+        var pendingTeach = _activeTeachTask;
         try
         {
-            // Profile wrapping uses its own DPAPI-protected key. Revoke the vault key
-            // BEFORE waiting for browsers; a stalled browser must not extend authorization.
-            LockPasswordManager(message);
+            // Revoke first. CloseSessions is the engine's cancellation/dispatch barrier;
+            // awaiting a dispatched fill before closing its context can stall forever.
             VaultDatabase.Current.Lock();
+            UpdateRunButtons();
+            try { _runCancellation?.Cancel(); }
+            catch (Exception ex) { AppendLog("Cancellation callback failed during lock: " + ex.GetType().Name); }
+            LockPasswordManager(message);
             ClearCredentialEditor();
-            try
-            {
-                if (_activeRunTask is not null) await _activeRunTask;
-                if (_activeTeachTask is not null) await _activeTeachTask;
-            }
-            catch (Exception ex) { AppendLog("Automation ended during lock: " + ex.GetType().Name); }
             try { await _runner.CloseSessionsAsync(); }
             catch (Exception ex)
             {
-                AppendLog("Could not close browser sessions before lock: " + ex.GetType().Name);
+                AppendLog("Browser cleanup did not complete; profiles retained and automation blocked. Retry Lock vault.");
+                NotifyTray("Vault locked", "Browser cleanup did not complete; profiles retained and automation blocked. Retry Lock vault.", Forms.ToolTipIcon.Warning);
                 if (_configuration.DiagnosticsLogEnabled) CrashLog.Write("CloseSessions", ex);
+                return; // Never wrap/delete a profile while its browser may still be live.
             }
+            try { if (pendingRun is not null) await pendingRun; }
+            catch (Exception ex) { AppendLog("Automation ended during lock: " + ex.GetType().Name); }
+            try { if (pendingTeach is not null) await pendingTeach; }
+            catch (Exception ex) { AppendLog("Teach ended during lock: " + ex.GetType().Name); }
+            cleanupComplete = true;
             if (_configuration.SealBrowserProfilesOnLock)
             {
                 try { await Task.Run(ProfileVaultService.SealAll); }
@@ -1174,14 +1288,40 @@ public partial class MainWindow : Window
         }
         finally
         {
-            _vaultLockInProgress = false;
+            _vaultLockInProgress = !cleanupComplete;
+            _vaultCleanupFailed = !cleanupComplete;
             UpdateRunButtons();
         }
     }
 
+    private bool AutomationAllowed(WebsiteWorkflow? workflow = null)
+    {
+        var policy = EnterprisePolicy.Current;
+        return !policy.DisableAutomation && (workflow is null ||
+            (policy.IsUrlAllowed(workflow.StartUrl) &&
+             (string.IsNullOrWhiteSpace(workflow.DestinationUrl) || policy.IsUrlAllowed(workflow.DestinationUrl))));
+    }
+
+    private bool TeachAllowed(WebsiteWorkflow workflow)
+    {
+        return !EnterprisePolicy.Current.DisableTeachMode && AutomationAllowed(workflow);
+    }
+
+    private bool CredentialReadAllowed()
+    {
+        var policy = EnterprisePolicy.Current;
+        return !policy.DisableCredentialStorage && !policy.DisableCredentialFill;
+    }
+
     private string DescribeCredentialStatus(WebsiteWorkflow w)
     {
-        if (_vault.Has(w.Id))
+        if (EnterprisePolicy.Current.DisableCredentialStorage)
+            return "Credential access is disabled by your organization.";
+        if (!VaultDatabase.Current.IsUnlocked) return "Vault locked";
+        bool hasCredential;
+        try { hasCredential = _vault.Has(w.Id); }
+        catch (InvalidOperationException) { return "Credential access is unavailable under your organization policy."; }
+        if (hasCredential)
             return string.IsNullOrWhiteSpace(w.KeepassEntryPath)
                 ? "Encrypted LaunchFlow password saved"
                 : "LaunchFlow's saved password is used first; remove it to use the selected KeePassXC login.";
@@ -1280,7 +1420,14 @@ public partial class MainWindow : Window
 
     private async void ChooseKeePassEntry_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is null) return;
+        bool Authorized()
+        {
+            if (!_vaultLockInProgress && !_windowsLocked && !_exiting && PasswordSessionIsValid() && CredentialReadAllowed()) return true;
+            _keepassMasterPassword = null;
+            CredentialStatus.Text = "Credential access is unavailable; unlock the vault and check your organization policy.";
+            return false;
+        }
+        if (_selected is null || !Authorized()) return;
         var workflowId = _selected.Id;
         if (!KeePassXcService.IsCliAvailable())
         {
@@ -1316,13 +1463,16 @@ public partial class MainWindow : Window
                 "Enter the KeePassXC master password to list your login names. Your saved passwords will not be displayed or copied into LaunchFlow.")
             { Owner = this };
             if (prompt.ShowDialog() != true) return;
+            if (!Authorized()) return;
             secret = prompt.Secret ?? "";
         }
 
         try
         {
+            if (!Authorized()) return;
             var entries = await KeePassXcService.ListEntriesAsync(
                 database, KeePassKeyBox.Text.Trim(), secret);
+            if (!Authorized()) return;
             if (entries.Count == 0)
             {
                 MessageBox.Show(this, "No login entries were found in this KeePassXC database.",
@@ -1331,9 +1481,10 @@ public partial class MainWindow : Window
             }
 
             var picker = new KeePassEntryPickerWindow(entries) { Owner = this };
-            if (picker.ShowDialog() != true || string.IsNullOrEmpty(picker.SelectedPath)) return;
+            if (picker.ShowDialog() != true || string.IsNullOrEmpty(picker.SelectedPath) || !Authorized()) return;
             var workflow = _configuration.Workflows.FirstOrDefault(w => w.Id == workflowId);
             if (workflow is null) return;
+            bool hasLocalCredential = _vault.Has(workflow.Id);
 
             _keepassMasterPassword = secret;
             workflow.KeepassEntryPath = picker.SelectedPath;
@@ -1343,14 +1494,16 @@ public partial class MainWindow : Window
                 KeepassEntryBox.Text = picker.SelectedPath;
             _store.Save(_configuration);
             CredentialStatus.Text = DescribeCredentialStatus(workflow);
-            if (_vault.Has(workflow.Id))
+            if (hasLocalCredential)
                 MessageBox.Show(this,
                     "Login selected. This website already has a password saved in LaunchFlow, which takes priority. To use KeePassXC, click Remove saved credentials in Passwords.",
                     "KeePassXC login selected", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "Couldn't read KeePassXC",
+            _keepassMasterPassword = null;
+            AppendLog("KeePass selection failed: " + ex.GetType().Name);
+            MessageBox.Show(this, "The KeePassXC login could not be selected. Check vault authorization, organization policy and the database connection.", "Couldn't read KeePassXC",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
@@ -1398,6 +1551,11 @@ public partial class MainWindow : Window
     /// </summary>
     private bool EnsureKeePassPasswordForRun(IReadOnlyList<WebsiteWorkflow> workflows)
     {
+        if (!CredentialReadAllowed())
+        {
+            _keepassMasterPassword = null;
+            return true; // Engine may open/manual sign-in; never fetch a fallback secret.
+        }
         var needsKeePass = workflows.Any(NeedsKeePassForRun);
         if (!needsKeePass) return true;
 
@@ -1420,15 +1578,24 @@ public partial class MainWindow : Window
             Owner = this
         };
         if (prompt.ShowDialog() != true) return false;
+        if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked ||
+            !CredentialReadAllowed() || workflows.Any(workflow => !AutomationAllowed(workflow)))
+        {
+            _keepassMasterPassword = null;
+            return false;
+        }
         _keepassMasterPassword = prompt.Secret ?? "";
         return true;
     }
 
     private bool NeedsKeePassForRun(WebsiteWorkflow w)
     {
+        if (!CredentialReadAllowed() || !VaultDatabase.Current.IsUnlocked) return false;
         if (!w.AutoLogin) return false;
-        if (string.Equals(w.LoginMode, "None", StringComparison.OrdinalIgnoreCase)) return false;
+        if (string.Equals(w.LoginMode, "None", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(w.LoginMode, "SSO", StringComparison.OrdinalIgnoreCase)) return false;
         if (string.IsNullOrWhiteSpace(w.KeepassEntryPath)) return false;
+        // A policy race must abort the prompt decision, never become a vault miss.
         if (_vault.Has(w.Id)) return false;
         return true;
     }
