@@ -4,6 +4,9 @@ using LaunchFlow.Services;
 using Microsoft.Playwright;
 
 using var playwright = await Playwright.CreateAsync();
+if (args.Contains("--policy-dispatch-only")) { await PolicyDispatchTests.RunAsync(playwright, args); return; }
+if (!args.Contains("--monitor-only") && !args.Contains("--document-bound-only") && !args.Contains("--profile-only") && !args.Contains("--dispatch-only"))
+    await PolicyDispatchTests.RunAsync(playwright, args);
 if (args.Contains("--monitor-only")) { await MonitorPlacementTests.RunAsync(playwright); return; }
 if (!args.Contains("--document-bound-only") && !args.Contains("--profile-only") && !args.Contains("--policy-only") && !args.Contains("--dispatch-only")) await MonitorPlacementTests.RunAsync(playwright);
 await EnginePolicyTests.RunAsync(playwright, args);

@@ -7,6 +7,7 @@ Run from the repository root with the .NET 8 SDK and the matching development Ch
 ```sh
 dotnet run --project tests/runtime/RuntimeTests.csproj -- --document-bound-only
 dotnet run --project tests/runtime/RuntimeTests.csproj -- --document-bound-only --case=delayed-password
+dotnet run --project tests/runtime/RuntimeTests.csproj -p:TreatWarningsAsErrors=true -- --policy-dispatch-only
 dotnet run --project tests/runtime/RuntimeTests.csproj
 dotnet run --project tests/profiles/ProfileTests.csproj
 dotnet build LaunchFlow/LaunchFlow.csproj -p:EnableWindowsTargeting=true -p:PublishReadyToRun=false -warnaserror
@@ -41,6 +42,6 @@ Rebuild without the override before reporting final results. Keep RED output sep
 
 The fix pins each approval and fill to an element, its owning frame and its document. A stale handle is never replaced with a newly resolved locator. Readiness and approval awaits are cancellation-aware and revalidated before a handle fill is dispatched; cancellation never starts a deferred secret-bearing fill from those waits. Playwright's dispatched `ElementHandle.FillAsync` operation itself has no cancellation-token API and is awaited to completion, not abandoned with `WaitAsync`.
 
-This is **not protection against malicious JavaScript already executing in an approved origin**, which can observe or manipulate that origin's fields. It does not make subsequent submit/recorded workflow actions document-bound. Those are outside this credential-insertion repair.
+This is **not protection against malicious JavaScript already executing in an approved origin**, which can observe or manipulate that origin's fields. Automatic continuation/submit and recorded Click actions resolve their own bound handle and check its owning-document policy; credential approval is not a document grant for those later actions. Already-dispatched browser actions cannot be recalled.
 
 Linux Chromium runs and Windows cross-compilation do not establish native WPF, Windows DPAPI, installed-browser or installer runtime behavior. Those native verification gates remain.

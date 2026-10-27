@@ -332,6 +332,7 @@ public sealed partial class AutomationEngine : IAsyncDisposable
 
         if (!alreadyOnSite)
         {
+            RequireAutomationUrl(workflow.StartUrl);
             await page.GotoAsync(workflow.StartUrl, new PageGotoOptions
             {
                 WaitUntil = WaitUntilState.DOMContentLoaded,
@@ -348,12 +349,17 @@ public sealed partial class AutomationEngine : IAsyncDisposable
         if (workflow.AutoLogin &&
             !string.Equals(workflow.LoginMode, "None", StringComparison.OrdinalIgnoreCase))
         {
-            if (!string.Equals(workflow.LoginMode, "SSO", StringComparison.OrdinalIgnoreCase) &&
-                !await TryAutoLoginAsync(workflow, page, ct, configuration, keepassMasterPassword)
-                    .ConfigureAwait(false))
+            var loginCompleted = string.Equals(workflow.LoginMode, "SSO", StringComparison.OrdinalIgnoreCase) ||
+                await TryAutoLoginAsync(workflow, page, ct, configuration, keepassMasterPassword)
+                    .ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            RequireAutomationUrl(page.Url);
+            if (!loginCompleted)
                 return new LoginAttention(workflow.Id, workflow.Name,
                     "Auto-login was interrupted or its credential field was not approved/ready. Retry sign-in manually before continuing.");
             var health = await LoginHealth.InspectAsync(page, ct).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            RequireAutomationUrl(page.Url);
             if (health.NeedsAttention)
             {
                 Log($"Login needs attention for '{workflow.Name}': {health.Reason} Pausing further steps for this site.");
@@ -364,6 +370,8 @@ public sealed partial class AutomationEngine : IAsyncDisposable
                 var verified = await LoginHealth.VerifySuccessAsync(
                     page, workflow.LoginSuccessSelector, workflow.LoginSuccessUrlContains, ct)
                     .ConfigureAwait(false);
+                ct.ThrowIfCancellationRequested();
+                RequireAutomationUrl(page.Url);
                 if (verified.NeedsAttention)
                 {
                     Log($"Login not verified for '{workflow.Name}'. Follow-up actions were paused.");
@@ -385,6 +393,7 @@ public sealed partial class AutomationEngine : IAsyncDisposable
         ct.ThrowIfCancellationRequested();
         if (!string.IsNullOrWhiteSpace(workflow.DestinationUrl))
         {
+            RequireAutomationUrl(page.Url);
             RequireAutomationUrl(workflow.DestinationUrl);
             await page.GotoAsync(workflow.DestinationUrl, new PageGotoOptions
             {
@@ -426,9 +435,10 @@ public sealed partial class AutomationEngine : IAsyncDisposable
                     filledUser = true;
                     if (!string.IsNullOrWhiteSpace(workflow.UsernameContinueSelector))
                     {
-                        ct.ThrowIfCancellationRequested();
-                        await page.Locator(workflow.UsernameContinueSelector).First
-                            .ClickAsync().ConfigureAwait(false);
+                        await ExecuteStepAsync(page, new WorkflowStep
+                        {
+                            Type = "Click", Target = workflow.UsernameContinueSelector
+                        }, ct).ConfigureAwait(false);
                         await Task.Delay(800, ct).ConfigureAwait(false);
                     }
                 }
@@ -455,8 +465,10 @@ public sealed partial class AutomationEngine : IAsyncDisposable
                 var submit = page.Locator(workflow.SubmitSelector).First;
                 if (await submit.CountAsync().ConfigureAwait(false) > 0)
                 {
-                    ct.ThrowIfCancellationRequested();
-                    await submit.ClickAsync().ConfigureAwait(false);
+                    await ExecuteStepAsync(page, new WorkflowStep
+                    {
+                        Type = "Click", Target = workflow.SubmitSelector
+                    }, ct).ConfigureAwait(false);
                 }
             }
 
