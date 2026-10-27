@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Choose a KeePassXC login" Width="530" Height="455"
         MinWidth="430" MinHeight="340" WindowStartupLocation="CenterOwner"
-        Background="#111A2A" Foreground="#E9F1FB" FontFamily="Segoe UI" FontSize="13"
+        Background="#0D1725" Foreground="#EEF6FA" FontFamily="Segoe UI" FontSize="13"
         Icon="pack://application:,,,/Assets/LaunchFlow.ico">
   <Grid Margin="24,20">
     <Grid.RowDefinitions>
@@ -14,7 +14,7 @@
                FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap"/>
     <StackPanel Grid.Row="1" Margin="0,13,0,12">
       <TextBlock Text="Search saved login names. Passwords are not shown."
-                 Foreground="#ADC6DA" Margin="0,0,0,9"/>
+                 Foreground="#B1CBDA" Margin="0,0,0,9"/>
       <TextBox x:Name="SearchBox" TextChanged="SearchBox_TextChanged"
                ToolTip="Filter login names"/>
     </StackPanel>
