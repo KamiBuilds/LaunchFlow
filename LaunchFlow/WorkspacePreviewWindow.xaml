@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Workspace preview" Width="670" Height="490" MinWidth="540" MinHeight="360"
         ResizeMode="CanResize" WindowStartupLocation="CenterOwner"
-        Background="#101A2A" Foreground="#E9F1FB" FontFamily="Segoe UI" FontSize="13"
+        Background="#0D1725" Foreground="#EEF6FA" FontFamily="Segoe UI" FontSize="13"
         Icon="pack://application:,,,/Assets/LaunchFlow.ico">
   <DockPanel Margin="24">
     <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
@@ -14,7 +14,7 @@
     <Button DockPanel.Dock="Bottom" Content="Close" IsCancel="True" HorizontalAlignment="Right"
             Margin="0,14,0,0" Padding="20,8" Click="Close_Click"
             AutomationProperties.Name="Close workspace preview"/>
-    <ListView x:Name="WorkflowRows" Background="#18263A" Foreground="#E8F4FB"
+    <ListView x:Name="WorkflowRows" Background="#172B3E" Foreground="#E8F4FB"
               BorderThickness="0" AutomationProperties.Name="Workspace browser and monitor assignments">
       <ListView.View>
         <GridView>
