@@ -316,11 +316,11 @@
         </Grid>
       </Border>
     </Grid>
-    </TabItem><TabItem Header="Passwords"><ScrollViewer VerticalScrollBarVisibility="Auto" Background="#111A2A"><StackPanel Margin="28" MaxWidth="840" HorizontalAlignment="Left"><TextBlock Text="Password manager" FontSize="23" FontWeight="Bold" Margin="0,0,0,8"/><TextBlock Text="One master-password unlock lasts one hour, even if you visit other tabs. The encrypted vault relocks after your configurable Windows-lock timeout (10 minutes by default)." Foreground="#B6C8DD" TextWrapping="Wrap" Margin="0,0,0,7"/>
-<TextBlock x:Name="PasswordSessionLabel" Text="Locked · unlock to manage saved credentials." Foreground="#7FD9F8" Margin="0,0,0,13" TextWrapping="Wrap"/><TextBlock Text="Currently selected workflow:" Foreground="#9EB9D6"/><TextBlock x:Name="PasswordSiteName" FontSize="17" FontWeight="SemiBold" Margin="0,5,0,18"/><Border Background="#1B2636" CornerRadius="10" Padding="17" Margin="0,0,0,10">
+    </TabItem><TabItem Header="Passwords"><ScrollViewer VerticalScrollBarVisibility="Auto" Background="#111A2A"><StackPanel Margin="28" MaxWidth="840" HorizontalAlignment="Left"><TextBlock Text="Credential manager" FontSize="24" FontWeight="Bold" Margin="0,0,0,8"/><TextBlock Text="One master-password unlock lasts one hour, even if you visit other tabs. The encrypted vault relocks after your configurable Windows-lock timeout (10 minutes by default)." Foreground="#B6C8DD" TextWrapping="Wrap" Margin="0,0,0,7"/>
+<TextBlock x:Name="PasswordSessionLabel" Text="Locked · unlock to manage saved credentials." Foreground="#7FD9F8" Margin="0,0,0,13" TextWrapping="Wrap"/><TextBlock Text="Currently selected workflow:" Foreground="#9EB9D6"/><TextBlock x:Name="PasswordSiteName" FontSize="17" FontWeight="SemiBold" Margin="0,5,0,18"/><Border Background="#1B2636" CornerRadius="12" Padding="20" Margin="0,0,0,10" BorderThickness="1" BorderBrush="#2A4155">
               <StackPanel>
                 <DockPanel Margin="0,0,0,4">
-                  <TextBlock Text="Encrypted sign-in vault" Style="{StaticResource SectionHeader}" DockPanel.Dock="Left"/>
+                  <TextBlock Text="SECURE LOGIN DETAILS" Style="{StaticResource SectionHeader}" DockPanel.Dock="Left"/>
                   <TextBlock x:Name="CredentialStatus" Text="No password saved" Foreground="#46DACB" HorizontalAlignment="Right" VerticalAlignment="Top"/>
                 </DockPanel>
                 <TextBlock Text="Saved credentials are encrypted in your local vault. Both fields always stay masked. Leave either field blank to keep its saved value; enter a replacement and click Save credentials to update it." TextWrapping="Wrap" Foreground="#A7B8CB" Margin="0,0,0,11"/>
@@ -467,18 +467,27 @@
                   
                 </StackPanel></ScrollViewer></TabItem><TabItem Header="Updates"><ScrollViewer VerticalScrollBarVisibility="Auto">
           <StackPanel Margin="28" MaxWidth="760" HorizontalAlignment="Left">
-            <TextBlock Text="Application updates" FontSize="23" FontWeight="SemiBold" Margin="0,0,0,12"/>
-            <TextBlock Text="Find the latest stable LaunchFlow release. Use the Universal Installer to install updates."
+            <TextBlock Text="Updates &amp; maintenance" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,10"/>
+            <Border Background="#173440" BorderBrush="#275E64" BorderThickness="1"
+                    CornerRadius="11" Padding="14,11" Margin="0,0,0,15" HorizontalAlignment="Left">
+              <StackPanel Orientation="Horizontal">
+                <Ellipse Fill="#46DACB" Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,9,0"/>
+                <TextBlock x:Name="CurrentVersionLabel" Text="Installed version" Foreground="#B8EFEB"
+                           FontWeight="SemiBold" FontSize="13"/>
+              </StackPanel>
+            </Border>
+            <TextBlock Text="Keep LaunchFlow up to date, verify browser readiness, or create a privacy-safe support report."
                        TextWrapping="Wrap" Foreground="#BACCE0" Margin="0,0,0,16"/>
-            <TextBlock Text="Updates" FontSize="20" FontWeight="SemiBold" Margin="0,24,0,8"/>
+            <TextBlock Text="New releases" FontSize="18" FontWeight="SemiBold" Margin="0,12,0,9"/>
                   <TextBlock Text="Check whether a new version is available." TextWrapping="Wrap" Foreground="#BACCE0" Margin="0,0,0,8"/>
                   <TextBox x:Name="UpdateFeedBox" Visibility="Collapsed"/>
-                  <Button Content="Check for updates" Click="CheckUpdates_Click" Padding="14,8" HorizontalAlignment="Left"/>
-                  <Button Content="Browser setup" Click="BrowserSetup_Click" Padding="14,8"
+                  <Button Content="Check for updates" Click="CheckUpdates_Click"
+                          Style="{StaticResource PrimaryButton}" Padding="16,10" HorizontalAlignment="Left"/>
+                  <Button Content="Check installed browsers" Click="BrowserSetup_Click" Padding="14,9"
                           HorizontalAlignment="Left" Margin="0,10,0,0"
                           ToolTip="Check approved browsers and open official download pages only with consent"
                           AutomationProperties.Name="Browser setup and readiness"/>
-                  <Button Content="Export safe diagnostics" Click="ExportDiagnostics_Click" Padding="14,8"
+                  <Button Content="Export redacted support report" Click="ExportDiagnostics_Click" Padding="14,9"
                           HorizontalAlignment="Left" Margin="0,10,0,0"
                           ToolTip="Save a local report containing only version, timestamps and redacted event codes"
                           AutomationProperties.Name="Export redacted diagnostic report"/>
