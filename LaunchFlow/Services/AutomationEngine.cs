@@ -420,6 +420,8 @@ public sealed partial class AutomationEngine : IAsyncDisposable
         // Honor an explicitly configured success element only when no login
         // input is visible. Never skip a visible password challenge.
         if (!string.IsNullOrWhiteSpace(workflow.LoginSuccessSelector) &&
+            !string.Equals(workflow.LoginSuccessSelector.Trim(), "body", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(workflow.LoginSuccessSelector.Trim(), "html", StringComparison.OrdinalIgnoreCase) &&
             await page.Locator(workflow.LoginSuccessSelector).First.IsVisibleAsync().ConfigureAwait(false) &&
             (string.IsNullOrWhiteSpace(workflow.UsernameSelector) ||
                 !await page.Locator(workflow.UsernameSelector).First.IsVisibleAsync().ConfigureAwait(false)) &&
