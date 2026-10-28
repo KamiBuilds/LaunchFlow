@@ -115,9 +115,9 @@ csproj = ET.parse(root / "LaunchFlow/LaunchFlow.csproj")
 version = csproj.findtext("./PropertyGroup/Version")
 iss = (root / "installer/LaunchFlow.iss").read_text(encoding="utf-8")
 info = (root / "LaunchFlow/Services/AppInfo.cs").read_text(encoding="utf-8")
-check(version == "0.7.22" and f'#define AppVersion "{version}"' in iss
+check(version == "0.7.23" and f'#define AppVersion "{version}"' in iss
       and f'return v is null ? "{version}"' in info,
-      "assembly, installer and fallback version match 0.7.22")
+      "assembly, installer and fallback version match 0.7.23")
 check("https://api.github.com/repos/KamiBuilds/LaunchFlow/releases/latest" in info,
       "updater still targets published stable GitHub releases")
 print(f"{len(errors)} visual/release contract errors")
