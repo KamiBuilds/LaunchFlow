@@ -1,3 +1,15 @@
+# v0.7.26 — Universal automatic sign-in repairs (development preview)
+
+- Wait for JavaScript-rendered credential inputs without allowing stored passwords to retarget across a document change.
+- Prefer visible enabled inputs and Submit controls over hidden placeholder elements.
+- Require all configured credential fields to be filled before submitting; missing credentials no longer report a successful sign-in.
+- Recognize explicitly configured, already-authenticated browser sessions without treating generic BODY/HTML elements as success.
+- Preserve approved HTTPS origins, credential-policy checks, manual MFA/SSO handling and secret-safe diagnostics.
+- New synthetic browser cases: delayed form rendering, hidden field/button duplicates, missing required password, two-stage username/Next/password login, and existing signed-in sessions.
+- Consistent v0.7.26 app, unsigned installer and CI artifacts; vault data and profile formats unchanged.
+
+**Release status:** Developer test only. Validate real-browser login flows and Windows upgrade/lock/unlock before releasing.
+
 # v0.7.25 — Explicit-exit and editor-lifecycle hardening (development preview)
 
 - Prevent tray Exit and normal window Exit from losing pending edits while the encrypted vault is locked or a durable write fails. Clean locked vaults still exit without prompting.

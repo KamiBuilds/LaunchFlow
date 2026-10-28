@@ -17,7 +17,7 @@ public static class AppInfo
         get
         {
             var v = Assembly.GetExecutingAssembly().GetName().Version;
-            return v is null ? "0.7.25" : $"{v.Major}.{v.Minor}.{v.Build}";
+            return v is null ? "0.7.26" : $"{v.Major}.{v.Minor}.{v.Build}";
         }
     }
 

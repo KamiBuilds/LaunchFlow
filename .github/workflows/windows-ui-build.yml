@@ -62,9 +62,9 @@ jobs:
       - name: Upload unsigned UI test installer
         uses: actions/upload-artifact@v6
         with:
-          name: LaunchFlow-v0.7.25-UI-${{ github.sha }}
+          name: LaunchFlow-v0.7.26-UI-${{ github.sha }}
           path: |
-            dist/LaunchFlow-Setup-v0.7.25-x64.exe
+            dist/LaunchFlow-Setup-v0.7.26-x64.exe
             dist/UI-SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 7
