@@ -38,6 +38,13 @@ internal static class TeachRecorderScript
               return;
             }
             const element = target.closest('a,button,[role="button"],[role="link"],label') || target;
+            // Keyboard submit on a login/payment form can synthesize a trusted
+            // button Click. Never record it as a safe post-login action.
+            const ownerForm = ('form' in element ? element.form : null) || element.closest('form');
+            if (ownerForm && (sensitive(ownerForm) || hasSensitiveFields(ownerForm))) {
+              unsupported();
+              return;
+            }
             const selector = cssPath(element);
             for (const session of sessions) {
               void window.__launchFlowTeachDispatchV1(JSON.stringify({type:'Click',id:session.id,epoch:session.epoch,target:selector})).catch(() => {});
