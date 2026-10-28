@@ -53,6 +53,19 @@ check('WorkspaceCatalog.ConfirmationStillValid(' in source and
       '_workspaceRevision++' in source and
       'VaultDatabase.Current.ReplaceSnapshot(imported.Config, imported.Credentials);\n            _workspaceRevision++;' in source,
       "encrypted import invalidates modal workspace overwrite approval")
+check('WorkspaceCatalog.PendingRunIsCurrent(' in source and
+      'launchRevision = _workspaceRevision' in source and
+      'WorkspaceCombo.SelectedItem, workspace' in source and
+      'SaveDurable(_configuration)' in source,
+      "modal workflow dispatch rechecks current workspace and saves are durable")
+store = (root / "LaunchFlow/Services/ConfigStore.cs").read_text(encoding="utf-8")
+check('public void SaveDurable(Configuration configuration)' in store and
+      'VaultDatabase.Current.SaveConfiguration(configuration)' in store,
+      "durable workspace persistence never falls back to transient storage")
+extractor = (root / "tests/workspaces/extract-ui-methods.py").read_text(encoding="utf-8")
+check(extractor.count('read_text(encoding="utf-8")') >= 2 and
+      'write_text(output, encoding="utf-8")' in extractor,
+      "Windows UI harness reads and writes explicit UTF-8")
 style = (root / "LaunchFlow/App.xaml").read_text(encoding="utf-8")
 check('SelectionBoxItemTemplate' in style and 'PART_Popup' in style
       and 'ItemsPresenter' in style,
