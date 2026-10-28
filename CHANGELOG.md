@@ -1,3 +1,13 @@
+# v0.7.22 — Websites-first sidebar (development preview)
+
+- Removed **Workspace Profiles** (saved-workspace selector, name field, Save/Preview/Run workspace buttons) from the visible interface.
+- Renamed the main Workflows navigation and creation action to **Websites / New website**; the sidebar shows just the websites list, current status and website actions. Run all still launches enabled websites.
+- Preserved previously saved workspace records in the encrypted configuration unchanged. A collapsed, non-interactive compatibility panel keeps the former WPF event and import contracts intact for now, preventing an unsafe storage migration just before release.
+- Added UI contract assertions that the old panel is collapsed, not hit-testable or focusable, and its old visible labels are absent.
+- Updated application/installer/CI versions to **0.7.22**. This remains an unsigned developer preview, not a stable release.
+
+**Known limitation:** Workspace profiles are preserved but cannot be edited from the simplified UI. The user can continue working with individual websites. Restore legacy workspace management only in an explicitly designed future feature, if needed.
+
 # v0.7.21 — No-login workflows, safer installer updates and workspace UI (development preview)
 
 - New workflows default to **No login required**, avoiding incorrect MFA/sign-in prompts on local dashboards; saved-credential login remains an explicit choice.
