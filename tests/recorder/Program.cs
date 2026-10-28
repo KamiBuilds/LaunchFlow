@@ -385,7 +385,7 @@ using (var guardedKeys = new TeachRecorder(page))
       <form id="account" onsubmit="return false"></form>
       <input id="externalSearch" type="search" form="account">
       <input id="externalPass" type="password" form="account">
-      <button id="externalButton" form="account">External submit</button>
+      <button id="externalButton" type="button" form="account">External control</button>
       <form id="payment" autocomplete="cc-number"></form>
       <button id="externalPayment" form="payment">External payment</button>
       <input id="billing" autocomplete="cc-number">
@@ -433,8 +433,9 @@ using (var guardedKeys = new TeachRecorder(page))
     await page.PressAsync("#externalSearch", "Enter");
     await page.PressAsync("#billing", "Enter");
     await page.PressAsync("#user", "Enter");
-    // Real keyboard events on externally associated buttons must honor their
-    // owning form's password fields and payment autocomplete, not DOM ancestry.
+    // Use type=button on the external fixture: Enter on the search input would
+    // otherwise implicitly click a submit button, a separate legitimate Click.
+    // These real keys test owner-based keyboard privacy, not form submission.
     await page.FocusAsync("#externalButton");
     await page.Keyboard.PressAsync("ArrowRight");
     await page.FocusAsync("#externalPayment");
