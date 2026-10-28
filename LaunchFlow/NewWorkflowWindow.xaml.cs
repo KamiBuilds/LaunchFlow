@@ -76,8 +76,9 @@ public partial class NewWorkflowWindow : Window
             Enabled = true
         };
 
-        NewUsername = UsernameBox.Password.Trim();
-        NewPassword = PasswordBox.Password;
+        // No-login websites never store accidentally pasted credentials.
+        NewUsername = autoLogin ? UsernameBox.Password.Trim() : "";
+        NewPassword = autoLogin ? PasswordBox.Password : "";
         WasCreated = true;
         Close();
     }
