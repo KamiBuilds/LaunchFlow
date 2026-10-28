@@ -95,7 +95,9 @@ internal static class TeachRecorderScript
             if (event.key === 'Enter' &&
                 target.closest('button,a,[role="button"],[role="link"]')) return;
             const input = target.closest('input,textarea,[contenteditable],[role="textbox"]');
-            const form = (input && 'form' in input ? input.form : null) ||
+            // Form-associated buttons and inputs can live outside the form's subtree.
+            // Resolve their actual owner before applying sensitive-form exclusions.
+            const form = ('form' in target ? target.form : null) ||
               target.closest('form');
             if ((input && (sensitive(input) ||
                 input.matches('[contenteditable],[role="textbox"]'))) ||

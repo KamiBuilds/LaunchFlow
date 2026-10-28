@@ -385,6 +385,9 @@ using (var guardedKeys = new TeachRecorder(page))
       <form id="account" onsubmit="return false"></form>
       <input id="externalSearch" type="search" form="account">
       <input id="externalPass" type="password" form="account">
+      <button id="externalButton" form="account">External submit</button>
+      <form id="payment" autocomplete="cc-number"></form>
+      <button id="externalPayment" form="payment">External payment</button>
       <input id="billing" autocomplete="cc-number">
       <input id="user" autocomplete="username">
       """);
@@ -430,6 +433,12 @@ using (var guardedKeys = new TeachRecorder(page))
     await page.PressAsync("#externalSearch", "Enter");
     await page.PressAsync("#billing", "Enter");
     await page.PressAsync("#user", "Enter");
+    // Real keyboard events on externally associated buttons must honor their
+    // owning form's password fields and payment autocomplete, not DOM ancestry.
+    await page.FocusAsync("#externalButton");
+    await page.Keyboard.PressAsync("ArrowRight");
+    await page.FocusAsync("#externalPayment");
+    await page.Keyboard.PressAsync("ArrowRight");
     await Flush(page);
     Assert(guardedKeys.DrainActions().Count == 0,
         "shadow-host, external-password-form, billing and username keystrokes never enter recorder");
