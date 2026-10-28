@@ -932,8 +932,9 @@ public partial class MainWindow : Window
             return;
 
         // Modal confirmations pump UI events: import may replace the saved configuration.
-        if (!WorkspaceCatalog.ConfirmationStillValid(
-            _configuration, name, existing, revision, _workspaceRevision, savedWorkflowIds))
+        if (_windowsLocked || _vaultLockInProgress || _exiting || !VaultDatabase.Current.IsUnlocked ||
+            !WorkspaceCatalog.ConfirmationStillValid(
+                _configuration, name, existing, revision, _workspaceRevision, savedWorkflowIds))
         {
             MessageBox.Show(this, "Workspace data changed while confirmation was open. Review the current workspaces and save again.",
                 "Workspace changed", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -944,7 +945,7 @@ public partial class MainWindow : Window
         try
         {
             profile = WorkspaceCatalog.Save(_configuration, name,
-                () => _store.Save(_configuration));
+                () => _store.SaveDurable(_configuration));
         }
         catch (Exception ex)
         {
@@ -1100,6 +1101,7 @@ public partial class MainWindow : Window
     {
         if (_runInProgress || _runner.IsRunning || _vaultLockInProgress || _windowsLocked || _teachingInProgress || _exiting || !AutomationAllowed()) return;
         // Own the UI operation before any modal prompt can pump another hotkey/tray event.
+        var launchRevision = _workspaceRevision;
         _runInProgress = true;
         UpdateRunButtons();
         CancellationTokenSource? cancellation = null;
@@ -1110,16 +1112,32 @@ public partial class MainWindow : Window
                 ShowFromTray();
                 if (!RequireMasterPassword(forcePrompt: true)) return;
             }
-            if (_windowsLocked || _vaultLockInProgress || _exiting || !SaveAll()) return;
+            if (_windowsLocked || _vaultLockInProgress || _exiting ||
+                launchRevision != _workspaceRevision || !SaveAll()) return;
             var toRun = onlySelected
                 ? (_selected is null ? new List<WebsiteWorkflow>() : new List<WebsiteWorkflow> { _selected })
                 : workspace is not null
                     ? workspace.Resolve(_configuration).ToList()
                     : _configuration.Workflows.Where(workflow => workflow.Enabled).ToList();
             if (toRun.Count == 0) { AppendLog("No enabled workflows to run."); return; }
+            if (!WorkspaceCatalog.PendingRunIsCurrent(
+                    _configuration, toRun, onlySelected, workspace, launchRevision, _workspaceRevision) ||
+                (onlySelected && !ReferenceEquals(_selected, toRun[0])) ||
+                (workspace is not null && (!ReferenceEquals(WorkspaceCombo.SelectedItem, workspace) ||
+                    !WorkspaceCatalog.IsCurrentSelection(_configuration, workspace, WorkspaceNameBox.Text))))
+            {
+                _keepassMasterPassword = null;
+                AppendLog("Workflow selection changed before launch. Run again using the current configuration.");
+                return;
+            }
             if (toRun.Any(workflow => !AutomationAllowed(workflow))) return;
             if (!EnsureKeePassPasswordForRun(toRun)) return;
             if (_windowsLocked || _vaultLockInProgress || _exiting || !VaultDatabase.Current.IsUnlocked ||
+                !WorkspaceCatalog.PendingRunIsCurrent(
+                    _configuration, toRun, onlySelected, workspace, launchRevision, _workspaceRevision) ||
+                (onlySelected && !ReferenceEquals(_selected, toRun[0])) ||
+                (workspace is not null && (!ReferenceEquals(WorkspaceCombo.SelectedItem, workspace) ||
+                    !WorkspaceCatalog.IsCurrentSelection(_configuration, workspace, WorkspaceNameBox.Text))) ||
                 toRun.Any(workflow => !AutomationAllowed(workflow)))
             {
                 _keepassMasterPassword = null;
