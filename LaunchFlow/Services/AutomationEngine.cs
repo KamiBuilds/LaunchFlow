@@ -468,7 +468,7 @@ public sealed partial class AutomationEngine : IAsyncDisposable
                 }
                 else
                 {
-                    Log($"Username field not found for '{workflow.Name}' (selector may be outdated).");
+                    Log($"Username field not found for '{workflow.Name}'. Check the selector or sign in manually.");
                     return false;
                 }
             }
@@ -481,7 +481,7 @@ public sealed partial class AutomationEngine : IAsyncDisposable
                 }
                 else
                 {
-                    Log($"Password field not found for '{workflow.Name}' (SSO/MFA page, or selector changed).");
+                    Log($"Password field not found for '{workflow.Name}'. Check the selector or sign in manually.");
                     return false;
                 }
             }
