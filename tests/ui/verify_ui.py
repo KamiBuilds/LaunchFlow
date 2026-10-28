@@ -142,6 +142,28 @@ check('SelectionMode="Extended"' in ET.tostring(ui, encoding="unicode") and
       'MarkUnsavedChanges()' in source and
       'ConstrainMaximizedWindowToWorkArea' in source,
       "Website steps have bulk editing, save feedback and monitor-safe maximize")
+check('if (_hasUnsavedChanges && !VaultDatabase.Current.IsUnlocked)' in source and
+      'if (_hasUnsavedChanges || _vaultCleanupFailed' in source and
+      'Unlock LaunchFlow and click Save before updating.' in source and
+      'if (VaultDatabase.Current.IsUnlocked && !SaveAll())' in source,
+      "installer refuses automatic shutdown with unsaved locked-vault edits")
+check('IsCurrentStepEditorOwner(WebsiteWorkflow workflow, long revision)' in source and
+      'index >= workflow.Steps.Count || !ReferenceEquals(workflow.Steps[index], current)' in source and
+      'var revision = _workspaceRevision;' in source and
+      'ReferenceEquals(_selected, workflow)' in source,
+      "modal step editing cannot modify a detached or imported workflow")
+check('KeepassEntryBox.TextChanged += (_, _) => MarkUnsavedChanges();' in source and
+      'SaveStatusLabel.Text = "Unsaved changes"' in source,
+      "manual KeePass entry path is tracked as an unsaved configuration edit")
+teachjs = (root / "LaunchFlow/Services/TeachRecorderScript.cs").read_text(encoding="utf-8")
+teachcs = (root / "LaunchFlow/Services/TeachRecorder.cs").read_text(encoding="utf-8")
+check("event.key === 'Enter'" in teachjs and
+      "event.shiftKey || event.ctrlKey || event.altKey || event.metaKey" in teachjs and
+      "target.getRootNode() !== document" in teachjs and
+      "field instanceof Element" in teachjs and
+      "sensitiveHints" in teachjs and
+      "UnsupportedTargetObserved" in teachcs,
+      "keyboard recorder rejects changed modifiers and sensitive/shadow-root contexts")
 check("https://api.github.com/repos/KamiBuilds/LaunchFlow/releases/latest" in info,
       "updater still targets published stable GitHub releases")
 print(f"{len(errors)} visual/release contract errors")
