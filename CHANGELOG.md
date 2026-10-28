@@ -1,3 +1,16 @@
+# v0.7.24 — Independent review P0 repairs (development preview)
+
+- **Data-loss prevention:** Automatic installer shutdown refuses exit if unsaved edits exist and the vault is locked. A clean locked vault can still exit; unlocked configuration must be durably saved before automatic exit.
+- **Modal reentrancy:** Add/Edit website step actions capture workflow object identity, step identity/index and configuration revision, and revalidate after the dialog returns. An encrypted import or selection change cannot apply an old edit to replacement data.
+- **Keyboard recorder replay:** Tab, Escape and arrow keys on ordinary buttons/links are captured rather than dropped; Enter on buttons still produces one Click (not a second Press).
+- **Modifier handling:** Shift+Tab and unsupported combinations are explicitly skipped with a visible recorder warning instead of being misreported as plain Tab.
+- **Recorder privacy:** Shadow-root contexts, credential-related fields, sensitive autocomplete attributes, form-associated password fields and non-native controls are rejected. No typed text or passwords are recorded.
+- **Save state:** Manually editing the KeePass entry path marks configuration dirty.
+- Production-linked modal guard and browser recorder regressions added; independent encrypted-import and native Windows review remains required.
+
+**KISS release approach:** default-safe; no extra configuration screens, no hidden save failure, no keylogger. Existing encrypted storage format, installer identity and policy settings remain unchanged.
+**Not release approved.** Real Windows DPI, vault lifecycle, source-specific repro and installer behavior need independent review.
+
 # v0.7.23 — Usability and privacy-preserving Teach recorder (development)
 
 - **Website actions:** Ctrl/Shift multi-select, Select all, Delete selected (bulk deletion requires confirmation), edit one action by double-click, and a one-click Wait +1s action; wait steps can also target a selector for slow pages.
