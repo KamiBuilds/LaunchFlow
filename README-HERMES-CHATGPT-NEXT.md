@@ -3,7 +3,7 @@
 **Branch:** `chatgpt-next`  
 **Base:** `both-3` at `25df42a7e2ce844b47a716891e214283ff4c1983`  
 **Hermes's separate branch:** `hermes-next`  
-**Application version:** `0.7.22` development preview (no release authorized)  
+**Application version:** `0.7.23` development preview (no release authorized)  
 **Integration status:** Development changes; native interactive Windows verification still required.
 
 ## 1. Division of ownership
@@ -87,6 +87,22 @@ Please independently inspect the visual layout and confirm: zero Workspace Profi
 
 No changes to your hermes-next branch, login policy or encrypted profile format.
 
+## 2E. v0.7.23 peer-review request: usability, recorder privacy and Windows sizing
+
+After a colleague's usability review, ChatGPT implemented on chatgpt-next:
+
+- Bulk select/delete/edit website and recorded actions, quick Wait +1s, and explicit wait-for-selector explanations.
+- Modeless Help guide plus a sanitized, illustration-only UI example; no screenshots of live credentials or private website data.
+- Save status for edited website fields and steps.
+- Original main window becomes visible/active again after the modeless Teach window closes.
+- Work-area-constrained maximize using WM_GETMINMAXINFO, MonitorFromWindow, GetMonitorInfo and per-monitor native pixel bounds.
+- Browser recorder captures only Enter/Tab/Escape/arrow keys, never ordinary typed text. On the JS side, email/password/OTP-sensitive input controls and credential forms are excluded. On the C# boundary, a second strict allowlist validates type Press. Ordered actions are recorded without values or labels.
+- Existing credential encryption, enterprise policy and profile formats unchanged. Deferred: sanitized real UI screenshots need a native Windows capture without account or host details; the help guide currently uses schematic visual examples.
+
+**Hermes review requests:** replay real Playwright recorder privacy fixtures including password/email/OTP forms, unusual contenteditable shadow elements and redirects. Verify entering search terms never writes input values/keystrokes; Enter on a non-sensitive search field can be captured without duplicates. Verify no policy-revoked actions survive pause. Validate native WPF multiselection, foreground behavior and modeless tutorial. Test maximize on a second monitor with a taskbar, 125%-200% scaling, dock/undock and portrait mode. Confirm the Save label cannot imply persistence after an encrypted-vault lock. Flag any changed source/UI test harness issues.
+
+Preserve existing Hermes session-generation, profile safety and encrypted compatibility changes when integrating; don't blanket-merge MainWindow.xaml.cs. **No release authorized.**
+
 ## 3. Hermes: highest-priority follow-up work
 
 ### P0: lock/unlock and credential lifetime
@@ -119,7 +135,7 @@ No changes to your hermes-next branch, login policy or encrypted profile format.
 
 ### P1: release gates
 
-- Per user request, increment the patch version for **every user-facing test build** (currently `0.7.22`; next deliverable `0.7.23`). Keep it synchronized across project, installer, AppInfo fallback, CI/UI regression expectations, changelog and artifact names. Version bumps do not authorize a release.
+- Per user request, increment the patch version for **every user-facing test build** (currently `0.7.23`; next deliverable `0.7.24`). Keep it synchronized across project, installer, AppInfo fallback, CI/UI regression expectations, changelog and artifact names. Version bumps do not authorize a release.
 - A branch commit does not trigger installed-client updates. Only a newer **published** GitHub Release is considered by the updater.
 - Never publish a stable release, replace existing vault files or change the installer AppId without approval.
 
