@@ -1,3 +1,15 @@
+# v0.7.23 — Usability and privacy-preserving Teach recorder (development)
+
+- **Website actions:** Ctrl/Shift multi-select, Select all, Delete selected (bulk deletion requires confirmation), edit one action by double-click, and a one-click Wait +1s action; wait steps can also target a selector for slow pages.
+- **Teach recorder:** multi-select, edit, remove, Select all and explicit wait controls. Only pre-approved non-text navigation keys (Enter, Tab, Escape and arrows) may be recorded; text input, password/email field and password-containing form keystrokes are blocked. Typed searches and login credentials are NEVER recorded; use explicit Fill only for non-secret text and Passwords for encrypted logins.
+- **Help:** the guide opens modelessly, allowing people to click the controls while reading instructions. Added annotated, privacy-safe example interface diagrams; these are illustrations, not screenshots of users or websites.
+- **Save feedback:** status label changes to Unsaved changes after editing website details or action steps and to All changes saved after successful persistence.
+- **Recorder usability:** restores the main LaunchFlow window to the foreground when Teach closes.
+- **Maximize:** custom-window chrome restricts maximized bounds to the current monitor's work area to avoid covering taskbar and neighboring displays.
+- **Slow pages:** clicks wait for visible elements (45 seconds); Wait-for-element actions up to 60 seconds; editor explains both.
+
+**Security constraints:** no typed text, emails, passwords, OTP or tokens collected by the recorder, no auto-screenshot capture of sensitive pages, no change to existing encrypted vault schema or profiles. Real Windows usability, DPI and multi-monitor acceptance still required before public release.
+
 # v0.7.22 — Websites-first sidebar (development preview)
 
 - Removed **Workspace Profiles** (saved-workspace selector, name field, Save/Preview/Run workspace buttons) from the visible interface.
