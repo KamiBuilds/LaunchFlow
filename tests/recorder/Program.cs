@@ -382,7 +382,7 @@ using (var guardedKeys = new TeachRecorder(page))
     await Fixture(page, """
       <button id="first">First</button><button id="second">Second</button>
       <div id="open"></div><div id="closed"></div>
-      <form id="account"></form>
+      <form id="account" onsubmit="return false"></form>
       <input id="externalSearch" type="search" form="account">
       <input id="externalPass" type="password" form="account">
       <input id="billing" autocomplete="cc-number">
@@ -408,6 +408,7 @@ using (var guardedKeys = new TeachRecorder(page))
         for (const mode of ['open','closed']) {
           const shadow = document.querySelector('#'+mode).attachShadow({mode});
           shadow.innerHTML = '<input type="password" id="secret"><input autocomplete="one-time-code" id="otp">';
+          if (mode === 'closed') window.__closedTestRoot = shadow;
         }
       }
       """);
@@ -420,7 +421,9 @@ using (var guardedKeys = new TeachRecorder(page))
         else
         {
             // Closed-root focus is a real trusted user key event retargeted to its host.
-            await page.EvaluateAsync("() => document.querySelector('#closed').focus()");
+            await page.EvaluateAsync("() => window.__closedTestRoot.querySelector('#secret').focus()");
+            await page.Keyboard.PressAsync("Enter");
+            await page.EvaluateAsync("() => window.__closedTestRoot.querySelector('#otp').focus()");
             await page.Keyboard.PressAsync("Enter");
         }
     }
