@@ -142,6 +142,12 @@ check('SelectionMode="Extended"' in ET.tostring(ui, encoding="unicode") and
       'MarkUnsavedChanges()' in source and
       'ConstrainMaximizedWindowToWorkArea' in source,
       "Website steps have bulk editing, save feedback and monitor-safe maximize")
+check('HasPendingEditorDialog' in source and
+      'private bool ShowTrackedStepEditor(StepEditorWindow editor)' in source and
+      source.count('!ShowTrackedStepEditor(editor)') == 3 and
+      'if (_hasUnsavedChanges || HasPendingEditorDialog)' in source and
+      'if (HasPendingEditorDialog)' in source,
+      "installer and explicit exit refuse a still-open website wizard, step editor or Teach recording")
 check('ExitSafety.TryPersistForExit(' in source and
       'if (_installerShutdownInProgress || _exiting || !TryCloseWithSavedChanges()) return;' in source and
       'if (!TryCloseWithSavedChanges())' in source and

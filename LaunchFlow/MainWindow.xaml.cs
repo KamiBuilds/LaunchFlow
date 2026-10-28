@@ -49,6 +49,7 @@ public partial class MainWindow : Window
     private Task<AutomationEngine.RunResult>? _activeRunTask;
     private Task<IPage>? _activeTeachTask;
     private NewWorkflowWindow? _newWorkflowWindow;
+    private int _openStepEditors;
     private bool _startupWorkflowViewReady;
     private bool _capturingShortcut;
     private string _activeShortcut = "";
@@ -356,10 +357,28 @@ public partial class MainWindow : Window
         }));
     }
 
+    private bool HasPendingEditorDialog =>
+        _newWorkflowWindow is not null || _openStepEditors > 0 || _teachingInProgress;
+
+    private bool ShowTrackedStepEditor(StepEditorWindow editor)
+    {
+        _openStepEditors++;
+        try { return editor.ShowDialog() == true; }
+        finally { _openStepEditors--; }
+    }
+
     // Both explicit Exit surfaces share this durability gate. A locked, dirty
     // vault cannot be saved: keep the window alive instead of losing edits.
     private bool TryCloseWithSavedChanges()
     {
+        if (HasPendingEditorDialog)
+        {
+            ShowFromTray();
+            MessageBox.Show(this,
+                "Finish or cancel the open website editor or Teach recording before exiting.",
+                "Exit paused", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
         if (ExitSafety.TryPersistForExit(
                 () => VaultDatabase.Current.IsUnlocked,
                 () => _hasUnsavedChanges,
@@ -395,6 +414,11 @@ public partial class MainWindow : Window
         _installerProfileSealFailed = false;
         try
         {
+            // A modeless wizard or modal action editor can hold uncommitted data
+            // that has not reached the main window's dirty flag yet.
+            if (HasPendingEditorDialog)
+                throw new InvalidOperationException(
+                    "Finish or cancel the open website editor or Teach recording before updating.");
             // Do not allow the installer to replace running binaries until configuration,
             // browser sessions and profile ownership have been handled by the application.
             _unlockCancellation?.Cancel();
@@ -958,7 +982,7 @@ public partial class MainWindow : Window
         if (_selected is not { } workflow) return;
         var revision = _workspaceRevision;
         var editor = new StepEditorWindow(new WorkflowStep { Type = "Navigate", Target = "https://" }) { Owner = this };
-        if (editor.ShowDialog() != true) return;
+        if (!ShowTrackedStepEditor(editor)) return;
         if (!IsCurrentStepEditorOwner(workflow, revision)) return;
         workflow.Steps.Add(editor.Result);
         RefreshSteps();
@@ -1049,7 +1073,7 @@ public partial class MainWindow : Window
         if (_selected is not { } workflow) return;
         var revision = _workspaceRevision;
         var editor = new StepEditorWindow { Owner = this };
-        if (editor.ShowDialog() != true || !IsCurrentStepEditorOwner(workflow, revision)) return;
+        if (!ShowTrackedStepEditor(editor) || !IsCurrentStepEditorOwner(workflow, revision)) return;
         workflow.Steps.Add(editor.Result);
         RefreshSteps();
         MarkUnsavedChanges();
@@ -1064,7 +1088,7 @@ public partial class MainWindow : Window
         int index = workflow.Steps.IndexOf(current);
         if (index < 0) return;
         var editor = new StepEditorWindow(current) { Owner = this };
-        if (editor.ShowDialog() != true) return;
+        if (!ShowTrackedStepEditor(editor)) return;
         // ShowDialog pumps WPF messages. Import can replace the entire workflow
         // with an object having the same GUID and step count while it is open.
         if (!IsCurrentStepEditorOwner(workflow, revision) ||
@@ -2437,7 +2461,7 @@ public partial class MainWindow : Window
         // A newly dirty editor must still cancel instead of silently closing.
         if (_exiting)
         {
-            if (_hasUnsavedChanges)
+            if (_hasUnsavedChanges || HasPendingEditorDialog)
             {
                 e.Cancel = true;
                 _exiting = false;
