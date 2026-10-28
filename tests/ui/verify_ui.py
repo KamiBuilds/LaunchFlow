@@ -118,6 +118,30 @@ info = (root / "LaunchFlow/Services/AppInfo.cs").read_text(encoding="utf-8")
 check(version == "0.7.23" and f'#define AppVersion "{version}"' in iss
       and f'return v is null ? "{version}"' in info,
       "assembly, installer and fallback version match 0.7.23")
+guide = ET.parse(root / "LaunchFlow/TutorialWindow.xaml").getroot()
+guide_source = (root / "LaunchFlow/TutorialWindow.xaml.cs").read_text(encoding="utf-8")
+check('new TutorialWindow { Owner = this }.ShowDialog()' not in source and
+      'OpenTutorial();' in source and
+      'Show() is modeless' in source and
+      'ExampleAction' in ET.tostring(guide, encoding="unicode") and
+      'ExampleAction.Text' in guide_source,
+      "Help is interactive and provides a privacy-safe visual example")
+recorder = ET.parse(root / "LaunchFlow/VisualRecorderWindow.xaml").getroot()
+recorder_xml = ET.tostring(recorder, encoding="unicode")
+recorder_source = (root / "LaunchFlow/VisualRecorderWindow.xaml.cs").read_text(encoding="utf-8")
+check('SelectionMode="Extended"' in recorder_xml and
+      'Click="SelectAll_Click"' in recorder_xml and
+      'Click="EditSelected_Click"' in recorder_xml and
+      'Click="QuickWait_Click"' in recorder_xml and
+      'DrainActions()' in recorder_source,
+      "Recorder supports multi-select, safe recorded keys, editing and page waits")
+check('SelectionMode="Extended"' in ET.tostring(ui, encoding="unicode") and
+      'Click="SelectAllSteps_Click"' in ET.tostring(ui, encoding="unicode") and
+      'Click="QuickWaitStep_Click"' in ET.tostring(ui, encoding="unicode") and
+      'SaveStatusLabel' in named and
+      'MarkUnsavedChanges()' in source and
+      'ConstrainMaximizedWindowToWorkArea' in source,
+      "Website steps have bulk editing, save feedback and monitor-safe maximize")
 check("https://api.github.com/repos/KamiBuilds/LaunchFlow/releases/latest" in info,
       "updater still targets published stable GitHub releases")
 print(f"{len(errors)} visual/release contract errors")
