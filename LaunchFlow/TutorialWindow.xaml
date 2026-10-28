@@ -1,8 +1,8 @@
 <Window x:Class="LaunchFlow.TutorialWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="LaunchFlow — Getting started" Width="565" Height="430"
-        MinWidth="520" MinHeight="385" WindowStartupLocation="CenterOwner"
+        Title="LaunchFlow — Getting started" Width="820" Height="570"
+        MinWidth="680" MinHeight="460" WindowStartupLocation="CenterOwner"
         Background="#111A2A" Foreground="#E9F1FB" FontFamily="Segoe UI" FontSize="14"
         Icon="pack://application:,,,/Assets/LaunchFlow.ico">
   <Grid Margin="28,24">
@@ -11,12 +11,47 @@
       <TextBlock Text="Welcome to LaunchFlow" FontSize="23" FontWeight="SemiBold"/>
       <TextBlock x:Name="ProgressLabel" Text="Step 1 of 4" Margin="0,8,0,0" Foreground="#6EE7D7"/>
     </StackPanel>
-    <StackPanel Grid.Row="1" VerticalAlignment="Center">
-      <TextBlock x:Name="StepHeading" Text="Add your first website" FontSize="21" FontWeight="SemiBold"
-                 Margin="0,0,0,18" TextWrapping="Wrap"/>
-      <TextBlock x:Name="StepDetails" FontSize="15" Foreground="#C4D6E9"
-                 TextWrapping="Wrap" LineHeight="25"/>
-    </StackPanel>
+    <Grid Grid.Row="1" Margin="0,18,0,12">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="20"/>
+        <ColumnDefinition Width="285"/>
+      </Grid.ColumnDefinitions>
+      <StackPanel Grid.Column="0" VerticalAlignment="Center">
+        <TextBlock x:Name="StepHeading" Text="Add your first website" FontSize="21" FontWeight="SemiBold"
+                   Margin="0,0,0,18" TextWrapping="Wrap"/>
+        <TextBlock x:Name="StepDetails" FontSize="15" Foreground="#C4D6E9"
+                   TextWrapping="Wrap" LineHeight="25"/>
+        <TextBlock Text="The guide stays open while you follow these steps in LaunchFlow."
+                   Foreground="#71DDC9" TextWrapping="Wrap" FontSize="12" Margin="0,20,0,0"/>
+      </StackPanel>
+      <Border Grid.Column="2" Background="#0C1928" BorderBrush="#38536A" BorderThickness="1"
+              CornerRadius="12" Padding="14" VerticalAlignment="Center">
+        <StackPanel>
+          <TextBlock Text="VISUAL GUIDE · EXAMPLE" Foreground="#91B6D0" FontSize="10" FontWeight="SemiBold"
+                     Margin="0,0,0,12"/>
+          <Border Background="#173C45" CornerRadius="6" Padding="10,9" Margin="0,0,0,8">
+            <TextBlock x:Name="ExampleTitle" Text="Websites" Foreground="#6FE6D5" FontWeight="SemiBold"/>
+          </Border>
+          <Border Background="#192D40" CornerRadius="6" Padding="9,12" Margin="0,0,0,8">
+            <StackPanel>
+              <TextBlock Text="YOUR WEBSITES" Foreground="#A9C5D5" FontSize="10"/>
+              <Border Background="#225869" CornerRadius="5" Padding="10" Margin="0,10,0,6">
+                <TextBlock x:Name="ExampleWebsite" Text="Example website" Foreground="White"/>
+              </Border>
+              <TextBlock Text="Select a website to edit its settings" TextWrapping="Wrap"
+                         Foreground="#AAC1D1" FontSize="11"/>
+            </StackPanel>
+          </Border>
+          <Border Background="#38D2C5" CornerRadius="6" Padding="11,10">
+            <TextBlock x:Name="ExampleAction" Text="+ New website" Foreground="#062A30"
+                       FontWeight="SemiBold" HorizontalAlignment="Center" TextWrapping="Wrap"/>
+          </Border>
+          <TextBlock Text="Illustration only — no personal data or passwords." Foreground="#90A8BF"
+                     Margin="0,10,0,0" FontSize="10" TextWrapping="Wrap"/>
+        </StackPanel>
+      </Border>
+    </Grid>
     <Grid Grid.Row="2">
       <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <TextBlock Text="You can reopen this guide anytime with Help." Foreground="#A1B9CE"
