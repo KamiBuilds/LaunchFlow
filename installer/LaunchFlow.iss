@@ -73,6 +73,56 @@ var
   UpgradeInfoPage: TOutputMsgWizardPage;
   WipeUserData: Boolean;
 
+function InitializeSetup(): Boolean;
+var
+  InstallDir: String;
+  Executable: String;
+  ResultCode: Integer;
+  Attempt: Integer;
+begin
+  Result := True;
+  // Inno calls this before its AppMutex warning. Ask the installed version
+  // to seal its browser profiles and exit; never terminate it forcefully.
+  if not CheckForMutexes('LaunchFlow.Windows.SingleInstance') then Exit;
+
+  InstallDir := '';
+  RegQueryStringValue(HKCU,
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\{9B1A7C15-093B-4DBA-BDA7-BF43A2E67320}_is1',
+    'InstallLocation', InstallDir);
+  if InstallDir = '' then
+    InstallDir := ExpandConstant('{localappdata}\Programs\LaunchFlow');
+  Executable := AddBackslash(InstallDir) + 'LaunchFlow.exe';
+
+  if not FileExists(Executable) then
+  begin
+    MsgBox('LaunchFlow is running, but Setup cannot find its installed executable. ' +
+      'Exit LaunchFlow from the tray and start Setup again.', mbError, MB_OK);
+    Result := False;
+    Exit;
+  end;
+
+  if not Exec(Executable, '--exit-for-install', '', SW_HIDE, ewNoWait, ResultCode) then
+  begin
+    MsgBox('LaunchFlow could not receive the installer shutdown request. ' +
+      'Exit it manually, then run Setup again.', mbError, MB_OK);
+    Result := False;
+    Exit;
+  end;
+
+  // Wait for the original process to fully release the mutex, including
+  // browser-close and encrypted-profile cleanup. No force-kill fallback.
+  for Attempt := 1 to 120 do
+  begin
+    if not CheckForMutexes('LaunchFlow.Windows.SingleInstance') then Exit;
+    Sleep(250);
+  end;
+
+  MsgBox('LaunchFlow did not finish a safe shutdown. Your encrypted data is ' +
+    'untouched by Setup. Check LaunchFlow for a cleanup or save warning, ' +
+    'then exit it and retry the installation.', mbError, MB_OK);
+  Result := False;
+end;
+
 procedure InitializeWizard;
 var
   Heading: String;
@@ -96,7 +146,8 @@ begin
       'Your data is kept',
       Explanation + #13#10 + #13#10 +
       'Workflows and encrypted passwords stay in your local vault.' + #13#10 +
-      'If LaunchFlow is open (or in the tray), exit it when Setup asks.');
+      'Setup requests a safe LaunchFlow shutdown automatically. If the old ' +
+      'installed version does not support it, exit it from the tray and retry.');
   end;
 end;
 
