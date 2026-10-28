@@ -13,6 +13,7 @@
     <Compile Include="../../LaunchFlow/Services/CrashLog.cs" Link="CrashLog.cs" />
     <Compile Include="$(VaultDatabaseSource)" Link="VaultDatabase.cs" />
     <Compile Include="../../LaunchFlow/Services/CredentialVault.cs" Link="CredentialVault.cs" />
+    <Compile Include="../../LaunchFlow/Services/ConfigStore.cs" Link="ConfigStore.cs" />
     <Compile Include="../../LaunchFlow/Services/SecureTransferService.cs" Link="SecureTransferService.cs" />
     <Compile Include="../../LaunchFlow/Services/PortableExport.cs" Link="PortableExport.cs" />
     <Compile Include="../../LaunchFlow/Services/PasswordStrength.cs" Link="PasswordStrength.cs" />
