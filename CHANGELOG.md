@@ -6,7 +6,7 @@
 - **Save feedback:** status label changes to Unsaved changes after editing website details or action steps and to All changes saved after successful persistence.
 - **Recorder usability:** restores the main LaunchFlow window to the foreground when Teach closes.
 - **Maximize:** custom-window chrome restricts maximized bounds to the current monitor's work area to avoid covering taskbar and neighboring displays.
-- **Slow pages:** clicks wait for visible elements (45 seconds); Wait-for-element actions up to 60 seconds; editor explains both.
+- **Slow pages:** click actions retain Playwright's normal locator auto-wait; explicit Wait-for-element actions can wait up to 60 seconds, and the editor explains both.
 
 **Security constraints:** no typed text, emails, passwords, OTP or tokens collected by the recorder, no auto-screenshot capture of sensitive pages, no change to existing encrypted vault schema or profiles. Real Windows usability, DPI and multi-monitor acceptance still required before public release.
 
