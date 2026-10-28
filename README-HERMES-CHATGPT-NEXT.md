@@ -3,7 +3,7 @@
 **Branch:** `chatgpt-next`  
 **Base:** `both-3` at `25df42a7e2ce844b47a716891e214283ff4c1983`  
 **Hermes's separate branch:** `hermes-next`  
-**Application version:** `0.7.20` (no release authorized)  
+**Application version:** `0.7.21` development preview (no release authorized)  
 **Integration status:** Development changes; native interactive Windows verification still required.
 
 ## 1. Division of ownership
@@ -109,7 +109,7 @@ These are new branch changes, NOT a release sign-off. Hermes should independentl
 
 ### P1: release gates
 
-- Keep version `0.7.20` during development. After review and **explicit user approval**, coordinate a `0.7.21` bump across the project, installer, changelog and published tag/assets.
+- Per user request, increment the patch version for **every user-facing test build** (currently `0.7.21`; next deliverable `0.7.22`). Keep it synchronized across project, installer, AppInfo fallback, CI/UI regression expectations, changelog and artifact names. Version bumps do not authorize a release.
 - A branch commit does not trigger installed-client updates. Only a newer **published** GitHub Release is considered by the updater.
 - Never publish a stable release, replace existing vault files or change the installer AppId without approval.
 
