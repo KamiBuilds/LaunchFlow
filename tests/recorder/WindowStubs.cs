@@ -2,12 +2,17 @@
 namespace System.Windows
 {
     public class RoutedEventArgs : EventArgs { }
-    public enum MessageBoxButton { OK }
-    public enum MessageBoxImage { Warning, Information }
+    public enum MessageBoxButton { OK, YesNo }
+    public enum MessageBoxImage { Warning, Information, Question }
+    public enum MessageBoxResult { Yes, No }
     public static class MessageBox
     {
         public static readonly List<string> Messages = new();
-        public static void Show(object owner, string message, string title, MessageBoxButton buttons, MessageBoxImage image) => Messages.Add(message);
+        public static MessageBoxResult Show(object owner, string message, string title, MessageBoxButton buttons, MessageBoxImage image, MessageBoxResult defaultResult = MessageBoxResult.Yes)
+        {
+            Messages.Add(message);
+            return MessageBoxResult.Yes;
+        }
     }
     public class Window
     {
@@ -49,9 +54,34 @@ namespace LaunchFlow
         public object? Content { get; set; }
         public string? Text { get; set; }
         public bool IsEnabled { get; set; } = true;
-        public object? SelectedItem { get; set; }
+        private object? _selectedItem;
+        public List<object> SelectedItems { get; } = new();
+        public object? SelectedItem
+        {
+            get => _selectedItem;
+            set
+            {
+                _selectedItem = value;
+                SelectedItems.Clear();
+                if (value is not null) SelectedItems.Add(value);
+            }
+        }
         private object? _itemsSource;
         public object? ItemsSource { get => _itemsSource; set { _itemsSource = value; SelectedItem = null; } }
+        public int SelectedIndex
+        {
+            get => ItemsSource is IList<Models.WorkflowStep> items && SelectedItem is Models.WorkflowStep step
+                ? items.IndexOf(step) : -1;
+            set => SelectedItem = ItemsSource is IList<Models.WorkflowStep> items &&
+                value >= 0 && value < items.Count ? items[value] : null;
+        }
+        public void SelectAll()
+        {
+            SelectedItems.Clear();
+            if (ItemsSource is IEnumerable<Models.WorkflowStep> items)
+                foreach (var item in items) SelectedItems.Add(item);
+            _selectedItem = SelectedItems.FirstOrDefault();
+        }
         public void ScrollIntoView(object item) { }
     }
     public class StepEditorWindow : System.Windows.Window
@@ -74,6 +104,8 @@ namespace LaunchFlow
         public void TestToggle() => ToggleCapture_Click(this, new());
         public void TestSelectFirst() => StepList.SelectedItem = RecordedSteps.FirstOrDefault();
         public void TestRemove() => Remove_Click(this, new());
+        public void TestSelectAll() => SelectAll_Click(this, new());
+        public int TestSelectedCount => StepList.SelectedItems.Count;
         public void TestTick() => _drainTimer.Fire();
         public void TestPauseWithoutDrain() => _recorder.Pause();
         public void TestClear() => Clear_Click(this, new());
