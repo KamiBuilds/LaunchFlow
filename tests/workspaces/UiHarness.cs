@@ -481,7 +481,7 @@ partial class UiFixture
     public readonly Configuration _configuration = new() { Workflows = new() { new WebsiteWorkflow() } };
     public WebsiteWorkflow? _selected = new();
     public bool _runStatusActive = false, _vaultCleanupFailed = false;
-    public bool _installerShutdownInProgress, _installerProfileSealFailed;
+    public bool _installerShutdownInProgress = false, _installerProfileSealFailed = false;
     public long _workspaceRevision;
     public readonly Control RetryVaultLockButton = new();
     public bool _windowsLocked = false, _vaultLockInProgress = false, _runInProgress = false, _teachingInProgress = false, _exiting = false;
