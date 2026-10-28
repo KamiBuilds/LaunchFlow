@@ -102,19 +102,24 @@ public partial class VisualRecorderWindow : Window
         }
         CaptureToggle.Content = _recorder.IsCapturing ? "Pause recording" : "Resume recording";
         CaptureStatus.Text = _recorder.IsCapturing
-            ? "Recording the original tab's main page — " + RecordedSteps.Count + " click(s) captured."
-            : "Paused — " + RecordedSteps.Count + " click(s) captured.";
+            ? "Recording safe actions — " + RecordedSteps.Count + " step(s) captured."
+            : "Paused — " + RecordedSteps.Count + " step(s) captured.";
         if (_recorder.UnsupportedTargetObserved)
-            CaptureStatus.Text += " Popup, other-tab, frame or shadow-DOM clicks were not recorded.";
+            CaptureStatus.Text += " Some keys or actions were not recorded (sensitive form, unsupported shortcut, popup or frame). Add safe actions manually.";
     }
 
     private void DrainActions()
     {
         if (_stopping || !CheckPolicy()) return;
-        var actions = _recorder.Drain();
+        var actions = _recorder.DrainActions();
         if (!CheckPolicy()) return;
-        foreach (var target in actions)
-            RecordedSteps.Add(new WorkflowStep { Type = "Click", Target = target, Description = "Click " + target });
+        foreach (var action in actions)
+            RecordedSteps.Add(new WorkflowStep
+            {
+                Type = action.Type,
+                Target = action.Target,
+                Description = action.Type == "Press" ? "Press " + action.Target : "Click " + action.Target
+            });
         if (actions.Count > 0) RefreshList();
         if (actions.Count > 0 || _recorder.UnsupportedTargetObserved || _page.IsClosed) ShowCaptureState();
     }
@@ -144,6 +149,27 @@ public partial class VisualRecorderWindow : Window
     private void AddWait_Click(object sender, RoutedEventArgs e) =>
         EditNew(new WorkflowStep { Type = "Wait", Target = "1500", Description = "Wait" });
 
+    private void QuickWait_Click(object sender, RoutedEventArgs e) =>
+        AddStep("Wait", "1000", "Wait 1 second for slow pages");
+
+    private void SelectAll_Click(object sender, RoutedEventArgs e) => StepList.SelectAll();
+
+    private void EditSelected_Click(object sender, RoutedEventArgs e)
+    {
+        if (_stopping || !CheckPolicy() || StepList.SelectedItems.Count != 1 ||
+            StepList.SelectedItem is not WorkflowStep selected) return;
+        DrainActions();
+        var index = RecordedSteps.IndexOf(selected);
+        if (index < 0) return;
+        var editor = new StepEditorWindow(selected) { Owner = this };
+        if (editor.ShowDialog() != true || _stopping || !CheckPolicy()) return;
+        if (index >= RecordedSteps.Count || !ReferenceEquals(RecordedSteps[index], selected)) return;
+        if (editor.Result.Type == "Navigate" && !CheckPolicy(editor.Result.Target)) return;
+        RecordedSteps[index] = editor.Result;
+        RefreshList();
+        StepList.SelectedIndex = index;
+    }
+
     private void EditNew(WorkflowStep step)
     {
         if (_stopping || !CheckPolicy()) return;
@@ -157,20 +183,22 @@ public partial class VisualRecorderWindow : Window
     private void Remove_Click(object sender, RoutedEventArgs e)
     {
         if (_stopping || !CheckPolicy()) return;
-        var selected = StepList.SelectedItem as WorkflowStep;
+        var selected = StepList.SelectedItems.Cast<WorkflowStep>().ToArray();
         DrainActions();
-        if (selected is not null)
-        {
-            RecordedSteps.Remove(selected);
-            RefreshList();
-        }
+        if (selected.Length == 0) return;
+        if (selected.Length > 1 && MessageBox.Show(this,
+            $"Delete {selected.Length} selected actions?", "Delete recorded actions",
+            MessageBoxButton.YesNo, MessageBoxImage.Question,
+            MessageBoxResult.No) != MessageBoxResult.Yes) return;
+        foreach (var step in selected) RecordedSteps.Remove(step);
+        RefreshList();
     }
 
     private void Clear_Click(object sender, RoutedEventArgs e)
     {
         if (_stopping || !CheckPolicy()) return;
         RecordedSteps.Clear();
-        _recorder.Drain();
+        _recorder.DrainActions();
         RefreshList();
         CaptureStatus.Text = "No clicks saved yet. Try clicking something on the website.";
     }
@@ -186,7 +214,7 @@ public partial class VisualRecorderWindow : Window
         if (RecordedSteps.Count == 0)
         {
             if (wasCapturing) _recorder.Resume();
-            CaptureStatus.Text = "Nothing was recorded yet. Click a button on the website, then try Save clicks.";
+            CaptureStatus.Text = "Nothing was recorded yet. Click a button or press an allowed navigation key in the website.";
             _ = SynchronizeAfterEmptySaveAsync();
             return;
         }

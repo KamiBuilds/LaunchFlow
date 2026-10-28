@@ -1,3 +1,50 @@
+# v0.7.24 — Independent review P0 repairs (development preview)
+
+- **Data-loss prevention:** Automatic installer shutdown refuses exit if unsaved edits exist and the vault is locked. A clean locked vault can still exit; unlocked configuration must be durably saved before automatic exit.
+- **Modal reentrancy:** Add/Edit website step actions capture workflow object identity, step identity/index and configuration revision, and revalidate after the dialog returns. An encrypted import or selection change cannot apply an old edit to replacement data.
+- **Keyboard recorder replay:** Tab, Escape and arrow keys on ordinary buttons/links are captured rather than dropped; Enter on buttons still produces one Click (not a second Press).
+- **Modifier handling:** Shift+Tab and unsupported combinations are explicitly skipped with a visible recorder warning instead of being misreported as plain Tab.
+- **Recorder privacy:** Shadow-root contexts, credential-related fields, sensitive autocomplete attributes, form-associated password fields and non-native controls are rejected. No typed text or passwords are recorded.
+- **Save state:** Manually editing the KeePass entry path marks configuration dirty.
+- Production-linked modal guard and browser recorder regressions added; independent encrypted-import and native Windows review remains required.
+
+**KISS release approach:** default-safe; no extra configuration screens, no hidden save failure, no keylogger. Existing encrypted storage format, installer identity and policy settings remain unchanged.
+**Not release approved.** Real Windows DPI, vault lifecycle, source-specific repro and installer behavior need independent review.
+
+# v0.7.23 — Usability and privacy-preserving Teach recorder (development)
+
+- **Website actions:** Ctrl/Shift multi-select, Select all, Delete selected (bulk deletion requires confirmation), edit one action by double-click, and a one-click Wait +1s action; wait steps can also target a selector for slow pages.
+- **Teach recorder:** multi-select, edit, remove, Select all and explicit wait controls. Only pre-approved non-text navigation keys (Enter, Tab, Escape and arrows) may be recorded; text input, password/email field and password-containing form keystrokes are blocked. Typed searches and login credentials are NEVER recorded; use explicit Fill only for non-secret text and Passwords for encrypted logins.
+- **Help:** the guide opens modelessly, allowing people to click the controls while reading instructions. Added annotated, privacy-safe example interface diagrams; these are illustrations, not screenshots of users or websites.
+- **Save feedback:** status label changes to Unsaved changes after editing website details or action steps and to All changes saved after successful persistence.
+- **Recorder usability:** restores the main LaunchFlow window to the foreground when Teach closes.
+- **Maximize:** custom-window chrome restricts maximized bounds to the current monitor's work area to avoid covering taskbar and neighboring displays.
+- **Slow pages:** click actions retain Playwright's normal locator auto-wait; explicit Wait-for-element actions can wait up to 60 seconds, and the editor explains both.
+
+**Security constraints:** no typed text, emails, passwords, OTP or tokens collected by the recorder, no auto-screenshot capture of sensitive pages, no change to existing encrypted vault schema or profiles. Real Windows usability, DPI and multi-monitor acceptance still required before public release.
+
+# v0.7.22 — Websites-first sidebar (development preview)
+
+- Removed **Workspace Profiles** (saved-workspace selector, name field, Save/Preview/Run workspace buttons) from the visible interface.
+- Renamed the main Workflows navigation and creation action to **Websites / New website**; the sidebar shows just the websites list, current status and website actions. Run all still launches enabled websites.
+- Preserved previously saved workspace records in the encrypted configuration unchanged. A collapsed, non-interactive compatibility panel keeps the former WPF event and import contracts intact for now, preventing an unsafe storage migration just before release.
+- Added UI contract assertions that the old panel is collapsed, not hit-testable or focusable, and its old visible labels are absent.
+- Updated application/installer/CI versions to **0.7.22**. This remains an unsigned developer preview, not a stable release.
+
+**Known limitation:** Workspace profiles are preserved but cannot be edited from the simplified UI. The user can continue working with individual websites. Restore legacy workspace management only in an explicitly designed future feature, if needed.
+
+# v0.7.21 — No-login workflows, safer installer updates and workspace UI (development preview)
+
+- New workflows default to **No login required**, avoiding incorrect MFA/sign-in prompts on local dashboards; saved-credential login remains an explicit choice.
+- Added regression coverage for no-login pages whose content contains verification keywords.
+- Made workspace Save/Preview labels fit the narrow sidebar.
+- Added a graceful installer shutdown request and fail-closed cleanup before replacing application files. Previously installed builds may still need one manual close on their first update.
+- Retained workspace import/revision validation, durable saves, encrypted-vault safety and regression gates from the preceding development branch.
+
+**Development build policy:** Every new test installer delivered to the user gets a higher patch version (next build after v0.7.21 is v0.7.22). Multiple internal commits may share a version until that build is delivered; all version surfaces and artifacts must agree. A development preview is not a published GitHub release and will not appear in the in-app stable updater.
+
+**Release status:** Experimental, not release-approved. Native Windows shutdown, UI scaling and real-profile restore/upgrade acceptance are still required.
+
 # v0.7.20 — Workspace UI refresh and selection fixes (testing build)
 
 - Redesigned the main window with clearer navigation, compact workflow actions, improved visual hierarchy and a consistent dark teal theme.

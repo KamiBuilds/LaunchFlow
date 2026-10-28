@@ -4,7 +4,7 @@ import pathlib
 import re
 
 root = pathlib.Path(__file__).resolve().parents[2]
-source = (root / "LaunchFlow/MainWindow.xaml.cs").read_text()
+source = (root / "LaunchFlow/MainWindow.xaml.cs").read_text(encoding="utf-8")
 names = ["RunEnabledAsync", "RequestCrashCleanup", "RecordSteps_Click", "SecureVaultLockAsync", "SecureVaultLockCoreAsync", "UpdateRunButtons", "RequireMasterPassword", "SaveTaughtStepsAsync", "ChooseKeePassEntry_Click", "DescribeCredentialStatus", "NeedsKeePassForRun", "EnsureKeePassPasswordForRun", "LoadCredentialEditor", "SaveCredentials_Click", "ConfirmLoginOriginAsync", "AutomationAllowed", "TeachAllowed", "CredentialReadAllowed", "LoginModeIndex", "SelectedLoginMode", "QueueWorkflowStatus", "OfferRepairForLoginAttentionAsync", "OfferRepairForStepAttention", "RepairLoginCoreAsync"]
 methods = []
 for name in names:
@@ -38,7 +38,7 @@ METHODS
 """.replace("METHODS", "\n".join(methods))
 target = root / "tests/workspaces/obj/UiMethods.g.cs"
 target.parent.mkdir(parents=True, exist_ok=True)
-app = (root / "LaunchFlow/App.xaml.cs").read_text()
+app = (root / "LaunchFlow/App.xaml.cs").read_text(encoding="utf-8")
 callbacks = []
 for event, wrapper in [("DispatcherUnhandledException", "DispatcherFailure"), ("AppDomain.CurrentDomain.UnhandledException", "FatalFailure")]:
     marker = event + " += (_, args) =>\n        {"
@@ -46,5 +46,5 @@ for event, wrapper in [("DispatcherUnhandledException", "DispatcherFailure"), ("
     end = app.index("\n        };", start)
     callbacks.append("    public void " + wrapper + "(FailureArgs args)\n    {" + app[start:end] + "\n    }")
 output += "\npartial class CrashFixture\n{\n" + "\n".join(callbacks) + "\n}\n"
-target.write_text(output)
+target.write_text(output, encoding="utf-8")
 print(f"Extracted {len(methods)} production methods and {len(callbacks)} App crash callbacks: " + ", ".join(names))

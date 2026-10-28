@@ -34,6 +34,47 @@ internal static class VaultTests
             }
         });
         db.Initialize(Master, config, secrets);
+        test("confirmed workspace save is rejected when encrypted vault is locked", () =>
+        {
+            var workspace = new WorkspaceProfile { Name = "Draft", WorkflowIds = new() { id } };
+            var changed = db.LoadConfiguration();
+            changed.Workspaces.Add(workspace);
+            var store = new ConfigStore();
+            db.Lock();
+            try
+            {
+                try
+                {
+                    store.SaveDurable(changed);
+                    throw new Exception("Locked-vault save unexpectedly succeeded");
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("locked", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Fail closed instead of falling back to transient configuration state.
+                }
+                Check(db.Unlock(Master));
+                Check(db.LoadConfiguration().Workspaces.Count == 0,
+                    "failed durable save unexpectedly changed cold encrypted data");
+                Check(db.ReadCredential(id) == credential);
+            }
+            finally
+            {
+                if (!db.IsUnlocked) Check(db.Unlock(Master));
+                db.ReplaceSnapshot(config, secrets);
+            }
+        });
+        test("confirmed workspace save persists to cold encrypted configuration", () =>
+        {
+            var changed = db.LoadConfiguration();
+            changed.Workspaces.Add(new WorkspaceProfile { Name = "Office", WorkflowIds = new() { id } });
+            var store = new ConfigStore();
+            store.SaveDurable(changed);
+            db.Lock();
+            Check(db.Unlock(Master));
+            Check(db.LoadConfiguration().Workspaces.Single().Name == "Office",
+                "durable save not present after cold unlock");
+            db.ReplaceSnapshot(config, secrets);
+        });
 
         void Boundary(string name, Action action, params (string Name, object? Value)[] policy)
         {
@@ -140,7 +181,7 @@ internal static class VaultTests
 
     internal static IDisposable Policy(params (string Name, object? Value)[] values) =>
         EnterprisePolicy.UseProviderForTesting(() => values.ToDictionary(v => v.Name, v => v.Value));
-    internal static void Check(bool value) { if (!value) throw new InvalidOperationException("Assertion failed"); }
+    internal static void Check(bool value, string message = "Assertion failed") { if (!value) throw new InvalidOperationException(message); }
     internal static void Refused(Action action)
     {
         try { action(); }

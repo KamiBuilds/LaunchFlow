@@ -27,8 +27,10 @@
       <TextBox x:Name="TargetBox" AutomationProperties.Name="Step target or condition" Margin="0,6,0,12"/>
       <TextBlock x:Name="ValueLabel" Text="Value (for Fill)" FontWeight="SemiBold"/>
       <TextBox x:Name="ValueBox" AutomationProperties.Name="Non-secret fill value" Margin="0,6,0,12" ToolTip="Never put passwords, tokens or one-time codes in workflow steps. Use the encrypted vault for login."/>
-      <TextBlock x:Name="SecretsWarning" Text="Never store passwords or access tokens as Fill values. Use the Passwords tab."
+      <TextBlock x:Name="SecretsWarning" Text="Never store passwords, email credentials, one-time codes or tokens as Fill values. Use Passwords for login."
                  Foreground="#ACC6D4" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6"/>
+      <TextBlock Text="For slow pages: choose Wait and enter milliseconds (e.g. 2000 for 2 seconds), or a CSS selector to wait for an element. Click actions already wait for visible elements."
+                 Foreground="#7ADACB" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,10"/>
       <TextBlock x:Name="DescriptionLabel" Text="Description (optional)" FontWeight="SemiBold"/>
       <TextBox x:Name="DescriptionBox" Margin="0,6,0,0"/>
     </StackPanel></ScrollViewer>

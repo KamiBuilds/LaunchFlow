@@ -63,15 +63,29 @@ public partial class App : Application
         };
 
         _pendingOpenPath = FindOpenablePath(e.Args);
+        var installerShutdown = e.Args.Any(arg =>
+            string.Equals(arg, "--exit-for-install", StringComparison.OrdinalIgnoreCase));
 
         _singleInstance = new System.Threading.Mutex(true, MutexName, out bool createdNew);
         if (!createdNew)
         {
-            if (!RequestExistingWindow(_pendingOpenPath))
+            if (installerShutdown)
+            {
+                // Setup observes the original process mutex; no second vault unlock or UI.
+                RequestExistingWindow(null, forInstaller: true);
+            }
+            else if (!RequestExistingWindow(_pendingOpenPath))
                 MessageBox.Show(
                     "LaunchFlow is already running, but its window could not be restored. " +
                     "Open it from the LaunchFlow icon beside the Windows clock, or exit it from that menu and try again.",
                     "LaunchFlow", MessageBoxButton.OK, MessageBoxImage.Information);
+            Shutdown();
+            return;
+        }
+        if (installerShutdown)
+        {
+            // The installed application may have exited between Setup's check and launch.
+            // Never start a vault session just to handle a shutdown request.
             Shutdown();
             return;
         }
@@ -220,11 +234,12 @@ public partial class App : Application
         return false;
     }
 
-    private static bool RequestExistingWindow(string? openPath)
+    private static bool RequestExistingWindow(string? openPath, bool forInstaller = false)
     {
         // Retry briefly: Windows may start the second process while the first is
         // still creating its main window and named-pipe listener.
-        var payload = openPath is null ? "SHOW" : "OPEN|" + openPath;
+        var payload = forInstaller ? "EXIT_FOR_INSTALL" :
+            openPath is null ? "SHOW" : "OPEN|" + openPath;
         for (int attempt = 0; attempt < 18; attempt++)
         {
             try
@@ -272,12 +287,13 @@ public partial class App : Application
                     // Deliberately fire-and-forget the UI notification (CS4014).
                     _ = Dispatcher.BeginInvoke(new Action(RestoreRunningWindow));
                 }
-                else if (string.Equals(message, "EXIT_FOR_BUILD", StringComparison.Ordinal))
+                else if (string.Equals(message, "EXIT_FOR_INSTALL", StringComparison.Ordinal) ||
+                         string.Equals(message, "EXIT_FOR_BUILD", StringComparison.Ordinal))
                 {
                     _ = Dispatcher.BeginInvoke(new Action(() =>
                     {
                         if (MainWindow is LaunchFlow.MainWindow window && window.IsLoaded)
-                            window.RequestShutdownForBuild();
+                            _ = window.RequestShutdownForInstallAsync();
                     }));
                 }
             }

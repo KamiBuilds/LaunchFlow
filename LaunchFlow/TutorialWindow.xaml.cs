@@ -9,13 +9,13 @@ public partial class TutorialWindow : Window
     private static readonly (string Title, string Detail)[] Pages =
     {
         ("1. Add a website",
-         "Click + New. Enter the website address, choose your browser, and pick the screen where it should open. Click Create."),
+         "In LaunchFlow, click + New website. Enter the start URL, choose your browser and monitor, then select Create. You can click in LaunchFlow while this guide stays open."),
         ("2. Save your login (optional)",
-         "Open Passwords to save your username and password in the encrypted vault. LaunchFlow can use these details when you click Run all. You never need to teach or record a password."),
+         "For a site requiring a login, open Passwords and save your credentials in the encrypted vault. Leave No login required selected for local dashboards. Never record, screenshot, or store a password as a step."),
         ("3. Show it what to click",
-         "Select your website in Workflows, then choose Teach clicks. Recording starts automatically. Move either window, click buttons on the website, and come back to Save clicks. This is for buttons AFTER login."),
+         "Select the website, then Record clicks. Click permitted buttons or press Enter/Tab/arrow keys in the browser. Text and passwords are not recorded. Add Wait +1s for slow pages, then Save actions. You can edit or select multiple actions afterward."),
         ("4. Test it",
-         "Click Test this site to try one website, or Run all to open every enabled website. If a login needs extra approval, finish it yourself. Open Help anytime to see these steps again.")
+         "Click Test this site to run one website, or Run all for your enabled sites. Changes awaiting Save are marked above the editor. If login needs approval, complete it personally in the browser.")
     };
 
     public TutorialWindow()
@@ -30,6 +30,27 @@ public partial class TutorialWindow : Window
         ProgressLabel.Text = "Step " + (_current + 1) + " of " + Pages.Length;
         StepHeading.Text = Pages[_current].Title;
         StepDetails.Text = Pages[_current].Detail;
+        ExampleTitle.Text = _current switch
+        {
+            0 => "1 · Websites",
+            1 => "2 · Passwords",
+            2 => "3 · Record actions",
+            _ => "4 · Test and save"
+        };
+        ExampleWebsite.Text = _current switch
+        {
+            0 => "New website",
+            1 => "Account stored in encrypted vault",
+            2 => "Click → Wait → Press Enter",
+            _ => "Enabled websites"
+        };
+        ExampleAction.Text = _current switch
+        {
+            0 => "+ New website",
+            1 => "Save credentials",
+            2 => "● Record clicks",
+            _ => "▶ Test this site / Run all"
+        };
         BackButton.IsEnabled = _current > 0;
         NextButton.Content = _current == Pages.Length - 1 ? "Finish" : "Next";
     }

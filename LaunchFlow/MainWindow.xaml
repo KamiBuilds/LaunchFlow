@@ -128,7 +128,7 @@
             </StackPanel>
           </StackPanel>
           <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Bottom">
-            <RadioButton x:Name="WorkflowsNav" Content="Workflows" GroupName="TopNavigation"
+            <RadioButton x:Name="WorkflowsNav" Content="Websites" GroupName="TopNavigation"
                          Style="{StaticResource TopNavStyle}" IsChecked="True" Click="TopNavigation_Click"
                          shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
             <RadioButton x:Name="PasswordsNav" Content="Passwords" GroupName="TopNavigation"
@@ -141,7 +141,7 @@
           <Border Grid.Column="4" Background="#173C43" BorderBrush="#2B6667"
                   BorderThickness="1" CornerRadius="9" Padding="10,5" VerticalAlignment="Center"
                   Margin="0,0,12,0">
-            <TextBlock x:Name="HeaderVersionLabel" Text="v0.7.20" Foreground="#79E7D6"
+            <TextBlock x:Name="HeaderVersionLabel" Text="v0.7.22" Foreground="#79E7D6"
                        FontSize="11" FontWeight="SemiBold"/>
           </Border>
           <StackPanel Grid.Column="6" Orientation="Horizontal" VerticalAlignment="Stretch">
@@ -157,8 +157,9 @@
         <Grid Grid.Row="1" Margin="0,2,0,5">
           <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
           <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-            <Button Content="+ New workflow" Click="AddWorkflow_Click" Padding="13,6"/>
-            <Button Content="Save changes" Click="Save_Click" Padding="13,6"/>
+            <Button Content="+ New website" Click="AddWorkflow_Click" Padding="13,6"/>
+            <Button x:Name="SaveChangesButton" Content="Save changes" Click="Save_Click" Padding="13,6"/>
+            <TextBlock x:Name="SaveStatusLabel" Text="All changes saved" Foreground="#85C9B9" FontSize="11" Margin="2,0,9,0" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite"/>
             <Button x:Name="RunAllButton" Content="▶ Run all" Click="Run_Click" Style="{StaticResource PrimaryButton}"
                     AutomationProperties.Name="Run all enabled websites" Padding="14,6"/>
             <Button x:Name="StopButton" Content="■ Stop" Click="Stop_Click" IsEnabled="False"
@@ -180,15 +181,15 @@
             <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent"/>
           </Border>
         </ControlTemplate>
-      </TabControl.Template><TabItem Header="Workflows"><Grid>
+      </TabControl.Template><TabItem Header="Websites"><Grid>
       <Grid.ColumnDefinitions><ColumnDefinition Width="274" x:Name="SidebarColumn"/><ColumnDefinition Width="36"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
       <Button x:Name="SidebarToggleButton" Grid.Column="1" Content="❮" Click="ToggleSidebar_Click" ToolTip="Show or hide the workflow list" Width="31" Height="42" VerticalAlignment="Top" Margin="0,3,0,0" Padding="2" Background="#20384C"/><Border Grid.Column="0" Background="#111F30" CornerRadius="13" Padding="17" x:Name="SidebarPanel" BorderBrush="#263C50" BorderThickness="1">
         <DockPanel>
           <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
-            <TextBlock Text="YOUR WORKFLOWS" FontWeight="SemiBold" FontSize="11"
-                       Foreground="#92B4C6" Margin="1,0,0,3"/>
-            <TextBlock Text="Everything ready for your next shift." Foreground="#A8BECD"
-                       FontSize="11" TextWrapping="Wrap" Margin="1,0,0,8"/>
+            <TextBlock Text="YOUR WEBSITES" FontWeight="SemiBold" FontSize="12"
+                       Foreground="#92B4C6" Margin="1,0,0,5"/>
+            <TextBlock Text="Select a website to edit or test. Run all opens every enabled website."
+                       Foreground="#A8BECD" FontSize="11" TextWrapping="Wrap" Margin="1,0,0,10"/>
             <Border CornerRadius="8" Background="#14323E" Padding="9,6"
                     HorizontalAlignment="Left" Margin="0,0,0,16">
               <StackPanel Orientation="Horizontal">
@@ -198,41 +199,20 @@
                            AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Workflow status"/>
               </StackPanel>
             </Border>
-            <Border Background="#172B3E" BorderBrush="#2B4558" BorderThickness="1"
-                    CornerRadius="11" Padding="11">
-              <StackPanel>
-                <TextBlock x:Name="WorkspaceHeading" Text="WORKSPACE PROFILES"
-                           FontSize="10" FontWeight="Bold" Foreground="#8DAFBE"
-                           Margin="1,0,0,10"/>
-                <TextBlock Text="Saved workspace" Foreground="#C5D9E4" FontSize="11"
-                           Margin="1,0,0,5"/>
-                <ComboBox x:Name="WorkspaceCombo" IsEditable="False" DisplayMemberPath="Name"
-                          MaxDropDownHeight="260" SelectionChanged="WorkspaceCombo_SelectionChanged"
-                          ToolTip="Select a saved workspace" AutomationProperties.Name="Saved workspace selector"/>
-                <TextBlock Text="New / existing name" Foreground="#C5D9E4"
-                           FontSize="11" Margin="1,11,0,5"/>
-                <TextBox x:Name="WorkspaceNameBox"
-                         ToolTip="Enter a name to create a workspace, or use the selected name to update it"
-                         AutomationProperties.Name="Workspace name"/>
-                <Grid Margin="0,10,0,0">
-                  <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                  <Button x:Name="SaveWorkspaceButton" Grid.Column="0" Content="Save"
-                          Click="SaveWorkspace_Click" Padding="10,6" Margin="0"
-                          ToolTip="Save enabled websites under the workspace name"
-                          AutomationProperties.Name="Save workspace"/>
-                  <Button Grid.Column="2" Content="Preview" Click="PreviewWorkspace_Click"
-                          Padding="10,6" Margin="0"
-                          ToolTip="View monitor assignments and browser readiness without starting workflows"
-                          AutomationProperties.Name="Preview selected workspace"/>
-                </Grid>
-                <Button x:Name="RunWorkspaceButton" Content="▶ Run workspace" Click="RunWorkspace_Click"
-                        Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch"
-                        Margin="0,8,0,0" Padding="10,7"
-                        ToolTip="Run selected workspace" AutomationProperties.Name="Run selected workspace"/>
-              </StackPanel>
-            </Border>
-            <TextBlock Text="WEBSITES" FontWeight="SemiBold" FontSize="10"
-                       Foreground="#92B4C6" Margin="2,15,0,0"/>
+            <!-- Compatibility-only controls for saved workspace records.
+                 This panel never appears or takes focus. Retain existing encrypted
+                 workspace data and event contracts for import/review compatibility. -->
+            <StackPanel x:Name="LegacyWorkspacePanel" Visibility="Collapsed"
+                        IsHitTestVisible="False" Focusable="False">
+              <TextBlock x:Name="WorkspaceHeading" Text="WORKSPACE PROFILES"/>
+              <ComboBox x:Name="WorkspaceCombo" IsEditable="False" DisplayMemberPath="Name"
+                        SelectionChanged="WorkspaceCombo_SelectionChanged"/>
+              <TextBox x:Name="WorkspaceNameBox" TextChanged="WorkspaceNameBox_TextChanged"/>
+              <Button x:Name="SaveWorkspaceButton" Content="Save" Click="SaveWorkspace_Click"/>
+              <Button x:Name="PreviewWorkspaceButton" Content="Preview" Click="PreviewWorkspace_Click"/>
+              <Button x:Name="RunWorkspaceButton" Content="Run workspace" Click="RunWorkspace_Click"/>
+            </StackPanel>
+
           </StackPanel>
           <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,12,0,0">
             <Button x:Name="DuplicateWorkflowButton" Content="Duplicate" Click="DuplicateWorkflow_Click" IsEnabled="False"/>
@@ -290,17 +270,19 @@
                         ToolTip="Open the site and teach steps when auto-login or MFA breaks"/>
                 <Button Content="+ Page" Click="AddPage_Click" ToolTip="Open another website/page after sign-in" Margin="0,0,6,6"/>
                 <Button Content="+ Action" Click="AddStep_Click" Margin="0,0,6,6"/>
-                <Button Content="Edit" Click="EditStep_Click" Margin="0,0,6,6"/>
-                <Button Content="Remove" Click="RemoveStep_Click" Margin="0,0,0,6"/>
+                <Button Content="Edit selected" Click="EditStep_Click" Margin="0,0,6,6" ToolTip="Edit one selected action; double-click also opens the editor"/>
+                <Button Content="Wait +1s" Click="QuickWaitStep_Click" Margin="0,0,6,6" ToolTip="Insert a one-second pause; edit a Wait step to wait longer or for a page element"/>
+                <Button Content="Select all" Click="SelectAllSteps_Click" Margin="0,0,6,6"/>
+                <Button Content="Delete selected" Click="RemoveStep_Click" Margin="0,0,0,6"/>
               </WrapPanel>
             </DockPanel>
-            <ListBox x:Name="StepList" MinHeight="128" Height="152" FontSize="13" MouseDoubleClick="EditStep_Click"
+            <ListBox x:Name="StepList" MinHeight="128" Height="180" FontSize="13" SelectionMode="Extended" MouseDoubleClick="EditStep_Click"
                      AutomationProperties.Name="Workflow steps after sign-in"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,6,0,0">
               <Button Content="↑ Up" Click="MoveStepUp_Click"/>
               <Button Content="↓ Down" Click="MoveStepDown_Click" Margin="0"/>
             </StackPanel>
-            <TextBlock Text="Teach remembers clicks, not passwords." TextWrapping="Wrap" Foreground="#96AFC3" FontSize="11" Margin="0,8,0,0"/>
+            <TextBlock Text="Select multiple actions with Ctrl/Shift or Select all. Use Wait +1s for slow pages. Record never stores typed passwords." TextWrapping="Wrap" Foreground="#96AFC3" FontSize="11" Margin="0,8,0,0"/>
           </StackPanel>
         </ScrollViewer>
         <Grid x:Name="WorkflowEmptyState" Visibility="Visible" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="520" Margin="16">
@@ -341,10 +323,10 @@
                 <TextBlock Text="Sign-in mode" Style="{StaticResource FieldLabel}" Margin="0,9,0,6"/>
                 <ComboBox x:Name="LoginModeCombo" SelectedIndex="0" AutomationProperties.Name="Sign-in mode">
                   <ComboBoxItem Content="Automatic" Tag="Auto"/>
-                  <ComboBoxItem Content="No automatic sign-in" Tag="None"/>
+                  <ComboBoxItem Content="No login required — open page and run configured steps" Tag="None"/>
                   <ComboBoxItem Content="SSO — browser sign-in only (no saved credential fill)" Tag="SSO"/>
                 </ComboBox>
-                <TextBlock Text="LaunchFlow detects username/Next/password steps. If your company uses SSO, you may need to approve its login address once and complete MFA yourself." TextWrapping="Wrap" Foreground="#BED2E5" FontSize="12" Margin="0,8,0,0"/>
+                <TextBlock Text="For local dashboards without a login, select No login required. LaunchFlow skips all sign-in verification but still runs your configured page actions. For SSO, follow your organization's login requirements." TextWrapping="Wrap" Foreground="#BED2E5" FontSize="12" Margin="0,8,0,0"/>
                 <Grid Margin="0,12,0,0">
                   <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="15"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                   <StackPanel Grid.Column="0"><TextBlock Text="Username or email (hidden)" Style="{StaticResource FieldLabel}"/>

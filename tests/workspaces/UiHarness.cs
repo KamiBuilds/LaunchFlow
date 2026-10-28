@@ -32,6 +32,34 @@ var tests = new List<(string Name, Func<Task> Body)>
         Check(ui.RunAllButton.IsEnabled && ui.RunSelectedButton.IsEnabled && !ui.StopButton.IsEnabled, "controls not restored");
         Check(ui.Notifications.All(n => !n.Contains("Finished")), "cancelled run announced completion");
     }),
+    ("workspace Run and Preview require the currently selected saved name", () =>
+    {
+        var ui = new UiFixture();
+        var profile = new WorkspaceProfile { Name = "Morning" };
+        ui._configuration.Workspaces.Add(profile);
+
+        ui.RefreshControls();
+        Check(!ui.RunWorkspaceButton.IsEnabled && !ui.PreviewWorkspaceButton.IsEnabled,
+            "workspace actions enabled with no selected saved profile");
+
+        ui.WorkspaceCombo.SelectedItem = profile;
+        ui.WorkspaceNameBox.Text = "  morning ";
+        ui.RefreshControls();
+        Check(ui.RunWorkspaceButton.IsEnabled && ui.PreviewWorkspaceButton.IsEnabled,
+            "valid selected workspace actions unavailable");
+
+        ui.WorkspaceNameBox.Text = "Unsaved name";
+        ui.RefreshControls();
+        Check(!ui.RunWorkspaceButton.IsEnabled && !ui.PreviewWorkspaceButton.IsEnabled,
+            "typing another profile name left a stale workspace action enabled");
+
+        ui.WorkspaceNameBox.Text = "Morning";
+        ui._runInProgress = true;
+        ui.RefreshControls();
+        Check(!ui.RunWorkspaceButton.IsEnabled && !ui.PreviewWorkspaceButton.IsEnabled,
+            "active run allowed another workspace action");
+        return Task.CompletedTask;
+    }),
     ("modal vault prompt cannot reenter a run before engine IsRunning is set", async () =>
     {
         var ui = new UiFixture();
@@ -55,11 +83,61 @@ var tests = new List<(string Name, Func<Task> Body)>
         var ui = new UiFixture();
         var disabled = new WebsiteWorkflow { Enabled = false };
         ui._configuration.Workflows.Add(disabled);
-        var workspace = new WorkspaceProfile { WorkflowIds = new() { Guid.NewGuid(), disabled.Id, ui._configuration.Workflows[0].Id } };
+        var workspace = new WorkspaceProfile { Name = "NOC", WorkflowIds = new() { Guid.NewGuid(), disabled.Id, ui._configuration.Workflows[0].Id } };
+        ui._configuration.Workspaces.Add(workspace);
+        ui.WorkspaceCombo.SelectedItem = workspace;
+        ui.WorkspaceNameBox.Text = workspace.Name;
         ui._runner.RunRelease.SetResult(new() { FailedCount = 1 });
         await ui.Run(workspace: workspace);
         Check(ui._runner.LastRun.Count == 1 && !ui._runner.IncludeDisabled, "workspace bypassed enabled/missing IDs");
         Check(ui.Notifications.Any(n => n.Contains("failed", StringComparison.OrdinalIgnoreCase)) && ui.Notifications.All(n => !n.Contains("Finished")), "failed workflows announced as success");
+    }),
+    ("encrypted import while KeePass is open cancels a detached workspace run", async () =>
+    {
+        var ui = new UiFixture();
+        using var database = new SyntheticKeePassDatabase(ui);
+        var old = ui._configuration.Workflows[0];
+        var workspace = new WorkspaceProfile { Name = "Office", WorkflowIds = new() { old.Id } };
+        ui._configuration.Workspaces.Add(workspace);
+        ui.WorkspaceCombo.SelectedItem = workspace;
+        ui.WorkspaceNameBox.Text = workspace.Name;
+        ui.KeePassHook = () =>
+        {
+            ui._configuration.Workflows.Clear();
+            ui._configuration.Workspaces.Clear();
+            var imported = new WebsiteWorkflow { Name = "Imported", Enabled = false };
+            ui._configuration.Workflows.Add(imported);
+            ui._configuration.Workspaces.Add(new WorkspaceProfile
+            {
+                Name = "Office", WorkflowIds = new() { imported.Id }
+            });
+            ui._workspaceRevision++;
+            ui.WorkspaceCombo.SelectedItem = null;
+            ui.WorkspaceNameBox.Clear();
+        };
+        ui._runner.RunRelease.SetResult(new());
+        await ui.Run(workspace: workspace);
+        Check(ui._runner.RunCalls == 0 && ui._keepassMasterPassword is null,
+            "stale pre-import workflow reached the execution engine or retained KeePass secret");
+        Check(ui._configuration.Workflows.Single().Name == "Imported" &&
+            ui._configuration.Workspaces.Single().WorkflowIds
+                .SequenceEqual(new[] { ui._configuration.Workflows.Single().Id }),
+            "canceled old run mutated imported workflow membership");
+    }),
+    ("import during KeePass cancels an old run-all request", async () =>
+    {
+        var ui = new UiFixture();
+        using var database = new SyntheticKeePassDatabase(ui);
+        ui.KeePassHook = () =>
+        {
+            ui._configuration.Workflows.Clear();
+            ui._configuration.Workflows.Add(new WebsiteWorkflow { Name = "Replacement" });
+            ui._workspaceRevision++;
+        };
+        ui._runner.RunRelease.SetResult(new());
+        await ui.Run();
+        Check(ui._runner.RunCalls == 0 && ui._keepassMasterPassword is null,
+            "run-all dispatched a detached previous workflow after import");
     }),
     ("an unlock dialog open across Windows lock must not reauthorize the vault", () =>
     {
@@ -403,6 +481,9 @@ partial class UiFixture
     public readonly Configuration _configuration = new() { Workflows = new() { new WebsiteWorkflow() } };
     public WebsiteWorkflow? _selected = new();
     public bool _runStatusActive = false, _vaultCleanupFailed = false;
+    public bool _hasUnsavedChanges = false;
+    public bool _installerShutdownInProgress = false, _installerProfileSealFailed = false;
+    public long _workspaceRevision;
     public readonly Control RetryVaultLockButton = new();
     public bool _windowsLocked = false, _vaultLockInProgress = false, _runInProgress = false, _teachingInProgress = false, _exiting = false;
     public CancellationTokenSource? _runCancellation;
@@ -410,7 +491,8 @@ partial class UiFixture
     public Task<Microsoft.Playwright.IPage>? _activeTeachTask = null;
     public Task _vaultLockTask = Task.CompletedTask;
     public string? _keepassMasterPassword;
-    public readonly Control StopButton = new() { IsEnabled = false }, RunAllButton = new(), RunSelectedButton = new(), RunWorkspaceButton = new(), TeachButton = new(), RepairButton = new(), MainTabs = new();
+    public readonly Control StopButton = new() { IsEnabled = false }, RunAllButton = new(), RunSelectedButton = new(), RunWorkspaceButton = new(), PreviewWorkspaceButton = new(), TeachButton = new(), RepairButton = new(), MainTabs = new();
+    public readonly Control WorkspaceCombo = new(), WorkspaceNameBox = new();
     public readonly Control WorkflowStatusLabel = new();
     public Action? PromptHook;
     public int Prompts;
@@ -430,9 +512,12 @@ partial class UiFixture
     public Task<bool> ShowRecorderAsync(VisualRecorderWindow recorder) { Recorder = recorder; return RecorderResult.Task; }
     public void RefreshSteps() { }
     public bool SaveAll() => true;
+    public void RefreshControls() => UpdateRunButtons();
     public Action? KeePassHook;
     public bool EnsureKeePass() => EnsureKeePassPasswordForRun(_configuration.Workflows);
     public void ShowFromTray() { }
+    public void MarkSaved() { }
+    public bool IsLoaded => true;
     public static void AppendLog(string _) { }
     public void ClearCredentialEditor() { Cleared = true; UsernameBox.Clear(); PasswordInput.Clear(); _loadedCredentialWorkflowId = null; }
     public void LockPasswordManager(string _) { Cleared = true; _passwordsUnlocked = false; }

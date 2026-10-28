@@ -23,6 +23,8 @@ public partial class MainWindow : Window
 {
     private readonly ConfigStore _store = new();
     private readonly MasterPasswordService _master = new();
+    private TutorialWindow? _tutorial;
+    private bool _hasUnsavedChanges;
     private bool _passwordsUnlocked;
     private DateTimeOffset _passwordSessionExpiresUtc = DateTimeOffset.MinValue;
     private Guid? _loadedCredentialWorkflowId;
@@ -39,7 +41,10 @@ public partial class MainWindow : Window
     private bool _runStatusActive;
     private bool _vaultLockInProgress;
     private bool _vaultCleanupFailed;
+    private bool _installerShutdownInProgress;
+    private bool _installerProfileSealFailed;
     private bool _monitorSelectionChanged;
+    private long _workspaceRevision;
     private Task _vaultLockTask = Task.CompletedTask;
     private Task<AutomationEngine.RunResult>? _activeRunTask;
     private Task<IPage>? _activeTeachTask;
@@ -61,6 +66,56 @@ public partial class MainWindow : Window
     private HwndSource? _windowSource;
     private const int HotkeyId = 0x4C46;
     private const int WmHotkey = 0x0312;
+    private const int WmGetMinMaxInfo = 0x0024;
+    private const uint MonitorDefaultToNearest = 2;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint { public int X; public int Y; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MinMaxInfo
+    {
+        public NativePoint Reserved;
+        public NativePoint MaxSize;
+        public NativePoint MaxPosition;
+        public NativePoint MinTrackSize;
+        public NativePoint MaxTrackSize;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo
+    {
+        public int Size;
+        public NativeRect Monitor;
+        public NativeRect Work;
+        public uint Flags;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+
+    private static void ConstrainMaximizedWindowToWorkArea(IntPtr hwnd, IntPtr lParam)
+    {
+        var monitor = MonitorFromWindow(hwnd, MonitorDefaultToNearest);
+        if (monitor == IntPtr.Zero) return;
+        var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        if (!GetMonitorInfo(monitor, ref info)) return;
+        var values = Marshal.PtrToStructure<MinMaxInfo>(lParam);
+        // Native MINMAXINFO uses physical device pixels; WPF's custom title bar
+        // otherwise risks covering the taskbar on secondary and scaled monitors.
+        values.MaxPosition.X = info.Work.Left - info.Monitor.Left;
+        values.MaxPosition.Y = info.Work.Top - info.Monitor.Top;
+        values.MaxSize.X = info.Work.Right - info.Work.Left;
+        values.MaxSize.Y = info.Work.Bottom - info.Work.Top;
+        Marshal.StructureToPtr(values, lParam, false);
+    }
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint modifiers, uint virtualKey);
@@ -114,6 +169,28 @@ public partial class MainWindow : Window
         WorkspaceCombo.ItemsSource = _configuration.Workspaces;
         LanguageCombo.SelectedIndex = _configuration.UiLanguage switch { "en" => 1, "nl" => 2, _ => 0 };
         ApplyUiLanguage();
+        // Track user-visible website configuration edits without inspecting credential values.
+        NameBox.TextChanged += (_, _) => MarkUnsavedChanges();
+        StartUrlBox.TextChanged += (_, _) => MarkUnsavedChanges();
+        EnabledCheck.Checked += (_, _) => MarkUnsavedChanges();
+        EnabledCheck.Unchecked += (_, _) => MarkUnsavedChanges();
+        BrowserCombo.SelectionChanged += (_, _) => MarkUnsavedChanges();
+        MonitorCombo.SelectionChanged += (_, _) => MarkUnsavedChanges();
+        KeepassEntryBox.TextChanged += (_, _) => MarkUnsavedChanges();
+        foreach (var input in new[] { UsernameContinueBox, PasswordOriginBox,
+            UsernameSelectorBox, PasswordSelectorBox, SubmitSelectorBox,
+            CredentialOriginBox, LoginSuccessSelectorBox, LoginSuccessUrlBox,
+            LoginWaitBox, DelayBox, VaultTimeoutBox, ShortcutBox,
+            KeePassDbBox, KeePassKeyBox, UpdateFeedBox })
+            input.TextChanged += (_, _) => MarkUnsavedChanges();
+        foreach (var toggle in new[] { AutoLoginCheck, StartupCheck, UnlockCheck,
+            LaunchCheck, TrayCheck, NotifyCheck, SealProfilesCheck, TaskSchedulerCheck })
+        {
+            toggle.Checked += (_, _) => MarkUnsavedChanges();
+            toggle.Unchecked += (_, _) => MarkUnsavedChanges();
+        }
+        LoginModeCombo.SelectionChanged += (_, _) => MarkUnsavedChanges();
+        LanguageCombo.SelectionChanged += (_, _) => MarkUnsavedChanges();
 
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Open LaunchFlow", null, (_, _) => Dispatcher.Invoke(ShowFromTray));
@@ -140,10 +217,11 @@ public partial class MainWindow : Window
     {
         LocalizationService.ActiveLanguage = _configuration.UiLanguage;
         string Text(string english) => LocalizationService.Text(english, _configuration.UiLanguage);
-        WorkflowsNav.Content = Text("Workflows");
+        WorkflowsNav.Content = Text("Websites");
         PasswordsNav.Content = Text("Passwords");
         SettingsNav.Content = Text("Settings");
-        SaveWorkspaceButton.Content = Text("Save workspace");
+        SaveWorkspaceButton.Content = Text("Save");
+        PreviewWorkspaceButton.Content = Text("Preview");
         RunWorkspaceButton.Content = "▶ " + Text("Run workspace");
         RunAllButton.Content = "▶ " + Text("Run all");
         StopButton.Content = "■ " + Text("Stop");
@@ -207,7 +285,11 @@ public partial class MainWindow : Window
         bool available = !_runInProgress && !_vaultLockInProgress && !_teachingInProgress && !_windowsLocked && !_exiting;
         RunAllButton.IsEnabled = available;
         RunSelectedButton.IsEnabled = available;
-        RunWorkspaceButton.IsEnabled = available;
+        var savedWorkspaceSelected = _configuration is not null &&
+            WorkspaceCatalog.IsCurrentSelection(_configuration,
+                WorkspaceCombo.SelectedItem as WorkspaceProfile, WorkspaceNameBox.Text);
+        RunWorkspaceButton.IsEnabled = available && savedWorkspaceSelected;
+        PreviewWorkspaceButton.IsEnabled = available && savedWorkspaceSelected;
         TeachButton.IsEnabled = available;
         RepairButton.IsEnabled = available;
         StopButton.IsEnabled = _runInProgress && _runCancellation is { IsCancellationRequested: false } && !_vaultLockInProgress;
@@ -287,12 +369,51 @@ public partial class MainWindow : Window
         _ = SecureVaultLockAsync("Unexpected UI error: vault locked; browser cleanup is best effort.");
     }
 
-    internal void RequestShutdownForBuild()
+    internal void RequestShutdownForBuild() => _ = RequestShutdownForInstallAsync();
+
+    internal async Task RequestShutdownForInstallAsync()
     {
-        // Stop automation and close LaunchFlow before installing a new build.
-        _runCancellation?.Cancel();
-        _unlockCancellation?.Cancel();
-        ExitFromTray();
+        if (_installerShutdownInProgress || _exiting) return;
+        _installerShutdownInProgress = true;
+        _installerProfileSealFailed = false;
+        try
+        {
+            // Do not allow the installer to replace running binaries until configuration,
+            // browser sessions and profile ownership have been handled by the application.
+            _unlockCancellation?.Cancel();
+            _runCancellation?.Cancel();
+            UpdateRunButtons();
+            // Do not turn an installer request into consent to discard edits.
+            // A clean, already-locked vault can exit; a dirty locked vault cannot.
+            if (_hasUnsavedChanges && !VaultDatabase.Current.IsUnlocked)
+                throw new InvalidOperationException(
+                    "Unsaved changes cannot be preserved while the vault is locked. Unlock LaunchFlow and click Save before updating.");
+            if (VaultDatabase.Current.IsUnlocked && !SaveAll())
+                throw new InvalidOperationException("Save your unsaved changes before upgrading.");
+            if (_hasUnsavedChanges)
+                throw new InvalidOperationException("Unsaved changes remain. Save them before updating.");
+            await SecureVaultLockAsync("Installer requested shutdown; vault locked before replacing application files.");
+            if (_hasUnsavedChanges || _vaultCleanupFailed || _vaultLockInProgress || _installerProfileSealFailed)
+                throw new InvalidOperationException(
+                    "Unsaved changes or encrypted-profile cleanup are incomplete. LaunchFlow remains open; save your work before updating.");
+            _exiting = true;
+            UpdateRunButtons();
+            Close();
+        }
+        catch (Exception ex)
+        {
+            ShowFromTray();
+            MessageBox.Show(this, ex.Message,
+                "LaunchFlow update paused", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            if (!_exiting)
+            {
+                _installerShutdownInProgress = false;
+                UpdateRunButtons();
+            }
+        }
     }
 
     private static void AppendLog(string message)
@@ -463,6 +584,27 @@ public partial class MainWindow : Window
         // accidentally overwriting a working login when switching workflows.
     }
 
+    private void MarkUnsavedChanges()
+    {
+        if (_loadingEditor || _configuration is null || _exiting) return;
+        _hasUnsavedChanges = true;
+        SaveStatusLabel.Text = "Unsaved changes";
+        SaveStatusLabel.Foreground = new System.Windows.Media.SolidColorBrush(
+            System.Windows.Media.Color.FromRgb(255, 202, 111));
+        SaveChangesButton.FontWeight = FontWeights.Bold;
+        SaveChangesButton.ToolTip = _hasUnsavedChanges ? "Website changes have not been saved" : null;
+    }
+
+    private void MarkSaved()
+    {
+        _hasUnsavedChanges = false;
+        SaveStatusLabel.Text = "All changes saved";
+        SaveStatusLabel.Foreground = new System.Windows.Media.SolidColorBrush(
+            System.Windows.Media.Color.FromRgb(133, 201, 185));
+        SaveChangesButton.FontWeight = FontWeights.Normal;
+        SaveChangesButton.ToolTip = "Latest changes saved to the encrypted vault";
+    }
+
     private bool SaveAll(bool showNotification = false)
     {
         if (_vaultLockInProgress || !VaultDatabase.Current.IsUnlocked) return false;
@@ -509,7 +651,8 @@ public partial class MainWindow : Window
                         throw new ArgumentException($"{w.Name}: Trusted password page must use HTTPS.");
                 }
             }
-            _store.Save(_configuration);
+            _store.SaveDurable(_configuration);
+            MarkSaved();
             try
             {
                 if (_configuration.PreferTaskSchedulerAutostart)
@@ -765,16 +908,40 @@ public partial class MainWindow : Window
         StepList.ItemsSource = _selected.Steps;
     }
 
-    private void AddPage_Click(object sender, RoutedEventArgs e)
+    private void SelectAllSteps_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selected is not null) StepList.SelectAll();
+    }
+
+    private void QuickWaitStep_Click(object sender, RoutedEventArgs e)
     {
         if (_selected is null) return;
-        var editor = new StepEditorWindow(new WorkflowStep { Type = "Navigate", Target = "https://" }) { Owner = this };
-        if (editor.ShowDialog() == true)
+        _selected.Steps.Add(new WorkflowStep
         {
-            _selected.Steps.Add(editor.Result);
-            RefreshSteps();
-            SaveAll();
-        }
+            Type = "Wait", Target = "1000", Description = "Wait 1 second for the page"
+        });
+        RefreshSteps();
+        StepList.SelectedIndex = _selected.Steps.Count - 1;
+        MarkUnsavedChanges();
+    }
+
+    private bool IsCurrentStepEditorOwner(WebsiteWorkflow workflow, long revision) =>
+        revision == _workspaceRevision &&
+        ReferenceEquals(_selected, workflow) &&
+        _configuration.Workflows.Any(item => ReferenceEquals(item, workflow)) &&
+        !_windowsLocked && !_vaultLockInProgress && !_exiting &&
+        VaultDatabase.Current.IsUnlocked;
+
+    private void AddPage_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selected is not { } workflow) return;
+        var revision = _workspaceRevision;
+        var editor = new StepEditorWindow(new WorkflowStep { Type = "Navigate", Target = "https://" }) { Owner = this };
+        if (editor.ShowDialog() != true) return;
+        if (!IsCurrentStepEditorOwner(workflow, revision)) return;
+        workflow.Steps.Add(editor.Result);
+        RefreshSteps();
+        MarkUnsavedChanges();
     }
 
     private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
@@ -858,42 +1025,83 @@ public partial class MainWindow : Window
 
     private void AddStep_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is null) return;
+        if (_selected is not { } workflow) return;
+        var revision = _workspaceRevision;
         var editor = new StepEditorWindow { Owner = this };
-        if (editor.ShowDialog() == true) { _selected.Steps.Add(editor.Result); RefreshSteps(); }
+        if (editor.ShowDialog() != true || !IsCurrentStepEditorOwner(workflow, revision)) return;
+        workflow.Steps.Add(editor.Result);
+        RefreshSteps();
+        MarkUnsavedChanges();
     }
 
     private void EditStep_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is null || StepList.SelectedItem is not WorkflowStep current) return;
-        int index = _selected.Steps.IndexOf(current);
+        if (_selected is null || StepList.SelectedItems.Count != 1 ||
+            StepList.SelectedItem is not WorkflowStep current) return;
+        var workflow = _selected;
+        var revision = _workspaceRevision;
+        int index = workflow.Steps.IndexOf(current);
+        if (index < 0) return;
         var editor = new StepEditorWindow(current) { Owner = this };
-        if (editor.ShowDialog() == true) { _selected.Steps[index] = editor.Result; RefreshSteps(); StepList.SelectedIndex = index; }
+        if (editor.ShowDialog() != true) return;
+        // ShowDialog pumps WPF messages. Import can replace the entire workflow
+        // with an object having the same GUID and step count while it is open.
+        if (!IsCurrentStepEditorOwner(workflow, revision) ||
+            !WorkflowEditGuard.IsCurrent(_configuration, _selected, workflow, current,
+                index, revision, _workspaceRevision) ||
+            !ReferenceEquals(StepList.SelectedItem, current))
+        {
+            AppendLog("Step edit canceled because the website changed while its editor was open.");
+            return;
+        }
+        workflow.Steps[index] = editor.Result;
+        RefreshSteps();
+        StepList.SelectedIndex = index;
+        MarkUnsavedChanges();
     }
 
     private void RemoveStep_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is null || StepList.SelectedItem is not WorkflowStep current) return;
-        _selected.Steps.Remove(current); RefreshSteps();
+        if (_selected is null || StepList.SelectedItems.Count == 0) return;
+        var selected = StepList.SelectedItems.Cast<WorkflowStep>().ToArray();
+        if (selected.Length > 1 && MessageBox.Show(this,
+            $"Delete {selected.Length} selected actions? This takes effect when you save.",
+            "Delete actions", MessageBoxButton.YesNo, MessageBoxImage.Question,
+            MessageBoxResult.No) != MessageBoxResult.Yes) return;
+        foreach (var step in selected) _selected.Steps.Remove(step);
+        RefreshSteps();
+        MarkUnsavedChanges();
     }
 
     private void MoveStepUp_Click(object sender, RoutedEventArgs e) => MoveStep(-1);
     private void MoveStepDown_Click(object sender, RoutedEventArgs e) => MoveStep(1);
     private void MoveStep(int offset)
     {
-        if (_selected is null || StepList.SelectedItem is not WorkflowStep current) return;
+        if (_selected is null || StepList.SelectedItems.Count != 1 ||
+            StepList.SelectedItem is not WorkflowStep current) return;
         int index = _selected.Steps.IndexOf(current);
         int dest = index + offset;
         if (dest < 0 || dest >= _selected.Steps.Count) return;
         _selected.Steps.RemoveAt(index);
         _selected.Steps.Insert(dest, current);
         RefreshSteps(); StepList.SelectedIndex = dest;
+        MarkUnsavedChanges();
     }
 
     private void WorkspaceCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (WorkspaceCombo.SelectedItem is WorkspaceProfile profile)
             WorkspaceNameBox.Text = profile.Name;
+        if (_configuration is not null) UpdateRunButtons();
+    }
+
+    private void WorkspaceNameBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_configuration is null) return;
+        if (WorkspaceCombo.SelectedItem is WorkspaceProfile profile &&
+            !WorkspaceCatalog.IsCurrentSelection(_configuration, profile, WorkspaceNameBox.Text))
+            WorkspaceCombo.SelectedItem = null;
+        UpdateRunButtons();
     }
 
     private void SaveWorkspace_Click(object sender, RoutedEventArgs e)
@@ -907,29 +1115,39 @@ public partial class MainWindow : Window
         }
         if (!SaveAll()) return;
 
-        var existing = _configuration.Workspaces.FirstOrDefault(profile =>
-            string.Equals(profile.Name, name, StringComparison.OrdinalIgnoreCase));
+        var existing = WorkspaceCatalog.FindByName(_configuration, name);
+        var revision = _workspaceRevision;
+        var savedWorkflowIds = _configuration.Workflows.Where(workflow => workflow.Enabled)
+            .Select(workflow => workflow.Id).ToArray();
         if (existing is not null && MessageBox.Show(this,
             "Replace the workflow selection in this workspace?", "Update workspace",
             MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes)
             return;
 
-        var previousName = existing?.Name;
-        var previousIds = existing?.WorkflowIds;
-        var profile = WorkspaceProfile.Capture(_configuration, name);
+        // Modal confirmations pump UI events: import may replace the saved configuration.
+        if (_windowsLocked || _vaultLockInProgress || _exiting || !VaultDatabase.Current.IsUnlocked ||
+            !WorkspaceCatalog.ConfirmationStillValid(
+                _configuration, name, existing, revision, _workspaceRevision, savedWorkflowIds))
+        {
+            MessageBox.Show(this, "Workspace data changed while confirmation was open. Review the current workspaces and save again.",
+                "Workspace changed", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        WorkspaceProfile profile;
         try
         {
-            _store.Save(_configuration);
+            profile = WorkspaceCatalog.Save(_configuration, name,
+                () => _store.SaveDurable(_configuration));
         }
         catch (Exception ex)
         {
-            if (existing is null) _configuration.Workspaces.Remove(profile);
-            else { existing.Name = previousName!; existing.WorkflowIds = previousIds!; }
             MessageBox.Show(this, ex.Message, "Workspace not saved",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
+        _workspaceRevision++;
         WorkspaceCombo.Items.Refresh();
         WorkspaceCombo.SelectedItem = profile;
         WorkspaceNameBox.Text = profile.Name;
@@ -938,7 +1156,7 @@ public partial class MainWindow : Window
     private void PreviewWorkspace_Click(object sender, RoutedEventArgs e)
     {
         if (WorkspaceCombo.SelectedItem is not WorkspaceProfile selected ||
-            !_configuration.Workspaces.Contains(selected))
+            !WorkspaceCatalog.IsCurrentSelection(_configuration, selected, WorkspaceNameBox.Text))
         {
             MessageBox.Show(this, "Select a saved workspace first.");
             return;
@@ -949,7 +1167,7 @@ public partial class MainWindow : Window
     private void RunWorkspace_Click(object sender, RoutedEventArgs e)
     {
         if (WorkspaceCombo.SelectedItem is not WorkspaceProfile profile ||
-            !_configuration.Workspaces.Contains(profile))
+            !WorkspaceCatalog.IsCurrentSelection(_configuration, profile, WorkspaceNameBox.Text))
         {
             MessageBox.Show(this, "Select a saved workspace first.", "Workspace", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
@@ -973,7 +1191,11 @@ public partial class MainWindow : Window
     {
         if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow)) return;
         var recorder = new VisualRecorderWindow(page) { Owner = this };
-        if (!await ShowRecorderAsync(recorder) || recorder.RecordedSteps.Count == 0) return;
+        var saved = await ShowRecorderAsync(recorder);
+        // Teach uses a modeless window. Return LaunchFlow to the foreground
+        // after its capture window closes, without leaving the user hunting in the taskbar.
+        if (!_exiting && !_windowsLocked && IsLoaded) ShowFromTray();
+        if (!saved || recorder.RecordedSteps.Count == 0) return;
         if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow)) return;
 
         // Teach remains modeless; the selected website may have changed.
@@ -995,7 +1217,8 @@ public partial class MainWindow : Window
             throw;
         }
         if (_selected?.Id == original.Id) RefreshSteps();
-        AppendLog($"Saved {recorder.RecordedSteps.Count} taught click(s) for '{original.Name}'.");
+        if (!_hasUnsavedChanges) MarkSaved();
+        AppendLog($"Saved {recorder.RecordedSteps.Count} taught action(s) for '{original.Name}'.");
     }
 
     private async void RecordSteps_Click(object sender, RoutedEventArgs e)
@@ -1076,6 +1299,7 @@ public partial class MainWindow : Window
     {
         if (_runInProgress || _runner.IsRunning || _vaultLockInProgress || _windowsLocked || _teachingInProgress || _exiting || !AutomationAllowed()) return;
         // Own the UI operation before any modal prompt can pump another hotkey/tray event.
+        var launchRevision = _workspaceRevision;
         _runInProgress = true;
         UpdateRunButtons();
         CancellationTokenSource? cancellation = null;
@@ -1086,16 +1310,38 @@ public partial class MainWindow : Window
                 ShowFromTray();
                 if (!RequireMasterPassword(forcePrompt: true)) return;
             }
-            if (_windowsLocked || _vaultLockInProgress || _exiting || !SaveAll()) return;
+            if (_windowsLocked || _vaultLockInProgress || _exiting) return;
+            if (launchRevision != _workspaceRevision)
+            {
+                _keepassMasterPassword = null;
+                AppendLog("Configuration was replaced while authorizing the run. Run again using the current settings.");
+                return;
+            }
+            if (!SaveAll()) return;
             var toRun = onlySelected
                 ? (_selected is null ? new List<WebsiteWorkflow>() : new List<WebsiteWorkflow> { _selected })
                 : workspace is not null
                     ? workspace.Resolve(_configuration).ToList()
                     : _configuration.Workflows.Where(workflow => workflow.Enabled).ToList();
             if (toRun.Count == 0) { AppendLog("No enabled workflows to run."); return; }
+            if (!WorkspaceCatalog.PendingRunIsCurrent(
+                    _configuration, toRun, onlySelected, workspace, launchRevision, _workspaceRevision) ||
+                (onlySelected && !ReferenceEquals(_selected, toRun[0])) ||
+                (workspace is not null && (!ReferenceEquals(WorkspaceCombo.SelectedItem, workspace) ||
+                    !WorkspaceCatalog.IsCurrentSelection(_configuration, workspace, WorkspaceNameBox.Text))))
+            {
+                _keepassMasterPassword = null;
+                AppendLog("Workflow selection changed before launch. Run again using the current configuration.");
+                return;
+            }
             if (toRun.Any(workflow => !AutomationAllowed(workflow))) return;
             if (!EnsureKeePassPasswordForRun(toRun)) return;
             if (_windowsLocked || _vaultLockInProgress || _exiting || !VaultDatabase.Current.IsUnlocked ||
+                !WorkspaceCatalog.PendingRunIsCurrent(
+                    _configuration, toRun, onlySelected, workspace, launchRevision, _workspaceRevision) ||
+                (onlySelected && !ReferenceEquals(_selected, toRun[0])) ||
+                (workspace is not null && (!ReferenceEquals(WorkspaceCombo.SelectedItem, workspace) ||
+                    !WorkspaceCatalog.IsCurrentSelection(_configuration, workspace, WorkspaceNameBox.Text))) ||
                 toRun.Any(workflow => !AutomationAllowed(workflow)))
             {
                 _keepassMasterPassword = null;
@@ -1343,6 +1589,7 @@ public partial class MainWindow : Window
                 try { await Task.Run(ProfileVaultService.SealAll); }
                 catch (Exception ex)
                 {
+                    if (_installerShutdownInProgress) _installerProfileSealFailed = true;
                     AppendLog("Could not seal browser profiles; source files retained: " + ex.GetType().Name);
                     if (_configuration.DiagnosticsLogEnabled) CrashLog.Write("SealProfiles", ex);
                 }
@@ -1773,10 +2020,20 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(new Action(() => _ = MaybeCheckUpdatesAsync()));
     }
 
-    private void Help_Click(object sender, RoutedEventArgs e)
+    private void OpenTutorial()
     {
-        new TutorialWindow { Owner = this }.ShowDialog();
+        if (_tutorial is { IsLoaded: true })
+        {
+            _tutorial.Activate();
+            return;
+        }
+        _tutorial = new TutorialWindow { Owner = this };
+        _tutorial.Closed += (_, _) => _tutorial = null;
+        // Show() is modeless: users can click the actual app controls while following the guide.
+        _tutorial.Show();
     }
+
+    private void Help_Click(object sender, RoutedEventArgs e) => OpenTutorial();
 
     private void MaybeShowWelcomeChecklist()
     {
@@ -1787,7 +2044,7 @@ public partial class MainWindow : Window
         _configuration.WelcomeChecklistShown = true;
         try { _store.Save(_configuration); } catch { /* ignore */ }
 
-        new TutorialWindow { Owner = this }.ShowDialog();
+        OpenTutorial();
     }
 
     private async void EnableHello_Click(object sender, RoutedEventArgs e)
@@ -2111,6 +2368,8 @@ public partial class MainWindow : Window
             // Database transaction replaces both workflows and encrypted credentials
             // atomically; partial import never corrupts existing settings.
             VaultDatabase.Current.ReplaceSnapshot(imported.Config, imported.Credentials);
+            _workspaceRevision++;
+            _keepassMasterPassword = null;
             _configuration.Workflows.Clear();
             _configuration.Workflows.AddRange(imported.Config.Workflows);
             _configuration.Workspaces.Clear();
@@ -2192,6 +2451,12 @@ public partial class MainWindow : Window
 
     private IntPtr HotkeyHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if (msg == WmGetMinMaxInfo && lParam != IntPtr.Zero)
+        {
+            ConstrainMaximizedWindowToWorkArea(hwnd, lParam);
+            handled = true;
+            return IntPtr.Zero;
+        }
         if (msg == WmHotkey && wParam.ToInt32() == HotkeyId)
         {
             handled = true;

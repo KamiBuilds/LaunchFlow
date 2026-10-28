@@ -49,6 +49,16 @@ public sealed class ConfigStore
         _temp = Clone(configuration);
     }
 
+    /// <summary>A confirmed workspace save must reach the encrypted database, never the locked-vault temp copy.</summary>
+    public void SaveDurable(Configuration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        if (!VaultDatabase.Current.IsUnlocked)
+            throw new InvalidOperationException("The encrypted vault is locked. Workspace changes were not saved.");
+        VaultDatabase.Current.SaveConfiguration(configuration);
+        _temp = null;
+    }
+
     private static Configuration Clone(Configuration source) =>
         JsonSerializer.Deserialize<Configuration>(
             JsonSerializer.Serialize(source, JsonOptions), JsonOptions)!;

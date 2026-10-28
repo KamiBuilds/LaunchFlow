@@ -230,6 +230,22 @@ Assert(removeWindow.RecordedSteps.Count == 1, "remove retains selection when pen
 removeWindow.TestCancel();
 await removeWindow.TestWaitForUpdatesAsync();
 
+var bulkWindow = new VisualRecorderWindow(page);
+bulkWindow.TestLoad();
+await WaitUntil(() => bulkWindow.TestToggleEnabled);
+await page.ClickAsync("button");
+await page.ClickAsync("button");
+await Flush(page);
+bulkWindow.TestTick();
+bulkWindow.TestSelectAll();
+Assert(bulkWindow.TestSelectedCount == 2,
+    "Select all marks every recorded action for editing or removal");
+bulkWindow.TestRemove();
+Assert(bulkWindow.RecordedSteps.Count == 0,
+    "Delete selected removes multiple captured actions without touching browser credentials");
+bulkWindow.TestCancel();
+await bulkWindow.TestWaitForUpdatesAsync();
+
 using (var scoped = new TeachRecorder(page))
 {
     await scoped.SynchronizeAsync();
@@ -336,6 +352,107 @@ using (var popupRecorder = new TeachRecorder(page))
     await popup.CloseAsync();
 }
 
+using (var safeKeyboard = new TeachRecorder(page))
+{
+    await Fixture(page, "<input id='search' type='search'><input id='email' type='email'>" +
+        "<input id='pass' type='password'><form><input id='login' type='text'>" +
+        "<input type='password'></form>");
+    await safeKeyboard.SynchronizeAsync();
+    await page.FillAsync("#search", "private-search-text");
+    await page.PressAsync("#search", "Enter");
+    await page.PressAsync("#search", "Tab");
+    await page.PressAsync("#search", "x"); // Ordinary typed characters must not be recorded.
+    await page.FillAsync("#email", "private-email");
+    await page.PressAsync("#email", "Enter");
+    await page.FillAsync("#pass", "private-password");
+    await page.PressAsync("#pass", "Enter");
+    await page.PressAsync("#login", "Enter"); // Form contains a password input.
+    await page.EvaluateAsync("() => window.__launchFlowTeachDispatchV1(JSON.stringify({type:'Press',id:'fake',epoch:0,target:'private-password'}))");
+    await Flush(page);
+    var actions = safeKeyboard.DrainActions();
+    Assert(actions.Count == 2 && actions.All(a => a.Type == "Press") &&
+        actions[0].Target == "Enter" && actions[1].Target == "Tab",
+        "recorder captures safe search/navigation keys but ignores typed, email and password form keystrokes");
+    Assert(!string.Join(" ", actions.Select(a => a.Target)).Contains("private-"),
+        "keyboard events never store typed text or credential values");
+}
+
+using (var guardedKeys = new TeachRecorder(page))
+{
+    await Fixture(page, """
+      <button id="first">First</button><button id="second">Second</button>
+      <div id="open"></div><div id="closed"></div>
+      <form id="account" onsubmit="return false"></form>
+      <input id="externalSearch" type="search" form="account">
+      <input id="externalPass" type="password" form="account">
+      <button id="externalButton" type="button" form="account">External control</button>
+      <form id="payment" autocomplete="cc-number"></form>
+      <button id="externalPayment" form="payment">External payment</button>
+      <input id="billing" autocomplete="cc-number">
+      <input id="user" autocomplete="username">
+      """);
+    await guardedKeys.SynchronizeAsync();
+    await page.FocusAsync("#first");
+    await page.Keyboard.PressAsync("Tab");
+    await page.Keyboard.PressAsync("Escape");
+    await page.Keyboard.PressAsync("ArrowRight");
+    await Flush(page);
+    var buttons = guardedKeys.DrainActions();
+    Assert(buttons.Select(a => a.Target).SequenceEqual(new[] { "Tab", "Escape", "ArrowRight" }) &&
+        buttons.All(a => a.Type == "Press"),
+        "Tab Escape and arrow-key navigation on ordinary buttons are not discarded");
+    await page.FocusAsync("#second");
+    await page.Keyboard.PressAsync("Shift+Tab");
+    await Flush(page);
+    Assert(guardedKeys.DrainActions().Count == 0 && guardedKeys.UnsupportedTargetObserved,
+        "Shift+Tab is refused explicitly, never replayed as forward Tab");
+    await page.EvaluateAsync("""
+      () => {
+        for (const mode of ['open','closed']) {
+          const shadow = document.querySelector('#'+mode).attachShadow({mode});
+          shadow.innerHTML = '<input type="password" id="secret"><input autocomplete="one-time-code" id="otp">';
+          if (mode === 'closed') window.__closedTestRoot = shadow;
+        }
+      }
+      """);
+    foreach (var kind in new[] { "open", "closed" })
+    {
+        var frame = page.Locator("#" + kind);
+        await frame.EvaluateAsync("host => { const secret = host.shadowRoot?.querySelector('input[type=password]'); if (secret) secret.focus(); }");
+        if (kind == "open")
+            await page.Keyboard.PressAsync("Enter");
+        else
+        {
+            // Closed-root focus is a real trusted user key event retargeted to its host.
+            await page.EvaluateAsync("() => window.__closedTestRoot.querySelector('#secret').focus()");
+            await page.Keyboard.PressAsync("Enter");
+            await page.EvaluateAsync("() => window.__closedTestRoot.querySelector('#otp').focus()");
+            await page.Keyboard.PressAsync("Enter");
+        }
+    }
+    await page.PressAsync("#externalSearch", "Enter");
+    await page.PressAsync("#billing", "Enter");
+    await page.PressAsync("#user", "Enter");
+    // Isolate owner-based key capture from implicit HTML form submission first.
+    // A separate regression below verifies the actual trusted submit click.
+    await page.FocusAsync("#externalButton");
+    await page.Keyboard.PressAsync("ArrowRight");
+    await page.FocusAsync("#externalPayment");
+    await page.Keyboard.PressAsync("ArrowRight");
+    await Flush(page);
+    var forbiddenActions = guardedKeys.DrainActions();
+    Assert(forbiddenActions.Count == 0,
+        "shadow-host, external-password-form, billing and username keystrokes never enter recorder; recorded actions=" +
+        string.Join(",", forbiddenActions.Select(action => action.Type + ":" + action.Target)));
+    // In Chromium, Enter in an input implicitly activates an associated submit
+    // button with a trusted Click. Credential forms must reject that as well.
+    await page.EvaluateAsync("() => { document.querySelector('#externalButton').type = 'submit'; }");
+    await page.PressAsync("#externalSearch", "Enter");
+    await page.ClickAsync("#externalButton");
+    await Flush(page);
+    Assert(guardedKeys.DrainActions().Count == 0,
+        "implicit Enter submission and pointer clicks on a password form are not recorded");
+}
 var concurrent = Enumerable.Range(0, 8).Select(_ => new TeachRecorder(page)).ToArray();
 await Task.WhenAll(concurrent.Select(s => s.SynchronizeAsync()));
 await Fixture(page, "<button>Keyboard</button>");

@@ -139,6 +139,8 @@ var tests = new List<(string Name, Action Body)>
         Check(!profile.Resolve(config).Any(), "null workflow IDs must resolve empty");
     })
 };
+tests.AddRange(WorkspaceCatalogTests.Cases());
+
 var failed = 0;
 foreach (var test in tests)
 {
