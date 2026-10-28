@@ -1,3 +1,13 @@
+# v0.7.25 — Explicit-exit and editor-lifecycle hardening (development preview)
+
+- Prevent tray Exit and normal window Exit from losing pending edits while the encrypted vault is locked or a durable write fails. Clean locked vaults still exit without prompting.
+- Keep LaunchFlow open if a New Website wizard, Step Editor or Teach recording remains active during a requested exit or automatic installer shutdown.
+- Require durable encrypted configuration persistence before displaying credential-save success, and track duplicated website workflows as unsaved until saved.
+- Add production-linked exit-safety scenarios and a UI credential-save durable-write regression, plus Windows source contracts.
+- Updated the app, installer and unsigned CI test artifact version to 0.7.25. The AppId, database/vault schema, profile formats and updater policy remain unchanged.
+
+**Release status:** Developer preview only. Real Windows WPF dialogs, 10-minute session lock, DPI/physical monitors, DPAPI, encrypted SQLite import/restart, and installer upgrade/rollback remain native verification gates. CI and cross-builds are not release authorization.
+
 # v0.7.24 — Independent review P0 repairs (development preview)
 
 - **Data-loss prevention:** Automatic installer shutdown refuses exit if unsaved edits exist and the vault is locked. A clean locked vault can still exit; unlocked configuration must be durably saved before automatic exit.
