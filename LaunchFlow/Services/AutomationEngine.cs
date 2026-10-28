@@ -664,14 +664,11 @@ public sealed partial class AutomationEngine : IAsyncDisposable
     private static async Task ExecuteElementActionAsync(IPage page, WorkflowStep step, CancellationToken ct)
     {
         // Resolve once, then authorize the document owning that element. Navigation cannot retarget this handle.
-        // SPAs may render action targets after navigation. Wait for a visible element
-        // rather than failing immediately; re-authorize the resolved document below.
-        await page.Locator(step.Target).First.WaitForAsync(
-            new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = 45_000 })
+        // Playwright's normal locator wait handles most delayed elements.
+        // Extra waits belong in an explicit Wait step so broken selectors
+        // do not silently stall every website for an additional 45 seconds.
+        await using var element = await page.Locator(step.Target).First.ElementHandleAsync()
             .WaitAsync(ct).ConfigureAwait(false);
-        ct.ThrowIfCancellationRequested();
-        RequireAutomationUrl(page.Url);
-        await using var element = await page.Locator(step.Target).First.ElementHandleAsync().WaitAsync(ct).ConfigureAwait(false);
         if (element is null) throw new InvalidOperationException("Workflow action target is unavailable.");
         ct.ThrowIfCancellationRequested();
         var url = await element.EvaluateAsync<string>("""
