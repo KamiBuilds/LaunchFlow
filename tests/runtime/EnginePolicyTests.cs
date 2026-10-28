@@ -18,6 +18,7 @@ internal static class EnginePolicyTests
         await BlockedConfiguredUrlsAsync(browser);
         await InitialRedirectAsync(browser);
         await CredentialFlagsAsync(browser);
+        await NoLoginPageAsync(browser);
         await HttpsCredentialDocumentAsync(browser);
         await CredentialFramePolicyAsync(browser);
         await ApprovalRevocationAsync(browser);
@@ -30,6 +31,23 @@ internal static class EnginePolicyTests
         await RecordedFrameTargetAsync(browser);
         await FillResolutionRevocationAsync(browser);
         await FillResolutionCancellationAsync(browser);
+    }
+
+    private static async Task NoLoginPageAsync(IBrowser browser)
+    {
+        await using var fixture = await Fixture.CreateAsync(browser);
+        fixture.Workflow.AutoLogin = true; // Legacy configurations may retain this flag.
+        fixture.Workflow.LoginMode = "None";
+        fixture.Workflow.LoginSuccessSelector = "";
+        fixture.Workflow.Steps.Add(new() { Type = "Click", Target = "#followup" });
+        await fixture.Page.SetContentAsync("<h1>Verification dashboard</h1><input type='password'>" +
+            "<button id='followup' onclick=\"document.body.dataset.followed='yes'\">Continue</button>");
+        EngineBehaviorTests.Check((await LoginHealth.InspectAsync(fixture.Page)).NeedsAttention,
+            "synthetic page must trigger login heuristics for this no-login regression");
+        var result = await fixture.Engine.RunAsync(new[] { fixture.Workflow }, CancellationToken.None);
+        EngineBehaviorTests.Check(result.FailedCount == 0 && result.LoginNeedsAttention.Count == 0 &&
+            await fixture.Page.GetAttributeAsync("body", "data-followed") == "yes",
+            "explicit No login required skips sign-in health/repair but executes configured steps");
     }
 
     private static async Task AdmissionAsync()
