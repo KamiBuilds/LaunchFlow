@@ -39,6 +39,8 @@ public partial class MainWindow : Window
     private bool _runStatusActive;
     private bool _vaultLockInProgress;
     private bool _vaultCleanupFailed;
+    private bool _installerShutdownInProgress;
+    private bool _installerProfileSealFailed;
     private bool _monitorSelectionChanged;
     private long _workspaceRevision;
     private Task _vaultLockTask = Task.CompletedTask;
@@ -293,12 +295,44 @@ public partial class MainWindow : Window
         _ = SecureVaultLockAsync("Unexpected UI error: vault locked; browser cleanup is best effort.");
     }
 
-    internal void RequestShutdownForBuild()
+    internal void RequestShutdownForBuild() => _ = RequestShutdownForInstallAsync();
+
+    internal async Task RequestShutdownForInstallAsync()
     {
-        // Stop automation and close LaunchFlow before installing a new build.
-        _runCancellation?.Cancel();
-        _unlockCancellation?.Cancel();
-        ExitFromTray();
+        if (_installerShutdownInProgress || _exiting) return;
+        _installerShutdownInProgress = true;
+        _installerProfileSealFailed = false;
+        try
+        {
+            // Do not allow the installer to replace running binaries until configuration,
+            // browser sessions and profile ownership have been handled by the application.
+            _unlockCancellation?.Cancel();
+            _runCancellation?.Cancel();
+            UpdateRunButtons();
+            if (VaultDatabase.Current.IsUnlocked && !SaveAll())
+                throw new InvalidOperationException("Save your unsaved changes before upgrading.");
+            await SecureVaultLockAsync("Installer requested shutdown; vault locked before replacing application files.");
+            if (_vaultCleanupFailed || _vaultLockInProgress || _installerProfileSealFailed)
+                throw new InvalidOperationException(
+                    "Browser or encrypted-profile cleanup is incomplete. LaunchFlow was kept open to protect your data.");
+            _exiting = true;
+            UpdateRunButtons();
+            Close();
+        }
+        catch (Exception ex)
+        {
+            ShowFromTray();
+            MessageBox.Show(this, ex.Message,
+                "LaunchFlow update paused", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            if (!_exiting)
+            {
+                _installerShutdownInProgress = false;
+                UpdateRunButtons();
+            }
+        }
     }
 
     private static void AppendLog(string message)
@@ -1392,6 +1426,7 @@ public partial class MainWindow : Window
                 try { await Task.Run(ProfileVaultService.SealAll); }
                 catch (Exception ex)
                 {
+                    if (_installerShutdownInProgress) _installerProfileSealFailed = true;
                     AppendLog("Could not seal browser profiles; source files retained: " + ex.GetType().Name);
                     if (_configuration.DiagnosticsLogEnabled) CrashLog.Write("SealProfiles", ex);
                 }
