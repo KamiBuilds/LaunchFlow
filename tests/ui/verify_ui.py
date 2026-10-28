@@ -27,7 +27,23 @@ required = {"MainTabs", "WorkflowsNav", "PasswordsNav", "SettingsNav",
             "WorkflowList", "WorkflowEditorScroll", "WorkspaceCombo",
             "WorkspaceNameBox", "SaveWorkspaceButton", "RunWorkspaceButton",
             "WorkflowStatusLabel", "HeaderVersionLabel", "CurrentVersionLabel"}
-check(required.issubset(named), "navigation and workspace controls retained")
+check(required.issubset(named), "website navigation and legacy workspace compatibility controls retained")
+legacy = named.get("LegacyWorkspacePanel")
+check(legacy is not None and legacy.get("Visibility") == "Collapsed" and
+      legacy.get("IsHitTestVisible") == "False" and
+      legacy.get("Focusable") == "False" and
+      {child.get(xns + "Name") for child in legacy.iter() if child.get(xns + "Name")} >=
+      {"WorkspaceCombo", "WorkspaceNameBox", "SaveWorkspaceButton",
+       "PreviewWorkspaceButton", "RunWorkspaceButton"},
+      "workspace profile controls are inaccessible and hidden while legacy profile data remains usable")
+markup = ET.tostring(ui, encoding="unicode")
+check('Text="YOUR WEBSITES"' in markup and
+      'Content="+ New website"' in markup and
+      'Content="▶ Run all"' in markup and
+      'Text="New / existing name"' not in markup and
+      'Text="Saved workspace"' not in markup and
+      'Text="Everything ready for your next shift."' not in markup,
+      "website list and Run all form the only visible workflow-management experience")
 selector = named.get("WorkspaceCombo")
 check(selector is not None and selector.get("IsEditable") == "False"
       and selector.get("DisplayMemberPath") == "Name"
@@ -74,6 +90,7 @@ check(wizard_named["AutoLoginCheck"].get("IsChecked") == "False" and
       (root / "LaunchFlow/NewWorkflowWindow.xaml.cs").read_text(encoding="utf-8"),
       "new local websites default to explicit No login required without credential prompts")
 check('Content="No login required' in ET.tostring(ui, encoding="unicode") and
+      'WorkflowsNav.Content = Text("Websites");' in source and
       'SaveWorkspaceButton.Content = Text("Save");' in source and
       'PreviewWorkspaceButton.Content = Text("Preview");' in source,
       "existing website login modes are clear and workspace actions avoid clipping")
@@ -98,9 +115,9 @@ csproj = ET.parse(root / "LaunchFlow/LaunchFlow.csproj")
 version = csproj.findtext("./PropertyGroup/Version")
 iss = (root / "installer/LaunchFlow.iss").read_text(encoding="utf-8")
 info = (root / "LaunchFlow/Services/AppInfo.cs").read_text(encoding="utf-8")
-check(version == "0.7.21" and f'#define AppVersion "{version}"' in iss
+check(version == "0.7.22" and f'#define AppVersion "{version}"' in iss
       and f'return v is null ? "{version}"' in info,
-      "assembly, installer and fallback version match 0.7.21")
+      "assembly, installer and fallback version match 0.7.22")
 check("https://api.github.com/repos/KamiBuilds/LaunchFlow/releases/latest" in info,
       "updater still targets published stable GitHub releases")
 print(f"{len(errors)} visual/release contract errors")
