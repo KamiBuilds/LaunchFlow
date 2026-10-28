@@ -11,6 +11,7 @@ public static class LocalizationService
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["Workflows"] = "Workflows",
+            ["Websites"] = "Websites",
             ["Passwords"] = "Wachtwoorden",
             ["Settings"] = "Instellingen",
             ["Save workspace"] = "Werkruimte opslaan",
