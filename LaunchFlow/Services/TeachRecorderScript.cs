@@ -43,25 +43,66 @@ internal static class TeachRecorderScript
               void window.__launchFlowTeachDispatchV1(JSON.stringify({type:'Click',id:session.id,epoch:session.epoch,target:selector})).catch(() => {});
             }
           };
-          // Record a small allowlist of non-text keyboard commands only.
-          // Never read a field's value or record keystrokes from login, OTP,
-          // payment, password or sensitive autocomplete forms.
+          // Keep it simple: record only named non-text keys on ordinary, top-level
+          // native controls. Fail closed for shadow-root retargeting (including
+          // closed roots), arbitrary custom elements and credential-bearing forms.
           const safeKeys = new Set(['Enter','Tab','Escape','ArrowUp','ArrowDown','ArrowLeft','ArrowRight']);
+          const sensitiveHints = /(password|username|email|one-time-code|cc-|otp|token|webauthn|payment|card|address|name|tel)/i;
+          const sensitive = input => {
+            const kind = (input.getAttribute('type') || 'text').toLowerCase();
+            const hint = input.getAttribute('autocomplete') || '';
+            const name = input.getAttribute('name') || '';
+            const id = input.getAttribute('id') || '';
+            return ['password','email','tel','hidden','number'].includes(kind) ||
+              sensitiveHints.test(hint) || sensitiveHints.test(name) || sensitiveHints.test(id);
+          };
+          const hasSensitiveFields = form =>
+            form && [...form.elements].some(field =>
+              field instanceof Element && (sensitive(field) ||
+                field.matches('input[type="password"],input[type="email"],[autocomplete*="password"],[autocomplete="one-time-code"]')));
+          const unsupported = () => {
+            for (const session of sessions)
+              void window.__launchFlowTeachDispatchV1(JSON.stringify({
+                type:'Unsupported',id:session.id,epoch:session.epoch
+              })).catch(() => {});
+          };
           document.addEventListener('keydown', event => {
-            if (!event.isTrusted || event.repeat || event.isComposing || event.ctrlKey ||
-                event.altKey || event.metaKey || !sessions.length || !safeKeys.has(event.key)) return;
+            if (!event.isTrusted || event.repeat || event.isComposing ||
+                !sessions.length || !safeKeys.has(event.key)) return;
+            // A modified key is not the unmodified command: never serialize
+            // Shift+Tab as Tab. Show the unsupported warning instead.
+            if (event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) {
+              unsupported();
+              return;
+            }
             const target = event.target;
             if (!(target instanceof Element)) return;
-            if (target.closest('button,a,[role="button"],[role="link"]')) return; // Enter already creates a click.
-            const form = target.closest('form');
-            const input = target.closest('input,textarea,[contenteditable],[role="textbox"]');
-            if (input) {
-              const type = (input.getAttribute('type') || 'text').toLowerCase();
-              const hint = (input.getAttribute('autocomplete') || '').toLowerCase();
-              if (['password','email','tel','hidden','number'].includes(type) ||
-                  /(password|username|email|one-time-code|cc-|otp|token)/.test(hint)) return;
+            const path = event.composedPath();
+            if (target.getRootNode() !== document ||
+                path.some(node => node instanceof ShadowRoot) ||
+                target.shadowRoot || target.localName.includes('-')) {
+              unsupported();
+              return;
             }
-            if (form && form.querySelector('input[type="password"],input[type="email"],[autocomplete*="password"],[autocomplete="one-time-code"]')) return;
+            // Closed shadow roots retarget to their host. Only known native
+            // controls at the document root are eligible; unknown hosts are denied.
+            if (!target.matches('button,a,select,summary,input,textarea,body')) {
+              unsupported();
+              return;
+            }
+            // Enter on buttons/links naturally emits a trusted click, which
+            // the click recorder already captures. Other keys must not be lost.
+            if (event.key === 'Enter' &&
+                target.closest('button,a,[role="button"],[role="link"]')) return;
+            const input = target.closest('input,textarea,[contenteditable],[role="textbox"]');
+            const form = (input && 'form' in input ? input.form : null) ||
+              target.closest('form');
+            if ((input && (sensitive(input) ||
+                input.matches('[contenteditable],[role="textbox"]'))) ||
+                hasSensitiveFields(form)) {
+              unsupported();
+              return;
+            }
             for (const session of sessions)
               void window.__launchFlowTeachDispatchV1(JSON.stringify({
                 type:'Press',id:session.id,epoch:session.epoch,target:event.key
