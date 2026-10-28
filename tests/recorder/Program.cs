@@ -377,6 +377,60 @@ using (var safeKeyboard = new TeachRecorder(page))
         "keyboard events never store typed text or credential values");
 }
 
+using (var guardedKeys = new TeachRecorder(page))
+{
+    await Fixture(page, """
+      <button id="first">First</button><button id="second">Second</button>
+      <div id="open"></div><div id="closed"></div>
+      <form id="account"></form>
+      <input id="externalSearch" type="search" form="account">
+      <input id="externalPass" type="password" form="account">
+      <input id="billing" autocomplete="cc-number">
+      <input id="user" autocomplete="username">
+      """);
+    await guardedKeys.SynchronizeAsync();
+    await page.FocusAsync("#first");
+    await page.Keyboard.PressAsync("Tab");
+    await page.Keyboard.PressAsync("Escape");
+    await page.Keyboard.PressAsync("ArrowRight");
+    await Flush(page);
+    var buttons = guardedKeys.DrainActions();
+    Assert(buttons.Select(a => a.Target).SequenceEqual(new[] { "Tab", "Escape", "ArrowRight" }) &&
+        buttons.All(a => a.Type == "Press"),
+        "Tab Escape and arrow-key navigation on ordinary buttons are not discarded");
+    await page.FocusAsync("#second");
+    await page.Keyboard.PressAsync("Shift+Tab");
+    await Flush(page);
+    Assert(guardedKeys.DrainActions().Count == 0 && guardedKeys.UnsupportedTargetObserved,
+        "Shift+Tab is refused explicitly, never replayed as forward Tab");
+    await page.EvaluateAsync("""
+      () => {
+        for (const mode of ['open','closed']) {
+          const shadow = document.querySelector('#'+mode).attachShadow({mode});
+          shadow.innerHTML = '<input type="password" id="secret"><input autocomplete="one-time-code" id="otp">';
+        }
+      }
+      """);
+    foreach (var kind in new[] { "open", "closed" })
+    {
+        var frame = page.Locator("#" + kind);
+        await frame.EvaluateAsync("host => { const secret = host.shadowRoot?.querySelector('input[type=password]'); if (secret) secret.focus(); }");
+        if (kind == "open")
+            await page.Keyboard.PressAsync("Enter");
+        else
+        {
+            // Closed-root focus is a real trusted user key event retargeted to its host.
+            await page.EvaluateAsync("() => document.querySelector('#closed').focus()");
+            await page.Keyboard.PressAsync("Enter");
+        }
+    }
+    await page.PressAsync("#externalSearch", "Enter");
+    await page.PressAsync("#billing", "Enter");
+    await page.PressAsync("#user", "Enter");
+    await Flush(page);
+    Assert(guardedKeys.DrainActions().Count == 0,
+        "shadow-host, external-password-form, billing and username keystrokes never enter recorder");
+}
 var concurrent = Enumerable.Range(0, 8).Select(_ => new TeachRecorder(page)).ToArray();
 await Task.WhenAll(concurrent.Select(s => s.SynchronizeAsync()));
 await Fixture(page, "<button>Keyboard</button>");
