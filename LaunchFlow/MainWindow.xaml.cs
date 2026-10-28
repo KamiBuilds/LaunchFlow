@@ -176,6 +176,20 @@ public partial class MainWindow : Window
         EnabledCheck.Unchecked += (_, _) => MarkUnsavedChanges();
         BrowserCombo.SelectionChanged += (_, _) => MarkUnsavedChanges();
         MonitorCombo.SelectionChanged += (_, _) => MarkUnsavedChanges();
+        foreach (var input in new[] { UsernameContinueBox, PasswordOriginBox,
+            UsernameSelectorBox, PasswordSelectorBox, SubmitSelectorBox,
+            CredentialOriginBox, LoginSuccessSelectorBox, LoginSuccessUrlBox,
+            LoginWaitBox, DelayBox, VaultTimeoutBox, ShortcutBox,
+            KeePassDbBox, KeePassKeyBox, UpdateFeedBox })
+            input.TextChanged += (_, _) => MarkUnsavedChanges();
+        foreach (var toggle in new[] { AutoLoginCheck, StartupCheck, UnlockCheck,
+            LaunchCheck, TrayCheck, NotifyCheck, SealProfilesCheck, TaskSchedulerCheck })
+        {
+            toggle.Checked += (_, _) => MarkUnsavedChanges();
+            toggle.Unchecked += (_, _) => MarkUnsavedChanges();
+        }
+        LoginModeCombo.SelectionChanged += (_, _) => MarkUnsavedChanges();
+        LanguageCombo.SelectionChanged += (_, _) => MarkUnsavedChanges();
 
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Open LaunchFlow", null, (_, _) => Dispatcher.Invoke(ShowFromTray));
@@ -564,7 +578,7 @@ public partial class MainWindow : Window
 
     private void MarkUnsavedChanges()
     {
-        if (_loadingEditor || _selected is null || _configuration is null || _exiting) return;
+        if (_loadingEditor || _configuration is null || _exiting) return;
         _hasUnsavedChanges = true;
         SaveStatusLabel.Text = "Unsaved changes";
         SaveStatusLabel.Foreground = new System.Windows.Media.SolidColorBrush(
@@ -629,7 +643,7 @@ public partial class MainWindow : Window
                         throw new ArgumentException($"{w.Name}: Trusted password page must use HTTPS.");
                 }
             }
-            _store.Save(_configuration);
+            _store.SaveDurable(_configuration);
             MarkSaved();
             try
             {
@@ -1174,7 +1188,7 @@ public partial class MainWindow : Window
             throw;
         }
         if (_selected?.Id == original.Id) RefreshSteps();
-        MarkSaved();
+        if (!_hasUnsavedChanges) MarkSaved();
         AppendLog($"Saved {recorder.RecordedSteps.Count} taught action(s) for '{original.Name}'.");
     }
 
