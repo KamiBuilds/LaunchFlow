@@ -1,3 +1,15 @@
+# v0.7.21 — No-login workflows, safer installer updates and workspace UI (development preview)
+
+- New workflows default to **No login required**, avoiding incorrect MFA/sign-in prompts on local dashboards; saved-credential login remains an explicit choice.
+- Added regression coverage for no-login pages whose content contains verification keywords.
+- Made workspace Save/Preview labels fit the narrow sidebar.
+- Added a graceful installer shutdown request and fail-closed cleanup before replacing application files. Previously installed builds may still need one manual close on their first update.
+- Retained workspace import/revision validation, durable saves, encrypted-vault safety and regression gates from the preceding development branch.
+
+**Development build policy:** Every new test installer delivered to the user gets a higher patch version (next build after v0.7.21 is v0.7.22). Multiple internal commits may share a version until that build is delivered; all version surfaces and artifacts must agree. A development preview is not a published GitHub release and will not appear in the in-app stable updater.
+
+**Release status:** Experimental, not release-approved. Native Windows shutdown, UI scaling and real-profile restore/upgrade acceptance are still required.
+
 # v0.7.20 — Workspace UI refresh and selection fixes (testing build)
 
 - Redesigned the main window with clearer navigation, compact workflow actions, improved visual hierarchy and a consistent dark teal theme.
