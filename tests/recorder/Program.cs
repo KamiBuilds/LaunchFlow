@@ -440,8 +440,10 @@ using (var guardedKeys = new TeachRecorder(page))
     await page.FocusAsync("#externalPayment");
     await page.Keyboard.PressAsync("ArrowRight");
     await Flush(page);
-    Assert(guardedKeys.DrainActions().Count == 0,
-        "shadow-host, external-password-form, billing and username keystrokes never enter recorder");
+    var forbiddenActions = guardedKeys.DrainActions();
+    Assert(forbiddenActions.Count == 0,
+        "shadow-host, external-password-form, billing and username keystrokes never enter recorder; recorded actions=" +
+        string.Join(",", forbiddenActions.Select(action => action.Type + ":" + action.Target)));
 }
 var concurrent = Enumerable.Range(0, 8).Select(_ => new TeachRecorder(page)).ToArray();
 await Task.WhenAll(concurrent.Select(s => s.SynchronizeAsync()));
