@@ -14,6 +14,7 @@ public sealed class TeachRecorder : IDisposable
     private readonly IPage _page;
     private readonly Queue<string> _pending = new();
     private readonly Queue<string> _pendingKeys = new();
+    private readonly Queue<(string Type, string Target)> _pendingActions = new();
     // Keep provenance after Drain so a live host restriction can revoke already displayed clicks too.
     private readonly HashSet<string> _acceptedUrls = new(StringComparer.Ordinal);
     private readonly string _id = Guid.NewGuid().ToString("N");
@@ -55,6 +56,7 @@ public sealed class TeachRecorder : IDisposable
             _epoch++;
             _pending.Clear();
             _pendingKeys.Clear();
+            _pendingActions.Clear();
             _acceptedUrls.Clear();
             _bridge.Revision++;
             return false;
@@ -88,6 +90,20 @@ public sealed class TeachRecorder : IDisposable
         }
     }
 
+    public IReadOnlyList<(string Type, string Target)> DrainActions()
+    {
+        lock (_bridge.Gate)
+        {
+            if (!CheckPolicy()) return Array.Empty<(string, string)>();
+            var result = _pendingActions.ToArray();
+            _pendingActions.Clear();
+            _pending.Clear();
+            _pendingKeys.Clear();
+            _pendingActions.Clear();
+            return result;
+        }
+    }
+
     public IReadOnlyList<string> DrainKeys()
     {
         lock (_bridge.Gate)
@@ -106,6 +122,7 @@ public sealed class TeachRecorder : IDisposable
             if (!CheckPolicy()) return Array.Empty<string>();
             var result = _pending.ToArray();
             _pending.Clear();
+            _pendingActions.Clear();
             return result;
         }
     }
@@ -119,6 +136,7 @@ public sealed class TeachRecorder : IDisposable
             _active = false;
             _pending.Clear();
             _pendingKeys.Clear();
+            _pendingActions.Clear();
             _acceptedUrls.Clear();
             _bridge.Sessions.Remove(_id);
             _bridge.Revision++;
@@ -182,11 +200,13 @@ public sealed class TeachRecorder : IDisposable
                             {
                                 session._acceptedUrls.Add(source.Frame.Url);
                                 session._pending.Enqueue(target!);
+                                session._pendingActions.Enqueue(("Click", target!));
                             }
                             else if (type == "Press")
                             {
                                 session._acceptedUrls.Add(source.Frame.Url);
                                 session._pendingKeys.Enqueue(target!);
+                                session._pendingActions.Enqueue(("Press", target!));
                             }
                         }
                     }
