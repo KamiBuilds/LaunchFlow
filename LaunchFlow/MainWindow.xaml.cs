@@ -1112,8 +1112,14 @@ public partial class MainWindow : Window
                 ShowFromTray();
                 if (!RequireMasterPassword(forcePrompt: true)) return;
             }
-            if (_windowsLocked || _vaultLockInProgress || _exiting ||
-                launchRevision != _workspaceRevision || !SaveAll()) return;
+            if (_windowsLocked || _vaultLockInProgress || _exiting) return;
+            if (launchRevision != _workspaceRevision)
+            {
+                _keepassMasterPassword = null;
+                AppendLog("Configuration was replaced while authorizing the run. Run again using the current settings.");
+                return;
+            }
+            if (!SaveAll()) return;
             var toRun = onlySelected
                 ? (_selected is null ? new List<WebsiteWorkflow>() : new List<WebsiteWorkflow> { _selected })
                 : workspace is not null
@@ -2154,6 +2160,7 @@ public partial class MainWindow : Window
             // atomically; partial import never corrupts existing settings.
             VaultDatabase.Current.ReplaceSnapshot(imported.Config, imported.Credentials);
             _workspaceRevision++;
+            _keepassMasterPassword = null;
             _configuration.Workflows.Clear();
             _configuration.Workflows.AddRange(imported.Config.Workflows);
             _configuration.Workspaces.Clear();
