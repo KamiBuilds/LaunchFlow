@@ -546,8 +546,22 @@ public sealed partial class AutomationEngine : IAsyncDisposable
             return count > 0 ? await locator.First.ElementHandleAsync().ConfigureAwait(false) : null;
         }
 
-        var element = await VisibleFirstAsync().ConfigureAwait(false);
-        if (element is not null) return element;
+        // Preserve the original one-time QuerySelector handle for immediately
+        // available fields. It is also the policy/cancellation enforcement seam
+        // tested for post-fill revocation. Never replace this handle before fill.
+        var first = await page.QuerySelectorAsync(selector).ConfigureAwait(false);
+        if (first is not null)
+        {
+            if (await first.IsVisibleAsync().ConfigureAwait(false) &&
+                await first.IsEnabledAsync().ConfigureAwait(false)) return first;
+            var alternate = await VisibleFirstAsync().ConfigureAwait(false);
+            if (alternate is not null)
+            {
+                await first.DisposeAsync().ConfigureAwait(false);
+                return alternate;
+            }
+            return first;
+        }
 
         // Locator waits may outlive a cancellation, but never carry a password.
         // Validate the original document identity before returning any handle.
@@ -564,7 +578,7 @@ public sealed partial class AutomationEngine : IAsyncDisposable
         {
             return null;
         }
-        element = await VisibleFirstAsync().ConfigureAwait(false);
+        var element = await VisibleFirstAsync().ConfigureAwait(false);
         if (element is null) return null;
         try
         {
