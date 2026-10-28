@@ -3,7 +3,7 @@
 **Branch:** `chatgpt-next`  
 **Base:** `both-3` at `25df42a7e2ce844b47a716891e214283ff4c1983`  
 **Hermes's separate branch:** `hermes-next`  
-**Application version:** `0.7.23` development preview (no release authorized)  
+**Application version:** `0.7.24` development preview (no release authorized)  
 **Integration status:** Development changes; native interactive Windows verification still required.
 
 ## 1. Division of ownership
@@ -103,6 +103,18 @@ After a colleague's usability review, ChatGPT implemented on chatgpt-next:
 
 Preserve existing Hermes session-generation, profile safety and encrypted compatibility changes when integrating; don't blanket-merge MainWindow.xaml.cs. **No release authorized.**
 
+## 2F. Hermes independent P0 report on 7fc2453 and v0.7.24 repair
+
+Hermes independently reported **CHANGES REQUESTED** against v0.7.23 at SHA 7fc2453 despite green exact-SHA CI. Findings:
+
+1. Locked vault plus unsaved website/action edits allowed the automatic installer close to silently discard changes. In v0.7.24, installer shutdown refuses exit for dirty locked vaults, requires successful durable save while unlocked and validates state again after profile cleanup. A clean locked vault can exit. Explicit tray exit semantics have not been changed in this patch.
+2. A modal Step Editor could apply its result into imported replacement workflow data. In v0.7.24, Add/Edit Page/Action capture target identity and revision, and Edit additionally requires unchanged step reference and index. Production WorkflowEditGuard is linked into maintained workspace tests, covering same-GUID imports, reordering, stale selections.
+3. Recorder previously discarded navigation keys on buttons and recorded Shift+Tab as Tab. V0.7.24 suppresses **only Enter** on native buttons/links (the browser emits a Click); unmodified Tab/Escape/arrow keys are captured. Unsupported modifiers are rejected with a visible warning.
+4. Shadow-root and form-associated password/OTP fields could still emit non-secret Press actions. JS now fail-closes for shadow-root event paths, non-native retargeted hosts, username/payment autocomplete, external form-associated password fields and credential-bearing forms. Native bridge continues strict Press allowlisting. This is a prohibited-context capture repair; no literal secret capture was reproduced.
+5. Manual KeePass entry path now marks the app as unsaved.
+
+**Please independently replay the original provided fixtures against exact v0.7.24 SHA:** installer locked-dirty, modal encrypted import, real browser click/Tab/Enter, Shift+Tab, closed/open shadow password+OTP, external form-associated passwords and dirty KeePass UI. Check cold encrypted SQLite, engine dispatch count, UI notifications and native WPF. Do not confuse CI PASS with independent approval. Native Windows and full integration gates remain.
+
 ## 3. Hermes: highest-priority follow-up work
 
 ### P0: lock/unlock and credential lifetime
@@ -135,7 +147,7 @@ Preserve existing Hermes session-generation, profile safety and encrypted compat
 
 ### P1: release gates
 
-- Per user request, increment the patch version for **every user-facing test build** (currently `0.7.23`; next deliverable `0.7.24`). Keep it synchronized across project, installer, AppInfo fallback, CI/UI regression expectations, changelog and artifact names. Version bumps do not authorize a release.
+- Per user request, increment the patch version for **every user-facing test build** (currently `0.7.24`; next deliverable `0.7.25`). Keep it synchronized across project, installer, AppInfo fallback, CI/UI regression expectations, changelog and artifact names. Version bumps do not authorize a release.
 - A branch commit does not trigger installed-client updates. Only a newer **published** GitHub Release is considered by the updater.
 - Never publish a stable release, replace existing vault files or change the installer AppId without approval.
 
