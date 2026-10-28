@@ -144,7 +144,8 @@ public partial class MainWindow : Window
         WorkflowsNav.Content = Text("Workflows");
         PasswordsNav.Content = Text("Passwords");
         SettingsNav.Content = Text("Settings");
-        SaveWorkspaceButton.Content = Text("Save workspace");
+        SaveWorkspaceButton.Content = Text("Save");
+        PreviewWorkspaceButton.Content = Text("Preview");
         RunWorkspaceButton.Content = "▶ " + Text("Run workspace");
         RunAllButton.Content = "▶ " + Text("Run all");
         StopButton.Content = "■ " + Text("Stop");
