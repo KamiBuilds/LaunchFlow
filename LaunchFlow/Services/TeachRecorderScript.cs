@@ -99,7 +99,7 @@ internal static class TeachRecorderScript
               target.closest('form');
             if ((input && (sensitive(input) ||
                 input.matches('[contenteditable],[role="textbox"]'))) ||
-                hasSensitiveFields(form)) {
+                (form && sensitive(form)) || hasSensitiveFields(form)) {
               unsupported();
               return;
             }
