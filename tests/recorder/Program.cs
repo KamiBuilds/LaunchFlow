@@ -230,6 +230,22 @@ Assert(removeWindow.RecordedSteps.Count == 1, "remove retains selection when pen
 removeWindow.TestCancel();
 await removeWindow.TestWaitForUpdatesAsync();
 
+var bulkWindow = new VisualRecorderWindow(page);
+bulkWindow.TestLoad();
+await WaitUntil(() => bulkWindow.TestToggleEnabled);
+await page.ClickAsync("button");
+await page.ClickAsync("button");
+await Flush(page);
+bulkWindow.TestTick();
+bulkWindow.TestSelectAll();
+Assert(bulkWindow.TestSelectedCount == 2,
+    "Select all marks every recorded action for editing or removal");
+bulkWindow.TestRemove();
+Assert(bulkWindow.RecordedSteps.Count == 0,
+    "Delete selected removes multiple captured actions without touching browser credentials");
+bulkWindow.TestCancel();
+await bulkWindow.TestWaitForUpdatesAsync();
+
 using (var scoped = new TeachRecorder(page))
 {
     await scoped.SynchronizeAsync();
