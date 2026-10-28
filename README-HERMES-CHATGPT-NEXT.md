@@ -3,7 +3,7 @@
 **Branch:** `chatgpt-next`  
 **Base:** `both-3` at `25df42a7e2ce844b47a716891e214283ff4c1983`  
 **Hermes's separate branch:** `hermes-next`  
-**Application version:** `0.7.21` development preview (no release authorized)  
+**Application version:** `0.7.22` development preview (no release authorized)  
 **Integration status:** Development changes; native interactive Windows verification still required.
 
 ## 1. Division of ownership
@@ -77,6 +77,16 @@ Changes on chatgpt-next:
 
 These are new branch changes, NOT a release sign-off. Hermes should independently review the installer mutex/pipe lifecycle and the no-login real-browser regression alongside his lifecycle/profile protections. Do not blindly merge MainWindow.xaml.cs.
 
+## 2D. Website-only UI simplification — explicit user decision
+
+The user rejected the redundant "New / existing name" input and requested **just websites**. On chatgpt-next v0.7.22 the entire Workspace Profiles area is removed from the visible sidebar, not just the input field. The top navigation and add button now say **Websites** and **New website**, and **Run all** still runs enabled websites.
+
+Data-loss safeguards: existing encrypted Configuration.Workspaces data is neither deleted nor migrated, and WorkspaceCatalog, workspace import/revision guards and related regression tests are unchanged. A **collapsed, non-focusable and non-hit-testable** compatibility-only LegacyWorkspacePanel retains named controls so production orchestration and source-compiled UI tests continue compiling while the public UI is simplified. No end-user workspace edit/run controls remain visible.
+
+Please independently inspect the visual layout and confirm: zero Workspace Profiles affordances, saved website list intact, website enabled toggles and Run all functional, no change to encrypted workspace/workflow records, and no unintentional focus/keyboard navigation to hidden controls. Because the older records are no longer editable in the GUI, please flag any expected export/restore or migration UX implications rather than deleting them.
+
+No changes to your hermes-next branch, login policy or encrypted profile format.
+
 ## 3. Hermes: highest-priority follow-up work
 
 ### P0: lock/unlock and credential lifetime
@@ -109,7 +119,7 @@ These are new branch changes, NOT a release sign-off. Hermes should independentl
 
 ### P1: release gates
 
-- Per user request, increment the patch version for **every user-facing test build** (currently `0.7.21`; next deliverable `0.7.22`). Keep it synchronized across project, installer, AppInfo fallback, CI/UI regression expectations, changelog and artifact names. Version bumps do not authorize a release.
+- Per user request, increment the patch version for **every user-facing test build** (currently `0.7.22`; next deliverable `0.7.23`). Keep it synchronized across project, installer, AppInfo fallback, CI/UI regression expectations, changelog and artifact names. Version bumps do not authorize a release.
 - A branch commit does not trigger installed-client updates. Only a newer **published** GitHub Release is considered by the updater.
 - Never publish a stable release, replace existing vault files or change the installer AppId without approval.
 
