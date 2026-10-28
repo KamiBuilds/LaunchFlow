@@ -148,7 +148,9 @@ check('if (_hasUnsavedChanges && !VaultDatabase.Current.IsUnlocked)' in source a
       'if (VaultDatabase.Current.IsUnlocked && !SaveAll())' in source,
       "installer refuses automatic shutdown with unsaved locked-vault edits")
 check('IsCurrentStepEditorOwner(WebsiteWorkflow workflow, long revision)' in source and
-      'index >= workflow.Steps.Count || !ReferenceEquals(workflow.Steps[index], current)' in source and
+      'WorkflowEditGuard.IsCurrent(_configuration, _selected, workflow, current,' in source and
+      'index >= 0 && index < original.Steps.Count' in
+      (root / "LaunchFlow/Services/WorkflowEditGuard.cs").read_text(encoding="utf-8") and
       'var revision = _workspaceRevision;' in source and
       'ReferenceEquals(_selected, workflow)' in source,
       "modal step editing cannot modify a detached or imported workflow")
