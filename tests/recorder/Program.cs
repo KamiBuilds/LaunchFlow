@@ -336,6 +336,31 @@ using (var popupRecorder = new TeachRecorder(page))
     await popup.CloseAsync();
 }
 
+using (var safeKeyboard = new TeachRecorder(page))
+{
+    await Fixture(page, "<input id='search' type='search'><input id='email' type='email'>" +
+        "<input id='pass' type='password'><form><input id='login' type='text'>" +
+        "<input type='password'></form>");
+    await safeKeyboard.SynchronizeAsync();
+    await page.FillAsync("#search", "private-search-text");
+    await page.PressAsync("#search", "Enter");
+    await page.PressAsync("#search", "Tab");
+    await page.PressAsync("#search", "x"); // Ordinary typed characters must not be recorded.
+    await page.FillAsync("#email", "private-email");
+    await page.PressAsync("#email", "Enter");
+    await page.FillAsync("#pass", "private-password");
+    await page.PressAsync("#pass", "Enter");
+    await page.PressAsync("#login", "Enter"); // Form contains a password input.
+    await page.EvaluateAsync("() => window.__launchFlowTeachDispatchV1(JSON.stringify({type:'Press',id:'fake',epoch:0,target:'private-password'}))");
+    await Flush(page);
+    var actions = safeKeyboard.DrainActions();
+    Assert(actions.Count == 2 && actions.All(a => a.Type == "Press") &&
+        actions[0].Target == "Enter" && actions[1].Target == "Tab",
+        "recorder captures safe search/navigation keys but ignores typed, email and password form keystrokes");
+    Assert(!string.Join(" ", actions.Select(a => a.Target)).Contains("private-"),
+        "keyboard events never store typed text or credential values");
+}
+
 var concurrent = Enumerable.Range(0, 8).Select(_ => new TeachRecorder(page)).ToArray();
 await Task.WhenAll(concurrent.Select(s => s.SynchronizeAsync()));
 await Fixture(page, "<button>Keyboard</button>");
