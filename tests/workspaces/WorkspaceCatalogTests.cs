@@ -5,6 +5,48 @@ internal static class WorkspaceCatalogTests
 {
     public static IEnumerable<(string Name, Action Body)> Cases()
     {
+        yield return ("step editor rejects real import replacement even with identical workflow and step GUIDs", () =>
+        {
+            var oldStep = new WorkflowStep { Type = "Click", Target = "button" };
+            var oldWorkflow = new WebsiteWorkflow { Name = "Original", Steps = new() { oldStep } };
+            var config = new Configuration { Workflows = new() { oldWorkflow } };
+            Check(WorkflowEditGuard.IsCurrent(config, oldWorkflow, oldWorkflow, oldStep, 0, 1, 1),
+                "unchanged editor target should be accepted");
+            var imported = new WebsiteWorkflow
+            {
+                Id = oldWorkflow.Id,
+                Name = "Imported",
+                Steps = new() { new WorkflowStep { Type = "Click", Target = "#new" } }
+            };
+            config.Workflows.Clear();
+            config.Workflows.Add(imported);
+            Check(!WorkflowEditGuard.IsCurrent(config, imported, oldWorkflow, oldStep, 0, 1, 2),
+                "modal edit was allowed to overwrite same-GUID imported workflow");
+            Check(!WorkflowEditGuard.IsCurrent(config, imported, oldWorkflow, oldStep, 0, 1, 1),
+                "object reference detachment was ignored without a revision increment");
+            Check(imported.Steps.Single().Target == "#new",
+                "modal validation must not modify imported step state");
+        });
+
+        yield return ("modal step editor rejects reordering, replaced steps and changed selection", () =>
+        {
+            var step = new WorkflowStep { Type = "Press", Target = "Enter" };
+            var other = new WorkflowStep { Type = "Click", Target = "#next" };
+            var workflow = new WebsiteWorkflow { Steps = new() { step, other } };
+            var config = new Configuration { Workflows = new() { workflow } };
+            workflow.Steps[0] = new WorkflowStep { Type = "Click", Target = "#replacement" };
+            Check(!WorkflowEditGuard.IsCurrent(config, workflow, workflow, step, 0, 1, 1),
+                "different step occupying old index was accepted");
+            workflow.Steps[0] = step;
+            workflow.Steps.Reverse();
+            Check(!WorkflowEditGuard.IsCurrent(config, workflow, workflow, step, 0, 1, 1),
+                "step moved to another index was accepted");
+            Check(!WorkflowEditGuard.IsCurrent(config, null, workflow, step, 1, 1, 1),
+                "editing a deselected website was accepted");
+            Check(!WorkflowEditGuard.IsCurrent(config, workflow, workflow, step, 1, 1, 2),
+                "configuration revision change did not cancel modal edit");
+        });
+
         yield return ("workspace save captures only enabled IDs and persists once", () =>
         {
             var a = new WebsiteWorkflow { Name = "A" };
