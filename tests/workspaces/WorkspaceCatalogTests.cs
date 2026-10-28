@@ -133,6 +133,61 @@ internal static class WorkspaceCatalogTests
                 "empty imports reused an old confirmation because both states were empty");
         });
 
+        yield return ("pending workspace launch cannot use imported detached workflow objects", () =>
+        {
+            var old = new WebsiteWorkflow { Name = "Before import" };
+            var config = new Configuration { Workflows = new() { old } };
+            var profile = new WorkspaceProfile { Name = "Office", WorkflowIds = new() { old.Id } };
+            config.Workspaces.Add(profile);
+            Check(WorkspaceCatalog.PendingRunIsCurrent(config, new[] { old }, false, profile, 3, 3),
+                "valid pre-prompt workspace launch was rejected");
+
+            var replacement = new WebsiteWorkflow { Id = old.Id, Name = "After import" };
+            config.Workflows.Clear();
+            config.Workflows.Add(replacement);
+            config.Workspaces.Clear();
+            config.Workspaces.Add(new WorkspaceProfile { Id = profile.Id, Name = profile.Name,
+                WorkflowIds = new() { replacement.Id } });
+            Check(!WorkspaceCatalog.PendingRunIsCurrent(config, new[] { old }, false, profile, 3, 4),
+                "same-GUID imported objects authorized a detached launch");
+            Check(!WorkspaceCatalog.PendingRunIsCurrent(config, new[] { old }, false, null, 3, 4),
+                "run-all retained detached workflow references after import");
+            Check(!WorkspaceCatalog.PendingRunIsCurrent(config, new[] { old }, false, null, 3, 3),
+                "identity check was bypassed without a revision change");
+        });
+
+        yield return ("pending run is invalidated by current enabled selection changes", () =>
+        {
+            var old = new WebsiteWorkflow { Name = "A" };
+            var another = new WebsiteWorkflow { Name = "B" };
+            var config = new Configuration { Workflows = new() { old, another } };
+            var profile = new WorkspaceProfile { Name = "Office", WorkflowIds = new() { old.Id, another.Id } };
+            config.Workspaces.Add(profile);
+            Check(WorkspaceCatalog.PendingRunIsCurrent(config, new[] { old, another }, false, profile, 1, 1),
+                "unchanged saved workspace should dispatch");
+            another.Enabled = false;
+            Check(!WorkspaceCatalog.PendingRunIsCurrent(config, new[] { old, another }, false, profile, 1, 1),
+                "disabled workflow remained authorized by previous approval");
+            Check(!WorkspaceCatalog.PendingRunIsCurrent(config, new[] { old, another }, false, null, 1, 1),
+                "run-all did not notice updated enabled selection");
+        });
+
+        yield return ("locked-vault persistence errors do not report workspace save success", () =>
+        {
+            var config = new Configuration { Workflows = new() { new WebsiteWorkflow() } };
+            try
+            {
+                WorkspaceCatalog.Save(config, "Office", () =>
+                    throw new InvalidOperationException("The encrypted vault is locked."));
+                throw new InvalidOperationException("Locked-vault save unexpectedly succeeded");
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("locked"))
+            {
+                Check(config.Workspaces.Count == 0,
+                    "failed durable persistence retained a ghost workspace");
+            }
+        });
+
         yield return ("workspace name validation happens before any mutation or persistence", () =>
         {
             var config = new Configuration();
