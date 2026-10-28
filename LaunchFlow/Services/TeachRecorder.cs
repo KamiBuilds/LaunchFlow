@@ -13,6 +13,7 @@ public sealed class TeachRecorder : IDisposable
     private readonly Bridge _bridge;
     private readonly IPage _page;
     private readonly Queue<string> _pending = new();
+    private readonly Queue<string> _pendingKeys = new();
     // Keep provenance after Drain so a live host restriction can revoke already displayed clicks too.
     private readonly HashSet<string> _acceptedUrls = new(StringComparer.Ordinal);
     private readonly string _id = Guid.NewGuid().ToString("N");
@@ -53,6 +54,7 @@ public sealed class TeachRecorder : IDisposable
             _active = false;
             _epoch++;
             _pending.Clear();
+            _pendingKeys.Clear();
             _acceptedUrls.Clear();
             _bridge.Revision++;
             return false;
@@ -86,6 +88,17 @@ public sealed class TeachRecorder : IDisposable
         }
     }
 
+    public IReadOnlyList<string> DrainKeys()
+    {
+        lock (_bridge.Gate)
+        {
+            if (!CheckPolicy()) return Array.Empty<string>();
+            var result = _pendingKeys.ToArray();
+            _pendingKeys.Clear();
+            return result;
+        }
+    }
+
     public IReadOnlyList<string> Drain()
     {
         lock (_bridge.Gate)
@@ -105,6 +118,7 @@ public sealed class TeachRecorder : IDisposable
             _disposed = true;
             _active = false;
             _pending.Clear();
+            _pendingKeys.Clear();
             _acceptedUrls.Clear();
             _bridge.Sessions.Remove(_id);
             _bridge.Revision++;
@@ -147,11 +161,13 @@ public sealed class TeachRecorder : IDisposable
                 var message = document.RootElement;
                 var type = message.GetProperty("type").GetString();
                 if (type == "hello") return Snapshot();
-                if (type is not ("Click" or "Unsupported")) return "null";
+                if (type is not ("Click" or "Press" or "Unsupported")) return "null";
                 var id = message.GetProperty("id").GetString();
                 var epoch = message.GetProperty("epoch").GetInt64();
-                var target = type == "Click" ? message.GetProperty("target").GetString() : "";
+                var target = type is "Click" or "Press" ? message.GetProperty("target").GetString() : "";
                 if (type == "Click" && (string.IsNullOrWhiteSpace(target) || target.Length > 4096 || !StructuralSelector.IsMatch(target))) return "null";
+                if (type == "Press" && target is not ("Enter" or "Tab" or "Escape" or
+                    "ArrowUp" or "ArrowDown" or "ArrowLeft" or "ArrowRight")) return "null";
                 lock (Gate)
                 {
                     if (id is not null && Sessions.TryGetValue(id, out var session) && session._active && !session._page.IsClosed && session._epoch == epoch)
@@ -160,10 +176,18 @@ public sealed class TeachRecorder : IDisposable
                         if (type == "Unsupported" || source.Page != session._page || source.Frame != session._page.MainFrame)
                             session._unsupportedTargetObserved = true;
                         if (!session.CheckPolicy(source.Page.Url, source.Frame.Url)) return "null";
-                        if (type == "Click" && source.Page == session._page && source.Frame == session._page.MainFrame)
+                        if (source.Page == session._page && source.Frame == session._page.MainFrame)
                         {
-                            session._acceptedUrls.Add(source.Frame.Url);
-                            session._pending.Enqueue(target!);
+                            if (type == "Click")
+                            {
+                                session._acceptedUrls.Add(source.Frame.Url);
+                                session._pending.Enqueue(target!);
+                            }
+                            else if (type == "Press")
+                            {
+                                session._acceptedUrls.Add(source.Frame.Url);
+                                session._pendingKeys.Enqueue(target!);
+                            }
                         }
                     }
                 }
