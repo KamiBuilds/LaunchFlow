@@ -433,9 +433,8 @@ using (var guardedKeys = new TeachRecorder(page))
     await page.PressAsync("#externalSearch", "Enter");
     await page.PressAsync("#billing", "Enter");
     await page.PressAsync("#user", "Enter");
-    // Use type=button on the external fixture: Enter on the search input would
-    // otherwise implicitly click a submit button, a separate legitimate Click.
-    // These real keys test owner-based keyboard privacy, not form submission.
+    // Isolate owner-based key capture from implicit HTML form submission first.
+    // A separate regression below verifies the actual trusted submit click.
     await page.FocusAsync("#externalButton");
     await page.Keyboard.PressAsync("ArrowRight");
     await page.FocusAsync("#externalPayment");
@@ -445,6 +444,14 @@ using (var guardedKeys = new TeachRecorder(page))
     Assert(forbiddenActions.Count == 0,
         "shadow-host, external-password-form, billing and username keystrokes never enter recorder; recorded actions=" +
         string.Join(",", forbiddenActions.Select(action => action.Type + ":" + action.Target)));
+    // In Chromium, Enter in an input implicitly activates an associated submit
+    // button with a trusted Click. Credential forms must reject that as well.
+    await page.EvaluateAsync("() => { document.querySelector('#externalButton').type = 'submit'; }");
+    await page.PressAsync("#externalSearch", "Enter");
+    await page.ClickAsync("#externalButton");
+    await Flush(page);
+    Assert(guardedKeys.DrainActions().Count == 0,
+        "implicit Enter submission and pointer clicks on a password form are not recorded");
 }
 var concurrent = Enumerable.Range(0, 8).Select(_ => new TeachRecorder(page)).ToArray();
 await Task.WhenAll(concurrent.Select(s => s.SynchronizeAsync()));
