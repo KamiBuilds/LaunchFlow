@@ -450,10 +450,14 @@ public sealed partial class AutomationEngine : IAsyncDisposable
                 return false;
             }
 
+            string? approvedSubmitOrigin = null;
             if (!string.IsNullOrWhiteSpace(workflow.UsernameSelector))
             {
-                if (await FillCredentialAsync(workflow, page, workflow.UsernameSelector, credential.Username, ct).ConfigureAwait(false))
+                var usernameOrigin = await FillCredentialAsync(workflow, page, workflow.UsernameSelector,
+                    credential.Username, ct).ConfigureAwait(false);
+                if (usernameOrigin is not null)
                 {
+                    approvedSubmitOrigin = usernameOrigin;
                     if (!string.IsNullOrWhiteSpace(workflow.UsernameContinueSelector))
                     {
                         await ExecuteStepAsync(page, new WorkflowStep
@@ -472,9 +476,11 @@ public sealed partial class AutomationEngine : IAsyncDisposable
 
             if (!string.IsNullOrWhiteSpace(workflow.PasswordSelector))
             {
-                if (await FillCredentialAsync(workflow, page, workflow.PasswordSelector, credential.Password, ct).ConfigureAwait(false))
+                var passwordOrigin = await FillCredentialAsync(workflow, page, workflow.PasswordSelector,
+                    credential.Password, ct).ConfigureAwait(false);
+                if (passwordOrigin is not null)
                 {
-                    // The password was inserted into the approved, bound document.
+                    approvedSubmitOrigin = passwordOrigin;
                 }
                 else
                 {
@@ -487,7 +493,7 @@ public sealed partial class AutomationEngine : IAsyncDisposable
             // button instead of the hidden template many JS applications render first.
             if (!string.IsNullOrWhiteSpace(workflow.SubmitSelector))
             {
-                if (!await ClickLoginSubmitAsync(workflow, page, ct).ConfigureAwait(false))
+                if (!await ClickLoginSubmitAsync(workflow, page, approvedSubmitOrigin, ct).ConfigureAwait(false))
                 {
                     Log($"Login submit button not ready for '{workflow.Name}'. Check its selector.");
                     return false;
@@ -596,7 +602,7 @@ public sealed partial class AutomationEngine : IAsyncDisposable
     }
 
     private async Task<bool> ClickLoginSubmitAsync(
-        WebsiteWorkflow workflow, IPage page, CancellationToken ct)
+        WebsiteWorkflow workflow, IPage page, string? approvedCredentialOrigin, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         var locator = page.Locator(workflow.SubmitSelector);
@@ -618,8 +624,11 @@ public sealed partial class AutomationEngine : IAsyncDisposable
                 """).ConfigureAwait(false);
             RequireCredentialAccess();
             RequireAutomationUrl(origin);
-            if (!await IsOriginAllowedAsync(workflow, origin).WaitAsync(ct).ConfigureAwait(false))
-                return false;
+            // Password approval already happened in FillCredentialAsync. Avoid
+            // re-prompting for the same SSO origin, but never click a form on a
+            // different site than the one that received the saved credential.
+            if (string.IsNullOrWhiteSpace(approvedCredentialOrigin) ||
+                !OriginsMatch(origin, approvedCredentialOrigin)) return false;
             if (!await element.EvaluateAsync<bool>(
                 "(el, approved) => el.isConnected && el.ownerDocument.defaultView?.document === el.ownerDocument && el.ownerDocument.location.origin === approved",
                 origin).ConfigureAwait(false)) return false;
@@ -631,14 +640,14 @@ public sealed partial class AutomationEngine : IAsyncDisposable
         return false;
     }
 
-    private async Task<bool> FillCredentialAsync(
+    private async Task<string?> FillCredentialAsync(
         WebsiteWorkflow workflow, IPage page, string selector, string value, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         // Bind a concrete field before inserting a secret. Wait for JS-rendered
         // forms, but never allow that wait to retarget across a new document.
         await using var element = await ResolveCredentialElementAsync(workflow, page, selector, ct).ConfigureAwait(false);
-        if (element is null) return false;
+        if (element is null) return null;
         var frame = await element.OwnerFrameAsync().ConfigureAwait(false);
         if (frame is null) throw new InvalidOperationException("Credential field has no owning frame. Retry sign-in manually.");
         var navigated = 0;
@@ -689,7 +698,7 @@ public sealed partial class AutomationEngine : IAsyncDisposable
                 throw new InvalidOperationException("Credential origin changed. Retry sign-in manually.");
             ct.ThrowIfCancellationRequested();
             await element.FillAsync(value).ConfigureAwait(false);
-            return true;
+            return origin;
         }
         catch (PlaywrightException)
         {
