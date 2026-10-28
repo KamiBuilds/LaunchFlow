@@ -449,14 +449,11 @@ public sealed partial class AutomationEngine : IAsyncDisposable
                 Log($"Missing required saved sign-in details for '{workflow.Name}'. Sign in manually or update credentials.");
                 return false;
             }
-            var filledUser = false;
-            var filledPass = false;
 
             if (!string.IsNullOrWhiteSpace(workflow.UsernameSelector))
             {
                 if (await FillCredentialAsync(workflow, page, workflow.UsernameSelector, credential.Username, ct).ConfigureAwait(false))
                 {
-                    filledUser = true;
                     if (!string.IsNullOrWhiteSpace(workflow.UsernameContinueSelector))
                     {
                         await ExecuteStepAsync(page, new WorkflowStep
@@ -477,7 +474,7 @@ public sealed partial class AutomationEngine : IAsyncDisposable
             {
                 if (await FillCredentialAsync(workflow, page, workflow.PasswordSelector, credential.Password, ct).ConfigureAwait(false))
                 {
-                    filledPass = true;
+                    // The password was inserted into the approved, bound document.
                 }
                 else
                 {
@@ -563,7 +560,10 @@ public sealed partial class AutomationEngine : IAsyncDisposable
                 Timeout = Math.Min(10_000, Math.Max(2_000, workflow.LoginWaitSeconds * 1000))
             }).WaitAsync(ct).ConfigureAwait(false);
         }
-        catch (Microsoft.Playwright.TimeoutException) { return null; }
+        catch (PlaywrightException ex) when (ex.Message.Contains("Timeout", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
         element = await VisibleFirstAsync().ConfigureAwait(false);
         if (element is null) return null;
         try
