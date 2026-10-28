@@ -416,6 +416,19 @@ public sealed partial class AutomationEngine : IAsyncDisposable
     {
         ct.ThrowIfCancellationRequested();
         RequireCredentialAccess();
+        // Reused persistent browser sessions may already be authenticated.
+        // Honor an explicitly configured success element only when no login
+        // input is visible. Never skip a visible password challenge.
+        if (!string.IsNullOrWhiteSpace(workflow.LoginSuccessSelector) &&
+            await page.Locator(workflow.LoginSuccessSelector).First.IsVisibleAsync().ConfigureAwait(false) &&
+            (string.IsNullOrWhiteSpace(workflow.UsernameSelector) ||
+                !await page.Locator(workflow.UsernameSelector).First.IsVisibleAsync().ConfigureAwait(false)) &&
+            (string.IsNullOrWhiteSpace(workflow.PasswordSelector) ||
+                !await page.Locator(workflow.PasswordSelector).First.IsVisibleAsync().ConfigureAwait(false)))
+        {
+            Log($"Already signed in for '{workflow.Name}'. Reusing the existing browser session.");
+            return true;
+        }
         var credential = _vault.Read(workflow, configuration, keepassMasterPassword);
         if (credential is null)
         {
