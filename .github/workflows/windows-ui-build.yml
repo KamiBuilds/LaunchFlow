@@ -38,6 +38,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'UI method extraction failed' }
           dotnet run --project tests/workspaces/UiTests.csproj -c Release -p:TreatWarningsAsErrors=true
           if ($LASTEXITCODE -ne 0) { throw 'UI orchestration tests failed' }
+      - name: Compile production-linked encrypted-vault and policy test harness
+        run: dotnet build tests/policy/PolicyTests.csproj --configuration Release -warnaserror
       - name: Compile LaunchFlow WPF application
         run: dotnet build LaunchFlow/LaunchFlow.csproj --configuration Release -warnaserror
       - name: Install Inno Setup on builder
