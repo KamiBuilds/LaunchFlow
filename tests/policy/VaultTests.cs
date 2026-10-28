@@ -181,7 +181,7 @@ internal static class VaultTests
 
     internal static IDisposable Policy(params (string Name, object? Value)[] values) =>
         EnterprisePolicy.UseProviderForTesting(() => values.ToDictionary(v => v.Name, v => v.Value));
-    internal static void Check(bool value) { if (!value) throw new InvalidOperationException("Assertion failed"); }
+    internal static void Check(bool value, string message = "Assertion failed") { if (!value) throw new InvalidOperationException(message); }
     internal static void Refused(Action action)
     {
         try { action(); }
