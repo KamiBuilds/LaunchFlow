@@ -515,6 +515,8 @@ partial class UiFixture
     public Action? KeePassHook;
     public bool EnsureKeePass() => EnsureKeePassPasswordForRun(_configuration.Workflows);
     public void ShowFromTray() { }
+    public void MarkSaved() { }
+    public bool IsLoaded => true;
     public static void AppendLog(string _) { }
     public void ClearCredentialEditor() { Cleared = true; UsernameBox.Clear(); PasswordInput.Clear(); _loadedCredentialWorkflowId = null; }
     public void LockPasswordManager(string _) { Cleared = true; _passwordsUnlocked = false; }
