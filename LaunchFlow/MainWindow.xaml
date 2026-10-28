@@ -128,7 +128,7 @@
             </StackPanel>
           </StackPanel>
           <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Bottom">
-            <RadioButton x:Name="WorkflowsNav" Content="Workflows" GroupName="TopNavigation"
+            <RadioButton x:Name="WorkflowsNav" Content="Websites" GroupName="TopNavigation"
                          Style="{StaticResource TopNavStyle}" IsChecked="True" Click="TopNavigation_Click"
                          shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
             <RadioButton x:Name="PasswordsNav" Content="Passwords" GroupName="TopNavigation"
@@ -157,7 +157,7 @@
         <Grid Grid.Row="1" Margin="0,2,0,5">
           <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
           <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-            <Button Content="+ New workflow" Click="AddWorkflow_Click" Padding="13,6"/>
+            <Button Content="+ New website" Click="AddWorkflow_Click" Padding="13,6"/>
             <Button Content="Save changes" Click="Save_Click" Padding="13,6"/>
             <Button x:Name="RunAllButton" Content="▶ Run all" Click="Run_Click" Style="{StaticResource PrimaryButton}"
                     AutomationProperties.Name="Run all enabled websites" Padding="14,6"/>
@@ -180,7 +180,7 @@
             <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent"/>
           </Border>
         </ControlTemplate>
-      </TabControl.Template><TabItem Header="Workflows"><Grid>
+      </TabControl.Template><TabItem Header="Websites"><Grid>
       <Grid.ColumnDefinitions><ColumnDefinition Width="274" x:Name="SidebarColumn"/><ColumnDefinition Width="36"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
       <Button x:Name="SidebarToggleButton" Grid.Column="1" Content="❮" Click="ToggleSidebar_Click" ToolTip="Show or hide the workflow list" Width="31" Height="42" VerticalAlignment="Top" Margin="0,3,0,0" Padding="2" Background="#20384C"/><Border Grid.Column="0" Background="#111F30" CornerRadius="13" Padding="17" x:Name="SidebarPanel" BorderBrush="#263C50" BorderThickness="1">
         <DockPanel>
