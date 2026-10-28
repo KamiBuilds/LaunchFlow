@@ -66,6 +66,27 @@ extractor = (root / "tests/workspaces/extract-ui-methods.py").read_text(encoding
 check(extractor.count('read_text(encoding="utf-8")') >= 2 and
       'write_text(output, encoding="utf-8")' in extractor,
       "Windows UI harness reads and writes explicit UTF-8")
+wizard = ET.parse(root / "LaunchFlow/NewWorkflowWindow.xaml").getroot()
+wizard_named = {el.get(xns + "Name"): el for el in wizard.iter() if el.get(xns + "Name")}
+check(wizard_named["AutoLoginCheck"].get("IsChecked") == "False" and
+      "No login required" in ET.tostring(wizard, encoding="unicode") and
+      'LoginMode = autoLogin ? "Auto" : "None"' in
+      (root / "LaunchFlow/NewWorkflowWindow.xaml.cs").read_text(encoding="utf-8"),
+      "new local websites default to explicit No login required without credential prompts")
+check('Content="No login required' in ET.tostring(ui, encoding="unicode") and
+      'SaveWorkspaceButton.Content = Text("Save");' in source and
+      'PreviewWorkspaceButton.Content = Text("Preview");' in source,
+      "existing website login modes are clear and workspace actions avoid clipping")
+app_source = (root / "LaunchFlow/App.xaml.cs").read_text(encoding="utf-8")
+check('EXIT_FOR_INSTALL' in app_source and 'RequestShutdownForInstallAsync()' in app_source and
+      '--exit-for-install' in app_source and
+      'internal async Task RequestShutdownForInstallAsync()' in source,
+      "installer requests coordinated app shutdown through single-instance pipe")
+iss_source = (root / "installer/LaunchFlow.iss").read_text(encoding="utf-8")
+check('function InitializeSetup(): Boolean;' in iss_source and
+      "CheckForMutexes('LaunchFlow.Windows.SingleInstance')" in iss_source and
+      "'--exit-for-install'" in iss_source and 'Sleep(250)' in iss_source,
+      "installer waits for graceful exit and retains mutex protection")
 style = (root / "LaunchFlow/App.xaml").read_text(encoding="utf-8")
 check('SelectionBoxItemTemplate' in style and 'PART_Popup' in style
       and 'ItemsPresenter' in style,
