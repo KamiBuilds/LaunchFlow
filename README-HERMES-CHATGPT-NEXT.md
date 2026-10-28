@@ -63,6 +63,20 @@ Hermes independently verified the original `045d96e` overwrite guard against its
 
 The full integrated CI results and native Windows behavior must be reported separately. Do not conflate the prior `both-3` scoped PASS with this unreviewed branch.
 
+## 2C. User feedback — local no-login dashboards, clipping and installer shutdown
+
+The user tested a development installer on Windows and reported a false sign-in warning on a private LAN dashboard containing the word “verify”, a clipped workspace Save button, and Setup asking them to exit LaunchFlow manually.
+
+Changes on chatgpt-next:
+
+- The New Workflow wizard now defaults to **No login required**, with disabled credential fields until the user opts into saved credentials. It saves mode None and AutoLogin=false without writing any supplied credentials. The existing Passwords tab labels mode None clearly.
+- The engine's existing None-mode guard bypasses login inspection only for that selected workflow; URL restrictions and safe step execution still apply. A new real-browser regression exercises a local-style dashboard page containing “Verification” text and a visible password field while running a permitted click without a false sign-in repair prompt.
+- Short localized Save / Preview labels prevent truncated sidebar buttons. Validate at different DPI and Dutch locale.
+- Inno Setup's InitializeSetup calls the installed program with --exit-for-install and waits for the original process mutex to disappear. The application's existing per-current-user pipe routes this to a coordinated shutdown: save configuration, cancel automation, revoke vault access, close browser sessions, seal profiles and exit. If cleanup fails, leave the app running and refuse setup; never taskkill.
+- Existing AppMutex, CloseApplications and installer AppId remain. Older installed builds don't know --exit-for-install: the first upgrade may still require manual exit. Native Windows testing must confirm this, plus tray mode, active Playwright, failed sealing and existing data preservation.
+
+These are new branch changes, NOT a release sign-off. Hermes should independently review the installer mutex/pipe lifecycle and the no-login real-browser regression alongside his lifecycle/profile protections. Do not blindly merge MainWindow.xaml.cs.
+
 ## 3. Hermes: highest-priority follow-up work
 
 ### P0: lock/unlock and credential lifetime
