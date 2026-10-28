@@ -83,11 +83,61 @@ var tests = new List<(string Name, Func<Task> Body)>
         var ui = new UiFixture();
         var disabled = new WebsiteWorkflow { Enabled = false };
         ui._configuration.Workflows.Add(disabled);
-        var workspace = new WorkspaceProfile { WorkflowIds = new() { Guid.NewGuid(), disabled.Id, ui._configuration.Workflows[0].Id } };
+        var workspace = new WorkspaceProfile { Name = "NOC", WorkflowIds = new() { Guid.NewGuid(), disabled.Id, ui._configuration.Workflows[0].Id } };
+        ui._configuration.Workspaces.Add(workspace);
+        ui.WorkspaceCombo.SelectedItem = workspace;
+        ui.WorkspaceNameBox.Text = workspace.Name;
         ui._runner.RunRelease.SetResult(new() { FailedCount = 1 });
         await ui.Run(workspace: workspace);
         Check(ui._runner.LastRun.Count == 1 && !ui._runner.IncludeDisabled, "workspace bypassed enabled/missing IDs");
         Check(ui.Notifications.Any(n => n.Contains("failed", StringComparison.OrdinalIgnoreCase)) && ui.Notifications.All(n => !n.Contains("Finished")), "failed workflows announced as success");
+    }),
+    ("encrypted import while KeePass is open cancels a detached workspace run", async () =>
+    {
+        var ui = new UiFixture();
+        using var database = new SyntheticKeePassDatabase(ui);
+        var old = ui._configuration.Workflows[0];
+        var workspace = new WorkspaceProfile { Name = "Office", WorkflowIds = new() { old.Id } };
+        ui._configuration.Workspaces.Add(workspace);
+        ui.WorkspaceCombo.SelectedItem = workspace;
+        ui.WorkspaceNameBox.Text = workspace.Name;
+        ui.KeePassHook = () =>
+        {
+            ui._configuration.Workflows.Clear();
+            ui._configuration.Workspaces.Clear();
+            var imported = new WebsiteWorkflow { Name = "Imported", Enabled = false };
+            ui._configuration.Workflows.Add(imported);
+            ui._configuration.Workspaces.Add(new WorkspaceProfile
+            {
+                Name = "Office", WorkflowIds = new() { imported.Id }
+            });
+            ui._workspaceRevision++;
+            ui.WorkspaceCombo.SelectedItem = null;
+            ui.WorkspaceNameBox.Clear();
+        };
+        ui._runner.RunRelease.SetResult(new());
+        await ui.Run(workspace: workspace);
+        Check(ui._runner.RunCalls == 0 && ui._keepassMasterPassword is null,
+            "stale pre-import workflow reached the execution engine or retained KeePass secret");
+        Check(ui._configuration.Workflows.Single().Name == "Imported" &&
+            ui._configuration.Workspaces.Single().WorkflowIds
+                .SequenceEqual(new[] { ui._configuration.Workflows.Single().Id }),
+            "canceled old run mutated imported workflow membership");
+    }),
+    ("import during KeePass cancels an old run-all request", async () =>
+    {
+        var ui = new UiFixture();
+        using var database = new SyntheticKeePassDatabase(ui);
+        ui.KeePassHook = () =>
+        {
+            ui._configuration.Workflows.Clear();
+            ui._configuration.Workflows.Add(new WebsiteWorkflow { Name = "Replacement" });
+            ui._workspaceRevision++;
+        };
+        ui._runner.RunRelease.SetResult(new());
+        await ui.Run();
+        Check(ui._runner.RunCalls == 0 && ui._keepassMasterPassword is null,
+            "run-all dispatched a detached previous workflow after import");
     }),
     ("an unlock dialog open across Windows lock must not reauthorize the vault", () =>
     {
@@ -431,6 +481,7 @@ partial class UiFixture
     public readonly Configuration _configuration = new() { Workflows = new() { new WebsiteWorkflow() } };
     public WebsiteWorkflow? _selected = new();
     public bool _runStatusActive = false, _vaultCleanupFailed = false;
+    public long _workspaceRevision;
     public readonly Control RetryVaultLockButton = new();
     public bool _windowsLocked = false, _vaultLockInProgress = false, _runInProgress = false, _teachingInProgress = false, _exiting = false;
     public CancellationTokenSource? _runCancellation;
