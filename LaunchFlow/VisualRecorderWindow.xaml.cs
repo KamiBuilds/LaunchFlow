@@ -105,7 +105,7 @@ public partial class VisualRecorderWindow : Window
             ? "Recording safe actions — " + RecordedSteps.Count + " step(s) captured."
             : "Paused — " + RecordedSteps.Count + " step(s) captured.";
         if (_recorder.UnsupportedTargetObserved)
-            CaptureStatus.Text += " Some keys or actions were skipped (sensitive form, unsupported shortcut, popup or frame). Add safe actions manually.";
+            CaptureStatus.Text += " Some keys or actions were not recorded (sensitive form, unsupported shortcut, popup or frame). Add safe actions manually.";
     }
 
     private void DrainActions()
