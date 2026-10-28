@@ -23,6 +23,8 @@ public partial class MainWindow : Window
 {
     private readonly ConfigStore _store = new();
     private readonly MasterPasswordService _master = new();
+    private TutorialWindow? _tutorial;
+    private bool _hasUnsavedChanges;
     private bool _passwordsUnlocked;
     private DateTimeOffset _passwordSessionExpiresUtc = DateTimeOffset.MinValue;
     private Guid? _loadedCredentialWorkflowId;
@@ -117,6 +119,13 @@ public partial class MainWindow : Window
         WorkspaceCombo.ItemsSource = _configuration.Workspaces;
         LanguageCombo.SelectedIndex = _configuration.UiLanguage switch { "en" => 1, "nl" => 2, _ => 0 };
         ApplyUiLanguage();
+        // Track user-visible website configuration edits without inspecting credential values.
+        NameBox.TextChanged += (_, _) => MarkUnsavedChanges();
+        StartUrlBox.TextChanged += (_, _) => MarkUnsavedChanges();
+        EnabledCheck.Checked += (_, _) => MarkUnsavedChanges();
+        EnabledCheck.Unchecked += (_, _) => MarkUnsavedChanges();
+        BrowserCombo.SelectionChanged += (_, _) => MarkUnsavedChanges();
+        MonitorCombo.SelectionChanged += (_, _) => MarkUnsavedChanges();
 
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Open LaunchFlow", null, (_, _) => Dispatcher.Invoke(ShowFromTray));
@@ -503,6 +512,25 @@ public partial class MainWindow : Window
         // accidentally overwriting a working login when switching workflows.
     }
 
+    private void MarkUnsavedChanges()
+    {
+        if (_loadingEditor || _selected is null || _configuration is null || _exiting) return;
+        _hasUnsavedChanges = true;
+        SaveStatusLabel.Text = "Unsaved changes";
+        SaveStatusLabel.Foreground = new System.Windows.Media.SolidColorBrush(
+            System.Windows.Media.Color.FromRgb(255, 202, 111));
+        SaveChangesButton.FontWeight = FontWeights.Bold;
+    }
+
+    private void MarkSaved()
+    {
+        _hasUnsavedChanges = false;
+        SaveStatusLabel.Text = "All changes saved";
+        SaveStatusLabel.Foreground = new System.Windows.Media.SolidColorBrush(
+            System.Windows.Media.Color.FromRgb(133, 201, 185));
+        SaveChangesButton.FontWeight = FontWeights.Normal;
+    }
+
     private bool SaveAll(bool showNotification = false)
     {
         if (_vaultLockInProgress || !VaultDatabase.Current.IsUnlocked) return false;
@@ -550,6 +578,7 @@ public partial class MainWindow : Window
                 }
             }
             _store.Save(_configuration);
+            MarkSaved();
             try
             {
                 if (_configuration.PreferTaskSchedulerAutostart)
@@ -805,6 +834,23 @@ public partial class MainWindow : Window
         StepList.ItemsSource = _selected.Steps;
     }
 
+    private void SelectAllSteps_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selected is not null) StepList.SelectAll();
+    }
+
+    private void QuickWaitStep_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selected is null) return;
+        _selected.Steps.Add(new WorkflowStep
+        {
+            Type = "Wait", Target = "1000", Description = "Wait 1 second for the page"
+        });
+        RefreshSteps();
+        StepList.SelectedIndex = _selected.Steps.Count - 1;
+        MarkUnsavedChanges();
+    }
+
     private void AddPage_Click(object sender, RoutedEventArgs e)
     {
         if (_selected is null) return;
@@ -813,7 +859,7 @@ public partial class MainWindow : Window
         {
             _selected.Steps.Add(editor.Result);
             RefreshSteps();
-            SaveAll();
+            MarkUnsavedChanges();
         }
     }
 
@@ -900,34 +946,51 @@ public partial class MainWindow : Window
     {
         if (_selected is null) return;
         var editor = new StepEditorWindow { Owner = this };
-        if (editor.ShowDialog() == true) { _selected.Steps.Add(editor.Result); RefreshSteps(); }
+        if (editor.ShowDialog() == true) { _selected.Steps.Add(editor.Result); RefreshSteps(); MarkUnsavedChanges(); }
     }
 
     private void EditStep_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is null || StepList.SelectedItem is not WorkflowStep current) return;
+        if (_selected is null || StepList.SelectedItems.Count != 1 ||
+            StepList.SelectedItem is not WorkflowStep current) return;
         int index = _selected.Steps.IndexOf(current);
+        if (index < 0) return;
         var editor = new StepEditorWindow(current) { Owner = this };
-        if (editor.ShowDialog() == true) { _selected.Steps[index] = editor.Result; RefreshSteps(); StepList.SelectedIndex = index; }
+        if (editor.ShowDialog() == true)
+        {
+            _selected.Steps[index] = editor.Result;
+            RefreshSteps();
+            StepList.SelectedIndex = index;
+            MarkUnsavedChanges();
+        }
     }
 
     private void RemoveStep_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is null || StepList.SelectedItem is not WorkflowStep current) return;
-        _selected.Steps.Remove(current); RefreshSteps();
+        if (_selected is null || StepList.SelectedItems.Count == 0) return;
+        var selected = StepList.SelectedItems.Cast<WorkflowStep>().ToArray();
+        if (selected.Length > 1 && MessageBox.Show(this,
+            $"Delete {selected.Length} selected actions? This takes effect when you save.",
+            "Delete actions", MessageBoxButton.YesNo, MessageBoxImage.Question,
+            MessageBoxResult.No) != MessageBoxResult.Yes) return;
+        foreach (var step in selected) _selected.Steps.Remove(step);
+        RefreshSteps();
+        MarkUnsavedChanges();
     }
 
     private void MoveStepUp_Click(object sender, RoutedEventArgs e) => MoveStep(-1);
     private void MoveStepDown_Click(object sender, RoutedEventArgs e) => MoveStep(1);
     private void MoveStep(int offset)
     {
-        if (_selected is null || StepList.SelectedItem is not WorkflowStep current) return;
+        if (_selected is null || StepList.SelectedItems.Count != 1 ||
+            StepList.SelectedItem is not WorkflowStep current) return;
         int index = _selected.Steps.IndexOf(current);
         int dest = index + offset;
         if (dest < 0 || dest >= _selected.Steps.Count) return;
         _selected.Steps.RemoveAt(index);
         _selected.Steps.Insert(dest, current);
         RefreshSteps(); StepList.SelectedIndex = dest;
+        MarkUnsavedChanges();
     }
 
     private void WorkspaceCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1033,7 +1096,11 @@ public partial class MainWindow : Window
     {
         if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow)) return;
         var recorder = new VisualRecorderWindow(page) { Owner = this };
-        if (!await ShowRecorderAsync(recorder) || recorder.RecordedSteps.Count == 0) return;
+        var saved = await ShowRecorderAsync(recorder);
+        // Teach uses a modeless window. Return LaunchFlow to the foreground
+        // after its capture window closes, without leaving the user hunting in the taskbar.
+        if (!_exiting && !_windowsLocked && IsLoaded) ShowFromTray();
+        if (!saved || recorder.RecordedSteps.Count == 0) return;
         if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow)) return;
 
         // Teach remains modeless; the selected website may have changed.
@@ -1055,7 +1122,8 @@ public partial class MainWindow : Window
             throw;
         }
         if (_selected?.Id == original.Id) RefreshSteps();
-        AppendLog($"Saved {recorder.RecordedSteps.Count} taught click(s) for '{original.Name}'.");
+        MarkSaved();
+        AppendLog($"Saved {recorder.RecordedSteps.Count} taught action(s) for '{original.Name}'.");
     }
 
     private async void RecordSteps_Click(object sender, RoutedEventArgs e)
@@ -1857,10 +1925,20 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(new Action(() => _ = MaybeCheckUpdatesAsync()));
     }
 
-    private void Help_Click(object sender, RoutedEventArgs e)
+    private void OpenTutorial()
     {
-        new TutorialWindow { Owner = this }.ShowDialog();
+        if (_tutorial is { IsLoaded: true })
+        {
+            _tutorial.Activate();
+            return;
+        }
+        _tutorial = new TutorialWindow { Owner = this };
+        _tutorial.Closed += (_, _) => _tutorial = null;
+        // Show() is modeless: users can click the actual app controls while following the guide.
+        _tutorial.Show();
     }
+
+    private void Help_Click(object sender, RoutedEventArgs e) => OpenTutorial();
 
     private void MaybeShowWelcomeChecklist()
     {
@@ -1871,7 +1949,7 @@ public partial class MainWindow : Window
         _configuration.WelcomeChecklistShown = true;
         try { _store.Save(_configuration); } catch { /* ignore */ }
 
-        new TutorialWindow { Owner = this }.ShowDialog();
+        OpenTutorial();
     }
 
     private async void EnableHello_Click(object sender, RoutedEventArgs e)
