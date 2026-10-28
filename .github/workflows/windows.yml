@@ -2,7 +2,7 @@ name: Windows installer — build and gated draft release
 
 on:
   push:
-    branches: [hermes, chatgpt, both, both-2, both-3]
+    branches: [hermes, chatgpt, both, both-2, both-3, chatgpt-safety-hardening-20261028]
   pull_request:
   workflow_dispatch:
     inputs:

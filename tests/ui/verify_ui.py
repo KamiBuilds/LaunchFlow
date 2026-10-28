@@ -142,6 +142,13 @@ check('SelectionMode="Extended"' in ET.tostring(ui, encoding="unicode") and
       'MarkUnsavedChanges()' in source and
       'ConstrainMaximizedWindowToWorkArea' in source,
       "Website steps have bulk editing, save feedback and monitor-safe maximize")
+check('ExitSafety.TryPersistForExit(' in source and
+      'if (_installerShutdownInProgress || _exiting || !TryCloseWithSavedChanges()) return;' in source and
+      'if (!TryCloseWithSavedChanges())' in source and
+      'if (_hasUnsavedChanges)' in source and
+      'MarkUnsavedChanges();\n        AppendLog("Workflow duplicated' in source and
+      '_store.SaveDurable(_configuration);\n            ClearCredentialEditor();' in source,
+      "explicit tray/window exits refuse dirty locked saves, credential preference writes are durable and duplicates become dirty")
 check('if (_hasUnsavedChanges && !VaultDatabase.Current.IsUnlocked)' in source and
       'if (_hasUnsavedChanges || _vaultCleanupFailed' in source and
       'Unlock LaunchFlow and click Save before updating.' in source and

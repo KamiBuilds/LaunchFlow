@@ -9,6 +9,8 @@
     <Compile Include="../../LaunchFlow/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
     <Compile Include="../../LaunchFlow/Services/WorkspaceCatalog.cs" Link="WorkspaceCatalog.cs" />
     <Compile Include="../../LaunchFlow/Services/WorkflowEditGuard.cs" Link="WorkflowEditGuard.cs" />
+    <Compile Include="../../LaunchFlow/Services/ExitSafety.cs" Link="ExitSafety.cs" />
+    <Compile Include="ExitSafetyTests.cs" />
     <Compile Include="../../LaunchFlow/Services/MonitorService.cs" Link="MonitorService.cs" />
     <Compile Include="../../LaunchFlow/Services/LocalizationService.cs" Link="LocalizationService.cs" Condition="Exists('../../LaunchFlow/Services/LocalizationService.cs')" />
   </ItemGroup>

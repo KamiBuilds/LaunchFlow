@@ -356,8 +356,25 @@ public partial class MainWindow : Window
         }));
     }
 
+    // Both explicit Exit surfaces share this durability gate. A locked, dirty
+    // vault cannot be saved: keep the window alive instead of losing edits.
+    private bool TryCloseWithSavedChanges()
+    {
+        if (ExitSafety.TryPersistForExit(
+                () => VaultDatabase.Current.IsUnlocked,
+                () => _hasUnsavedChanges,
+                () => SaveAll())) return true;
+        ShowFromTray();
+        if (_hasUnsavedChanges && !VaultDatabase.Current.IsUnlocked)
+            MessageBox.Show(this,
+                "You have unsaved website changes. Unlock the vault and click Save before exiting.",
+                "Exit paused", MessageBoxButton.OK, MessageBoxImage.Warning);
+        return false;
+    }
+
     private void ExitFromTray()
     {
+        if (_installerShutdownInProgress || _exiting || !TryCloseWithSavedChanges()) return;
         _exiting = true;
         UpdateRunButtons();
         Close();
@@ -801,6 +818,7 @@ public partial class MainWindow : Window
         var next = _selected.CloneWithoutCredential();
         _configuration.Workflows.Add(next);
         RefreshWorkflowList(next);
+        MarkUnsavedChanges();
         AppendLog("Workflow duplicated without a password (add credentials separately).");
     }
 
@@ -842,7 +860,8 @@ public partial class MainWindow : Window
                 "No workflow selected", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-        if (!PasswordSessionIsValid() || _loadedCredentialWorkflowId != _selected.Id)
+        if (_vaultLockInProgress || _windowsLocked || !VaultDatabase.Current.IsUnlocked ||
+            !PasswordSessionIsValid() || _loadedCredentialWorkflowId != _selected.Id)
         {
             MessageBox.Show(this, "Unlock the Password Manager before saving credentials.",
                 "Vault locked", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -880,7 +899,9 @@ public partial class MainWindow : Window
             // Login preference is not a secret; persist it with workflow settings.
             _selected.AutoLogin = AutoLoginCheck.IsChecked == true;
             _selected.KeepassEntryPath = KeepassEntryBox.Text.Trim();
-            _store.Save(_configuration);
+            // Credential writes must never report success for a transient,
+            // locked-vault configuration fallback.
+            _store.SaveDurable(_configuration);
             ClearCredentialEditor();
             _loadedCredentialWorkflowId = _selected.Id;
             CredentialStatus.Text = "Encrypted credentials saved";
@@ -2412,9 +2433,21 @@ public partial class MainWindow : Window
 
     private void OnClosing(object sender, CancelEventArgs e)
     {
-        // The tray menu's explicit Exit action (or Windows shutdown) must not
-        // show the dialog or secretly keep the process running.
-        if (_exiting || System.Windows.Application.Current.Dispatcher.HasShutdownStarted)
+        // Installer/tray explicit exits already passed the durability gate.
+        // A newly dirty editor must still cancel instead of silently closing.
+        if (_exiting)
+        {
+            if (_hasUnsavedChanges)
+            {
+                e.Cancel = true;
+                _exiting = false;
+                ShowFromTray();
+            }
+            return;
+        }
+        // Do not open modal windows once WPF has begun OS shutdown.
+        // A forced Windows termination remains a separate native acceptance gate.
+        if (System.Windows.Application.Current.Dispatcher.HasShutdownStarted)
         {
             if (VaultDatabase.Current.IsUnlocked) SaveAll();
             return;
@@ -2428,24 +2461,27 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Never pretend unsaved edits have persisted. Keep the window open if
-        // the vault is unlocked but saving fails.
-        if (VaultDatabase.Current.IsUnlocked && !SaveAll())
-        {
-            e.Cancel = true;
-            return;
-        }
-
+        // Hiding the process preserves edits in memory; explicit exit must
+        // additionally pass the cold-storage durability gate.
         if (choice.Choice == CloseChoice.Background)
         {
+            if (VaultDatabase.Current.IsUnlocked && !SaveAll())
+            {
+                e.Cancel = true;
+                return;
+            }
             e.Cancel = true;
             Hide();
             AppendLog("Running in the system tray. Reopen from its icon or the desktop shortcut; choose Exit in the tray menu to stop LaunchFlow.");
             return;
         }
 
-        // Exit completely: OnClosed disposes the tray icon, cancels triggers,
-        // and tears down automation/browser connections.
+        // Exit completely only after the same durable-save gate as tray Exit.
+        if (!TryCloseWithSavedChanges())
+        {
+            e.Cancel = true;
+            return;
+        }
         _exiting = true;
     }
 

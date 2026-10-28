@@ -140,6 +140,7 @@ var tests = new List<(string Name, Action Body)>
     })
 };
 tests.AddRange(WorkspaceCatalogTests.Cases());
+tests.AddRange(ExitSafetyTests.Cases());
 
 var failed = 0;
 foreach (var test in tests)
