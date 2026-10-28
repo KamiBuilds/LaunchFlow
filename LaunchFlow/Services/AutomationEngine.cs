@@ -420,11 +420,20 @@ public sealed partial class AutomationEngine : IAsyncDisposable
         if (credential is null)
         {
             Log($"No saved credential for '{workflow.Name}'. Leaving the page open so you can sign in manually.");
-            return true;
+            return false;
         }
 
         try
         {
+            var requiresUser = !string.IsNullOrWhiteSpace(workflow.UsernameSelector);
+            var requiresPassword = !string.IsNullOrWhiteSpace(workflow.PasswordSelector);
+            if ((!requiresUser && !requiresPassword) ||
+                (requiresUser && string.IsNullOrWhiteSpace(credential.Username)) ||
+                (requiresPassword && string.IsNullOrEmpty(credential.Password)))
+            {
+                Log($"Missing required saved sign-in details for '{workflow.Name}'. Sign in manually or update credentials.");
+                return false;
+            }
             var filledUser = false;
             var filledPass = false;
 
@@ -445,6 +454,7 @@ public sealed partial class AutomationEngine : IAsyncDisposable
                 else
                 {
                     Log($"Username field not found for '{workflow.Name}' (selector may be outdated).");
+                    return false;
                 }
             }
 
@@ -457,18 +467,18 @@ public sealed partial class AutomationEngine : IAsyncDisposable
                 else
                 {
                     Log($"Password field not found for '{workflow.Name}' (SSO/MFA page, or selector changed).");
+                    return false;
                 }
             }
 
-            if (!string.IsNullOrWhiteSpace(workflow.SubmitSelector) && (filledUser || filledPass))
+            // A partial login must never press Submit. Select a visible, enabled
+            // button instead of the hidden template many JS applications render first.
+            if (!string.IsNullOrWhiteSpace(workflow.SubmitSelector))
             {
-                var submit = page.Locator(workflow.SubmitSelector).First;
-                if (await submit.CountAsync().ConfigureAwait(false) > 0)
+                if (!await ClickLoginSubmitAsync(workflow, page, ct).ConfigureAwait(false))
                 {
-                    await ExecuteStepAsync(page, new WorkflowStep
-                    {
-                        Type = "Click", Target = workflow.SubmitSelector
-                    }, ct).ConfigureAwait(false);
+                    Log($"Login submit button not ready for '{workflow.Name}'. Check its selector.");
+                    return false;
                 }
             }
 
@@ -492,15 +502,7 @@ public sealed partial class AutomationEngine : IAsyncDisposable
                 await Task.Delay(Math.Min(waitMs, 3000), ct).ConfigureAwait(false);
             }
 
-            if (!filledUser && !filledPass)
-            {
-                Log($"Auto-login could not fill fields for '{workflow.Name}'. " +
-                    "Browser stays open — finish MFA/SSO yourself, then teach steps with the visual recorder.");
-            }
-            else
-            {
-                Log($"Auto-login attempted for '{workflow.Name}'.");
-            }
+            Log($"Auto-login attempted for '{workflow.Name}'.");
             return true;
         }
         catch (OperationCanceledException) { throw; }
@@ -512,12 +514,101 @@ public sealed partial class AutomationEngine : IAsyncDisposable
         }
     }
 
+    private async Task<IElementHandle?> ResolveCredentialElementAsync(
+        WebsiteWorkflow workflow, IPage page, string selector, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        async Task<IElementHandle?> VisibleFirstAsync()
+        {
+            var locator = page.Locator(selector);
+            var count = await locator.CountAsync().ConfigureAwait(false);
+            for (var i = 0; i < count; i++)
+            {
+                var candidate = locator.Nth(i);
+                if (await candidate.IsVisibleAsync().ConfigureAwait(false) &&
+                    await candidate.IsEnabledAsync().ConfigureAwait(false))
+                    return await candidate.ElementHandleAsync().ConfigureAwait(false);
+            }
+            // Preserve the original document-bound readiness wait for a field
+            // that exists but has not become editable yet.
+            return count > 0 ? await locator.First.ElementHandleAsync().ConfigureAwait(false) : null;
+        }
+
+        var element = await VisibleFirstAsync().ConfigureAwait(false);
+        if (element is not null) return element;
+
+        // Locator waits may outlive a cancellation, but never carry a password.
+        // Validate the original document identity before returning any handle.
+        await using var originalDocument = await page.EvaluateHandleAsync("() => document").ConfigureAwait(false);
+        try
+        {
+            await page.Locator(selector).First.WaitForAsync(new LocatorWaitForOptions
+            {
+                State = WaitForSelectorState.Attached,
+                Timeout = Math.Min(10_000, Math.Max(2_000, workflow.LoginWaitSeconds * 1000))
+            }).WaitAsync(ct).ConfigureAwait(false);
+        }
+        catch (Microsoft.Playwright.TimeoutException) { return null; }
+        element = await VisibleFirstAsync().ConfigureAwait(false);
+        if (element is null) return null;
+        try
+        {
+            if (!await element.EvaluateAsync<bool>(
+                "(element, original) => element.isConnected && element.ownerDocument === original",
+                originalDocument).ConfigureAwait(false))
+                throw new InvalidOperationException("Sign-in document changed while the form was loading.");
+            return element;
+        }
+        catch
+        {
+            await element.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private async Task<bool> ClickLoginSubmitAsync(
+        WebsiteWorkflow workflow, IPage page, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var locator = page.Locator(workflow.SubmitSelector);
+        var count = await locator.CountAsync().ConfigureAwait(false);
+        for (var i = 0; i < count; i++)
+        {
+            var item = locator.Nth(i);
+            if (!await item.IsVisibleAsync().ConfigureAwait(false) ||
+                !await item.IsEnabledAsync().ConfigureAwait(false)) continue;
+            await using var element = await item.ElementHandleAsync().ConfigureAwait(false);
+            if (element is null) continue;
+            var origin = await element.EvaluateAsync<string>("""
+                element => {
+                    const doc = element.ownerDocument;
+                    if (!element.isConnected || doc.defaultView?.document !== doc)
+                        throw new Error('Login button document changed');
+                    return doc.location.origin;
+                }
+                """).ConfigureAwait(false);
+            RequireCredentialAccess();
+            RequireAutomationUrl(origin);
+            if (!await IsOriginAllowedAsync(workflow, origin).WaitAsync(ct).ConfigureAwait(false))
+                return false;
+            if (!await element.EvaluateAsync<bool>(
+                "(el, approved) => el.isConnected && el.ownerDocument.defaultView?.document === el.ownerDocument && el.ownerDocument.location.origin === approved",
+                origin).ConfigureAwait(false)) return false;
+            ct.ThrowIfCancellationRequested();
+            await element.ClickAsync().ConfigureAwait(false);
+            RequireAutomationUrl(page.Url);
+            return true;
+        }
+        return false;
+    }
+
     private async Task<bool> FillCredentialAsync(
         WebsiteWorkflow workflow, IPage page, string selector, string value, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        // A locator can re-resolve in another document during auto-wait. Approval belongs only to this handle.
-        await using var element = await page.QuerySelectorAsync(selector).ConfigureAwait(false);
+        // Bind a concrete field before inserting a secret. Wait for JS-rendered
+        // forms, but never allow that wait to retarget across a new document.
+        await using var element = await ResolveCredentialElementAsync(workflow, page, selector, ct).ConfigureAwait(false);
         if (element is null) return false;
         var frame = await element.OwnerFrameAsync().ConfigureAwait(false);
         if (frame is null) throw new InvalidOperationException("Credential field has no owning frame. Retry sign-in manually.");
