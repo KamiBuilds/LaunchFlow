@@ -31,6 +31,28 @@ public static class WorkspaceCatalog
                 .Select(workflow => workflow.Id).SequenceEqual(enabledWorkflowIds);
     }
 
+    public static bool PendingRunIsCurrent(
+        Configuration configuration, IReadOnlyList<WebsiteWorkflow> pending,
+        bool onlySelected, WorkspaceProfile? workspace,
+        long expectedRevision, long currentRevision)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(pending);
+        if (expectedRevision != currentRevision || pending.Count == 0 ||
+            pending.Any(workflow => !configuration.Workflows.Any(
+                current => ReferenceEquals(current, workflow))))
+            return false;
+
+        if (workspace is not null)
+            return configuration.Workspaces.Any(current => ReferenceEquals(current, workspace)) &&
+                workspace.Resolve(configuration).SequenceEqual(pending);
+
+        if (onlySelected)
+            return pending.Count == 1;
+
+        return configuration.Workflows.Where(workflow => workflow.Enabled).SequenceEqual(pending);
+    }
+
     public static WorkspaceProfile Save(Configuration configuration, string name, Action persist)
     {
         ArgumentNullException.ThrowIfNull(configuration);
