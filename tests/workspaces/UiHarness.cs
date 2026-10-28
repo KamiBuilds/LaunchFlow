@@ -191,6 +191,20 @@ var tests = new List<(string Name, Func<Task> Body)>
         Check(ui._loadedCredentialWorkflowId is null, "denied editor authorized a new credential");
         return Task.CompletedTask;
     }),
+    ("credential save uses durable encrypted configuration storage", () =>
+    {
+        var ui = new UiFixture();
+        var workflow = ui._configuration.Workflows[0];
+        ui._selected = workflow;
+        ui._loadedCredentialWorkflowId = workflow.Id;
+        ui.UsernameBox.Password = "synthetic-user";
+        ui.PasswordInput.Password = "synthetic-password";
+        ui.SaveCredential();
+        Check(ui._store.DurableSaves == 1 &&
+            VaultDatabase.Current.Credentials[workflow.Id].Password == "synthetic-password",
+            "credential success did not require a durable config write");
+        return Task.CompletedTask;
+    }),
     ("SSO workflows never request a KeePass password", () =>
     {
         var ui = new UiFixture();
@@ -650,7 +664,9 @@ namespace LaunchFlow.Services
     sealed class ConfigStore
     {
         public int Saves;
+        public int DurableSaves;
         public void Save(Configuration configuration) { if (!VaultDatabase.Current.IsUnlocked) throw new Exception("fixture vault locked"); Saves++; }
+        public void SaveDurable(Configuration configuration) { Save(configuration); DurableSaves++; }
     }
     static class ProfileVaultService
     {

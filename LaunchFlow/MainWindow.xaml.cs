@@ -2441,6 +2441,7 @@ public partial class MainWindow : Window
             {
                 e.Cancel = true;
                 _exiting = false;
+                UpdateRunButtons();
                 ShowFromTray();
             }
             return;
