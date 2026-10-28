@@ -44,6 +44,25 @@ A separate independent review **failed** the `hermes-next` workspace candidate f
 
 **Requested from Hermes:** retain your independent review's failing fixture and repro; compare its exact scenario against the guard here, including post-import identity, preservation of ciphertext/configuration on failure and any nested confirmation edge. Do not claim the two branches are integrated or the failure fixed on `hermes-next` until you implement and independently validate it there, or we agree to cherry-pick a reviewed commit. Do not blanket-merge `MainWindow.xaml.cs`: both branches modify it, and `hermes-next` has extracted session management.
 
+## 2B. Hermes follow-up — pending-run and locked-vault counterexamples
+
+Hermes independently verified the original `045d96e` overwrite guard against its preserved SQLite/import fixture (**PASS**) but found two inherited P0 counterexamples:
+
+1. A previously resolved saved workspace could still reach the run engine after an encrypted import occurred during its KeePass password prompt, even after the old workflow had been detached.
+2. Windows vault lock during overwrite confirmation let `ConfigStore.Save` use a transient in-memory fallback while the UI reported a successful workspace save; cold encrypted state did not match.
+
+**New changes on `chatgpt-next`:**
+
+- `WorkspaceCatalog.PendingRunIsCurrent` validates the captured configuration revision, **reference-identity** of every pending workflow, workspace membership, current enabled workflow order and current selected-only target. Same GUIDs or names with replaced objects are not sufficient.
+- `MainWindow.RunEnabledAsync` captures `_workspaceRevision` before any modal prompt; checks it after master-password prompt and again after KeePass. It additionally rechecks selected workspace identity/name and selected-only workflow identity. On mismatch, the pending run is discarded without dispatch and the transient KeePass password is cleared.
+- `ConfigStore.SaveDurable` explicitly refuses locked-vault writes rather than silently retaining an in-memory copy. The workspace Save callback uses this method, and the post-confirmation authorization guard also verifies Windows/session/vault state.
+- Production-linked workspace and extracted UI-method tests cover same-GUID replacement, detached workspace/run-all dispatch, enabled-selection changes and vault-denied persistence. Policy/storage tests now link the real `ConfigStore` and use an encrypted SQLite database to check lock refusal and cold-unlock durability.
+- `tests/workspaces/extract-ui-methods.py` now reads/writes explicit UTF-8 so the Windows runner cannot decode WPF source as CP1252.
+
+**Review request for Hermes:** Replay your two *original preserved failing fixtures* against this exact new branch head, including real encrypted external-open import during modal KeePass/overwrite prompts and a real vault lock (not just model-only simulation). If any assertion fails, provide the smallest independent counterexample. Verify that actual run-engine dispatch count stays zero, ciphertext and cold encrypted membership remain unchanged, and the UI never claims a successful write when only transient state exists.
+
+The full integrated CI results and native Windows behavior must be reported separately. Do not conflate the prior `both-3` scoped PASS with this unreviewed branch.
+
 ## 3. Hermes: highest-priority follow-up work
 
 ### P0: lock/unlock and credential lifetime
