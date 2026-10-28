@@ -158,7 +158,8 @@
           <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
           <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
             <Button Content="+ New website" Click="AddWorkflow_Click" Padding="13,6"/>
-            <Button Content="Save changes" Click="Save_Click" Padding="13,6"/>
+            <Button x:Name="SaveChangesButton" Content="Save changes" Click="Save_Click" Padding="13,6"/>
+            <TextBlock x:Name="SaveStatusLabel" Text="All changes saved" Foreground="#85C9B9" FontSize="11" Margin="2,0,9,0" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite"/>
             <Button x:Name="RunAllButton" Content="▶ Run all" Click="Run_Click" Style="{StaticResource PrimaryButton}"
                     AutomationProperties.Name="Run all enabled websites" Padding="14,6"/>
             <Button x:Name="StopButton" Content="■ Stop" Click="Stop_Click" IsEnabled="False"
@@ -269,17 +270,19 @@
                         ToolTip="Open the site and teach steps when auto-login or MFA breaks"/>
                 <Button Content="+ Page" Click="AddPage_Click" ToolTip="Open another website/page after sign-in" Margin="0,0,6,6"/>
                 <Button Content="+ Action" Click="AddStep_Click" Margin="0,0,6,6"/>
-                <Button Content="Edit" Click="EditStep_Click" Margin="0,0,6,6"/>
-                <Button Content="Remove" Click="RemoveStep_Click" Margin="0,0,0,6"/>
+                <Button Content="Edit selected" Click="EditStep_Click" Margin="0,0,6,6" ToolTip="Edit one selected action; double-click also opens the editor"/>
+                <Button Content="Wait +1s" Click="QuickWaitStep_Click" Margin="0,0,6,6" ToolTip="Insert a one-second pause; edit a Wait step to wait longer or for a page element"/>
+                <Button Content="Select all" Click="SelectAllSteps_Click" Margin="0,0,6,6"/>
+                <Button Content="Delete selected" Click="RemoveStep_Click" Margin="0,0,0,6"/>
               </WrapPanel>
             </DockPanel>
-            <ListBox x:Name="StepList" MinHeight="128" Height="152" FontSize="13" MouseDoubleClick="EditStep_Click"
+            <ListBox x:Name="StepList" MinHeight="128" Height="180" FontSize="13" SelectionMode="Extended" MouseDoubleClick="EditStep_Click"
                      AutomationProperties.Name="Workflow steps after sign-in"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,6,0,0">
               <Button Content="↑ Up" Click="MoveStepUp_Click"/>
               <Button Content="↓ Down" Click="MoveStepDown_Click" Margin="0"/>
             </StackPanel>
-            <TextBlock Text="Teach remembers clicks, not passwords." TextWrapping="Wrap" Foreground="#96AFC3" FontSize="11" Margin="0,8,0,0"/>
+            <TextBlock Text="Select multiple actions with Ctrl/Shift or Select all. Use Wait +1s for slow pages. Record never stores typed passwords." TextWrapping="Wrap" Foreground="#96AFC3" FontSize="11" Margin="0,8,0,0"/>
           </StackPanel>
         </ScrollViewer>
         <Grid x:Name="WorkflowEmptyState" Visibility="Visible" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="520" Margin="16">
