@@ -341,10 +341,10 @@
                 <TextBlock Text="Sign-in mode" Style="{StaticResource FieldLabel}" Margin="0,9,0,6"/>
                 <ComboBox x:Name="LoginModeCombo" SelectedIndex="0" AutomationProperties.Name="Sign-in mode">
                   <ComboBoxItem Content="Automatic" Tag="Auto"/>
-                  <ComboBoxItem Content="No automatic sign-in" Tag="None"/>
+                  <ComboBoxItem Content="No login required — open page and run configured steps" Tag="None"/>
                   <ComboBoxItem Content="SSO — browser sign-in only (no saved credential fill)" Tag="SSO"/>
                 </ComboBox>
-                <TextBlock Text="LaunchFlow detects username/Next/password steps. If your company uses SSO, you may need to approve its login address once and complete MFA yourself." TextWrapping="Wrap" Foreground="#BED2E5" FontSize="12" Margin="0,8,0,0"/>
+                <TextBlock Text="For local dashboards without a login, select No login required. LaunchFlow skips all sign-in verification but still runs your configured page actions. For SSO, follow your organization's login requirements." TextWrapping="Wrap" Foreground="#BED2E5" FontSize="12" Margin="0,8,0,0"/>
                 <Grid Margin="0,12,0,0">
                   <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="15"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                   <StackPanel Grid.Column="0"><TextBlock Text="Username or email (hidden)" Style="{StaticResource FieldLabel}"/>
