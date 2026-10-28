@@ -63,7 +63,7 @@
         <ComboBox x:Name="MonitorCombo" Margin="0,6,0,12"/>
         <TextBlock Text="Does this website require sign-in?" FontWeight="SemiBold" Margin="0,0,0,6"/>
         <CheckBox x:Name="AutoLoginCheck" Content="Yes — use my saved sign-in details" IsChecked="False"/>
-        <TextBlock Text="Leave this unchecked for local dashboards, status pages, and websites that do not need login. LaunchFlow will open the page without sign-in checks or Repair login prompts. Configured steps still run."
+        <TextBlock Text="No login required: leave this unchecked for local dashboards and status pages. LaunchFlow skips sign-in checks and Repair login prompts, but still runs configured steps."
                    TextWrapping="Wrap" Foreground="#B4CCDB" FontSize="11" Margin="0,5,0,9"/>
         <TextBlock Text="Username / email (hidden)" FontWeight="SemiBold" Margin="0,10,0,0"/>
         <PasswordBox x:Name="UsernameBox" IsEnabled="{Binding IsChecked, ElementName=AutoLoginCheck}" Margin="0,6,0,12" Height="36" Background="#0D1522" Foreground="White" BorderBrush="#354358" Padding="10,8"/>
