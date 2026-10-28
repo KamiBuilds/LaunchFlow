@@ -66,6 +66,56 @@ public partial class MainWindow : Window
     private HwndSource? _windowSource;
     private const int HotkeyId = 0x4C46;
     private const int WmHotkey = 0x0312;
+    private const int WmGetMinMaxInfo = 0x0024;
+    private const uint MonitorDefaultToNearest = 2;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint { public int X; public int Y; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MinMaxInfo
+    {
+        public NativePoint Reserved;
+        public NativePoint MaxSize;
+        public NativePoint MaxPosition;
+        public NativePoint MinTrackSize;
+        public NativePoint MaxTrackSize;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo
+    {
+        public int Size;
+        public NativeRect Monitor;
+        public NativeRect Work;
+        public uint Flags;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+
+    private static void ConstrainMaximizedWindowToWorkArea(IntPtr hwnd, IntPtr lParam)
+    {
+        var monitor = MonitorFromWindow(hwnd, MonitorDefaultToNearest);
+        if (monitor == IntPtr.Zero) return;
+        var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        if (!GetMonitorInfo(monitor, ref info)) return;
+        var values = Marshal.PtrToStructure<MinMaxInfo>(lParam);
+        // Native MINMAXINFO uses physical device pixels; WPF's custom title bar
+        // otherwise risks covering the taskbar on secondary and scaled monitors.
+        values.MaxPosition.X = info.Work.Left - info.Monitor.Left;
+        values.MaxPosition.Y = info.Work.Top - info.Monitor.Top;
+        values.MaxSize.X = info.Work.Right - info.Work.Left;
+        values.MaxSize.Y = info.Work.Bottom - info.Work.Top;
+        Marshal.StructureToPtr(values, lParam, false);
+    }
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint modifiers, uint virtualKey);
@@ -520,6 +570,7 @@ public partial class MainWindow : Window
         SaveStatusLabel.Foreground = new System.Windows.Media.SolidColorBrush(
             System.Windows.Media.Color.FromRgb(255, 202, 111));
         SaveChangesButton.FontWeight = FontWeights.Bold;
+        SaveChangesButton.ToolTip = _hasUnsavedChanges ? "Website changes have not been saved" : null;
     }
 
     private void MarkSaved()
@@ -529,6 +580,7 @@ public partial class MainWindow : Window
         SaveStatusLabel.Foreground = new System.Windows.Media.SolidColorBrush(
             System.Windows.Media.Color.FromRgb(133, 201, 185));
         SaveChangesButton.FontWeight = FontWeights.Normal;
+        SaveChangesButton.ToolTip = "Latest changes saved to the encrypted vault";
     }
 
     private bool SaveAll(bool showNotification = false)
@@ -2356,6 +2408,12 @@ public partial class MainWindow : Window
 
     private IntPtr HotkeyHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if (msg == WmGetMinMaxInfo && lParam != IntPtr.Zero)
+        {
+            ConstrainMaximizedWindowToWorkArea(hwnd, lParam);
+            handled = true;
+            return IntPtr.Zero;
+        }
         if (msg == WmHotkey && wParam.ToInt32() == HotkeyId)
         {
             handled = true;
