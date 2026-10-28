@@ -1047,7 +1047,8 @@ public partial class MainWindow : Window
         // ShowDialog pumps WPF messages. Import can replace the entire workflow
         // with an object having the same GUID and step count while it is open.
         if (!IsCurrentStepEditorOwner(workflow, revision) ||
-            index >= workflow.Steps.Count || !ReferenceEquals(workflow.Steps[index], current) ||
+            !WorkflowEditGuard.IsCurrent(_configuration, _selected, workflow, current,
+                index, revision, _workspaceRevision) ||
             !ReferenceEquals(StepList.SelectedItem, current))
         {
             AppendLog("Step edit canceled because the website changed while its editor was open.");
