@@ -143,7 +143,7 @@ public partial class MainWindow : Window
     {
         LocalizationService.ActiveLanguage = _configuration.UiLanguage;
         string Text(string english) => LocalizationService.Text(english, _configuration.UiLanguage);
-        WorkflowsNav.Content = Text("Workflows");
+        WorkflowsNav.Content = Text("Websites");
         PasswordsNav.Content = Text("Passwords");
         SettingsNav.Content = Text("Settings");
         SaveWorkspaceButton.Content = Text("Save");
