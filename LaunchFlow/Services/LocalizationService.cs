@@ -14,6 +14,7 @@ public static class LocalizationService
             ["Passwords"] = "Wachtwoorden",
             ["Settings"] = "Instellingen",
             ["Save workspace"] = "Werkruimte opslaan",
+            ["Preview"] = "Voorbeeld",
             ["Run workspace"] = "Werkruimte starten",
             ["Run all"] = "Alles starten",
             ["Workspace profiles"] = "Werkruimtes",
