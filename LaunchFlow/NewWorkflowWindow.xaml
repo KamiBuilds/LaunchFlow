@@ -61,11 +61,14 @@
         </ComboBox>
         <TextBlock Text="Screen to open on" FontWeight="SemiBold"/>
         <ComboBox x:Name="MonitorCombo" Margin="0,6,0,12"/>
-        <CheckBox x:Name="AutoLoginCheck" Content="Sign in using my saved details" IsChecked="True"/>
+        <TextBlock Text="Does this website require sign-in?" FontWeight="SemiBold" Margin="0,0,0,6"/>
+        <CheckBox x:Name="AutoLoginCheck" Content="Yes — use my saved sign-in details" IsChecked="False"/>
+        <TextBlock Text="Leave this unchecked for local dashboards, status pages, and websites that do not need login. LaunchFlow will open the page without sign-in checks or Repair login prompts. Configured steps still run."
+                   TextWrapping="Wrap" Foreground="#B4CCDB" FontSize="11" Margin="0,5,0,9"/>
         <TextBlock Text="Username / email (hidden)" FontWeight="SemiBold" Margin="0,10,0,0"/>
-        <PasswordBox x:Name="UsernameBox" Margin="0,6,0,12" Height="36" Background="#0D1522" Foreground="White" BorderBrush="#354358" Padding="10,8"/>
+        <PasswordBox x:Name="UsernameBox" IsEnabled="{Binding IsChecked, ElementName=AutoLoginCheck}" Margin="0,6,0,12" Height="36" Background="#0D1522" Foreground="White" BorderBrush="#354358" Padding="10,8"/>
         <TextBlock Text="Password" FontWeight="SemiBold"/>
-        <PasswordBox x:Name="PasswordBox" Margin="0,6,0,0" Height="36" Background="#0D1522"
+        <PasswordBox x:Name="PasswordBox" IsEnabled="{Binding IsChecked, ElementName=AutoLoginCheck}" Margin="0,6,0,0" Height="36" Background="#0D1522"
                      Foreground="White" BorderBrush="#354358" Padding="10,8"/>
         <TextBlock Text="Using KeePassXC? After creating this website, open Passwords and choose your KeePassXC login. No paths to type."
                    Foreground="#B4CCDB" Margin="0,12,0,0" TextWrapping="Wrap"/>
