@@ -176,6 +176,7 @@ public partial class MainWindow : Window
         EnabledCheck.Unchecked += (_, _) => MarkUnsavedChanges();
         BrowserCombo.SelectionChanged += (_, _) => MarkUnsavedChanges();
         MonitorCombo.SelectionChanged += (_, _) => MarkUnsavedChanges();
+        KeepassEntryBox.TextChanged += (_, _) => MarkUnsavedChanges();
         foreach (var input in new[] { UsernameContinueBox, PasswordOriginBox,
             UsernameSelectorBox, PasswordSelectorBox, SubmitSelectorBox,
             CredentialOriginBox, LoginSuccessSelectorBox, LoginSuccessUrlBox,
@@ -382,12 +383,19 @@ public partial class MainWindow : Window
             _unlockCancellation?.Cancel();
             _runCancellation?.Cancel();
             UpdateRunButtons();
+            // Do not turn an installer request into consent to discard edits.
+            // A clean, already-locked vault can exit; a dirty locked vault cannot.
+            if (_hasUnsavedChanges && !VaultDatabase.Current.IsUnlocked)
+                throw new InvalidOperationException(
+                    "Unsaved changes cannot be preserved while the vault is locked. Unlock LaunchFlow and click Save before updating.");
             if (VaultDatabase.Current.IsUnlocked && !SaveAll())
                 throw new InvalidOperationException("Save your unsaved changes before upgrading.");
+            if (_hasUnsavedChanges)
+                throw new InvalidOperationException("Unsaved changes remain. Save them before updating.");
             await SecureVaultLockAsync("Installer requested shutdown; vault locked before replacing application files.");
-            if (_vaultCleanupFailed || _vaultLockInProgress || _installerProfileSealFailed)
+            if (_hasUnsavedChanges || _vaultCleanupFailed || _vaultLockInProgress || _installerProfileSealFailed)
                 throw new InvalidOperationException(
-                    "Browser or encrypted-profile cleanup is incomplete. LaunchFlow was kept open to protect your data.");
+                    "Unsaved changes or encrypted-profile cleanup are incomplete. LaunchFlow remains open; save your work before updating.");
             _exiting = true;
             UpdateRunButtons();
             Close();
@@ -917,16 +925,23 @@ public partial class MainWindow : Window
         MarkUnsavedChanges();
     }
 
+    private bool IsCurrentStepEditorOwner(WebsiteWorkflow workflow, long revision) =>
+        revision == _workspaceRevision &&
+        ReferenceEquals(_selected, workflow) &&
+        _configuration.Workflows.Any(item => ReferenceEquals(item, workflow)) &&
+        !_windowsLocked && !_vaultLockInProgress && !_exiting &&
+        VaultDatabase.Current.IsUnlocked;
+
     private void AddPage_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is null) return;
+        if (_selected is not { } workflow) return;
+        var revision = _workspaceRevision;
         var editor = new StepEditorWindow(new WorkflowStep { Type = "Navigate", Target = "https://" }) { Owner = this };
-        if (editor.ShowDialog() == true)
-        {
-            _selected.Steps.Add(editor.Result);
-            RefreshSteps();
-            MarkUnsavedChanges();
-        }
+        if (editor.ShowDialog() != true) return;
+        if (!IsCurrentStepEditorOwner(workflow, revision)) return;
+        workflow.Steps.Add(editor.Result);
+        RefreshSteps();
+        MarkUnsavedChanges();
     }
 
     private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
@@ -1010,25 +1025,38 @@ public partial class MainWindow : Window
 
     private void AddStep_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is null) return;
+        if (_selected is not { } workflow) return;
+        var revision = _workspaceRevision;
         var editor = new StepEditorWindow { Owner = this };
-        if (editor.ShowDialog() == true) { _selected.Steps.Add(editor.Result); RefreshSteps(); MarkUnsavedChanges(); }
+        if (editor.ShowDialog() != true || !IsCurrentStepEditorOwner(workflow, revision)) return;
+        workflow.Steps.Add(editor.Result);
+        RefreshSteps();
+        MarkUnsavedChanges();
     }
 
     private void EditStep_Click(object sender, RoutedEventArgs e)
     {
         if (_selected is null || StepList.SelectedItems.Count != 1 ||
             StepList.SelectedItem is not WorkflowStep current) return;
-        int index = _selected.Steps.IndexOf(current);
+        var workflow = _selected;
+        var revision = _workspaceRevision;
+        int index = workflow.Steps.IndexOf(current);
         if (index < 0) return;
         var editor = new StepEditorWindow(current) { Owner = this };
-        if (editor.ShowDialog() == true)
+        if (editor.ShowDialog() != true) return;
+        // ShowDialog pumps WPF messages. Import can replace the entire workflow
+        // with an object having the same GUID and step count while it is open.
+        if (!IsCurrentStepEditorOwner(workflow, revision) ||
+            index >= workflow.Steps.Count || !ReferenceEquals(workflow.Steps[index], current) ||
+            !ReferenceEquals(StepList.SelectedItem, current))
         {
-            _selected.Steps[index] = editor.Result;
-            RefreshSteps();
-            StepList.SelectedIndex = index;
-            MarkUnsavedChanges();
+            AppendLog("Step edit canceled because the website changed while its editor was open.");
+            return;
         }
+        workflow.Steps[index] = editor.Result;
+        RefreshSteps();
+        StepList.SelectedIndex = index;
+        MarkUnsavedChanges();
     }
 
     private void RemoveStep_Click(object sender, RoutedEventArgs e)
