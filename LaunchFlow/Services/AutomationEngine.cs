@@ -431,6 +431,16 @@ public sealed partial class AutomationEngine : IAsyncDisposable
             Log($"Already signed in for '{workflow.Name}'. Reusing the existing browser session.");
             return true;
         }
+        // Repeated Run / Windows-unlock should not attempt a second password
+        // insertion into the existing dashboard when the configured Start URL
+        // is a login path and that same-origin signed-in redirect is still live.
+        if (await LoginHealth.VerifiedRedirectAsync(page, workflow.StartUrl, ct).ConfigureAwait(false))
+        {
+            RequireCredentialAccess();
+            RequireAutomationUrl(page.Url);
+            Log($"Existing signed-in dashboard confirmed for '{workflow.Name}'.");
+            return true;
+        }
         var credential = _vault.Read(workflow, configuration, keepassMasterPassword);
         if (credential is null)
         {
@@ -439,6 +449,7 @@ public sealed partial class AutomationEngine : IAsyncDisposable
         }
 
         string? submitPageBeforeClick = null;
+        var initialLoginUrl = page.Url;
         var submitWasAttempted = false;
         try
         {
@@ -499,6 +510,16 @@ public sealed partial class AutomationEngine : IAsyncDisposable
                 submitWasAttempted = true;
                 if (!await ClickLoginSubmitAsync(workflow, page, approvedSubmitOrigin, ct).ConfigureAwait(false))
                 {
+                    // Some JavaScript login forms submit automatically after
+                    // the final input event. Admit only a verified redirect;
+                    // a missing button on the login page is still an error.
+                    if (await ObserveVerifiedRedirectAsync(page, initialLoginUrl, 1500, ct).ConfigureAwait(false))
+                    {
+                        RequireCredentialAccess();
+                        RequireAutomationUrl(page.Url);
+                        Log($"Signed-in dashboard confirmed for '{workflow.Name}'.");
+                        return true;
+                    }
                     Log($"Login submit button not ready for '{workflow.Name}'. Check its selector.");
                     return false;
                 }
