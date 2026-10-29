@@ -257,7 +257,36 @@ $appExe = Join-Path $publishDir 'LaunchFlow.exe'
 if (-not (Test-Path -LiteralPath $appExe -PathType Leaf)) {
     throw "Publish succeeded but LaunchFlow.exe was not found in $publishDir"
 }
-Invoke-LaunchFlowSign -PathToSign $appExe | Out-Null
+if (Test-LaunchFlowSigningConfigured) {
+    if (-not (Get-LaunchFlowSignTool)) {
+        throw "Code signing was configured, but signtool.exe is unavailable. Refusing an unexpectedly unsigned build."
+    }
+    # WDAC / Smart App Control evaluates DLL loads separately from LaunchFlow.exe.
+    # Sign redistributed unsigned .exe/.dll payloads (including managed SQLite),
+    # but preserve existing valid vendor signatures instead of replacing them.
+    # Signing does not itself grant policy permission: administrator approval or
+    # a trusted publisher rule may still be required on a managed computer.
+    $binaryFiles = @(Get-ChildItem -LiteralPath $publishDir -File | Where-Object {
+        $_.Extension -in @('.dll', '.exe')
+    })
+    foreach ($binary in $binaryFiles) {
+        $signature = Get-AuthenticodeSignature -LiteralPath $binary.FullName
+        if ($signature.Status -eq 'Valid') { continue }
+        if ($signature.Status -ne 'NotSigned') {
+            throw "Cannot distribute a binary with an invalid/untrusted existing signature: $($binary.Name) [$($signature.Status)]."
+        }
+        if (-not (Invoke-LaunchFlowSign -PathToSign $binary.FullName)) {
+            throw "A signing certificate is configured but the binary was not signed: $($binary.Name)."
+        }
+        $verified = Get-AuthenticodeSignature -LiteralPath $binary.FullName
+        if ($verified.Status -ne 'Valid') {
+            throw "The signed binary failed Authenticode validation: $($binary.Name) [$($verified.Status)]."
+        }
+    }
+} else {
+    Write-Host '[WARN] Unsigned development build. A Windows Application Control policy may block its managed or native DLLs.' -ForegroundColor Yellow
+    Write-Host 'A trusted publisher signature and/or an administrator-approved policy is required on controlled PCs.' -ForegroundColor Yellow
+}
 
 Write-Host 'Creating LaunchFlow Windows setup executable...'
 $iss = Join-Path $PSScriptRoot 'installer\LaunchFlow.iss'

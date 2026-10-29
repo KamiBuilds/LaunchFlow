@@ -142,6 +142,7 @@ var tests = new List<(string Name, Action Body)>
 tests.AddRange(WorkspaceCatalogTests.Cases());
 tests.AddRange(ExitSafetyTests.Cases());
 tests.AddRange(SafetyIntegrationTests.Cases());
+tests.AddRange(ApplicationControlTests.Cases());
 tests.AddRange(BrowserInstallationTests.Cases());
 
 var failed = 0;
