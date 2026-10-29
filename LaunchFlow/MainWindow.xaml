@@ -183,7 +183,7 @@
         </ControlTemplate>
       </TabControl.Template><TabItem Header="Websites"><Grid>
       <Grid.ColumnDefinitions><ColumnDefinition Width="274" x:Name="SidebarColumn"/><ColumnDefinition Width="36"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-      <Button x:Name="SidebarToggleButton" Grid.Column="1" Content="❮" Click="ToggleSidebar_Click" ToolTip="Show or hide the workflow list" Width="31" Height="42" VerticalAlignment="Top" Margin="0,3,0,0" Padding="2" Background="#203854"/><Border Grid.Column="0" Background="#141B29" CornerRadius="13" Padding="17" x:Name="SidebarPanel" BorderBrush="#263C50" BorderThickness="1">
+      <Button x:Name="SidebarToggleButton" Grid.Column="1" Content="❮" Click="ToggleSidebar_Click" ToolTip="Show or hide the website list" Width="31" Height="42" VerticalAlignment="Top" Margin="0,3,0,0" Padding="2" Background="#203854"/><Border Grid.Column="0" Background="#141B29" CornerRadius="13" Padding="17" x:Name="SidebarPanel" BorderBrush="#263C50" BorderThickness="1">
         <DockPanel>
           <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
             <TextBlock Text="YOUR WEBSITES" FontWeight="SemiBold" FontSize="12"
@@ -270,6 +270,8 @@
                          ToolTip="Record safe browser clicks for the selected website" Margin="0,0,8,6"/>
                  <Button x:Name="RepairButton" Content="Fix sign-in" Click="RepairLogin_Click" Margin="0,0,8,6"
                          ToolTip="Review and repair a website's sign-in sequence"/>
+                 <Button Content="Advanced sign-in…" Click="OpenWebsiteAdvancedSignIn_Click"
+                         ToolTip="Open advanced selector and trusted-origin settings for this website" Margin="0,0,8,6"/>
                </WrapPanel>
                <Expander Header="More actions (advanced): pages, waits and editing"
                          Foreground="#BBD3E4" Background="#192B3E" Padding="9">
@@ -318,15 +320,24 @@
         </Grid>
       </Border>
     </Grid>
-    </TabItem><TabItem Header="Passwords"><ScrollViewer VerticalScrollBarVisibility="Auto" Background="#111A2A"><StackPanel Margin="28" MaxWidth="840" HorizontalAlignment="Left"><TextBlock Text="Credential manager" FontSize="24" FontWeight="Bold" Margin="0,0,0,8"/><TextBlock Text="One master-password unlock lasts one hour, even if you visit other tabs. The encrypted vault relocks after your configurable Windows-lock timeout (10 minutes by default)." Foreground="#B6C8DD" TextWrapping="Wrap" Margin="0,0,0,7"/>
-<TextBlock x:Name="PasswordSessionLabel" Text="Locked · unlock to manage saved credentials." Foreground="#7FD9F8" Margin="0,0,0,13" TextWrapping="Wrap"/><TextBlock Text="Currently selected workflow:" Foreground="#9EB9D6"/><TextBlock x:Name="PasswordSiteName" FontSize="17" FontWeight="SemiBold" Margin="0,5,0,18"/><Border Background="#1B2636" CornerRadius="12" Padding="20" Margin="0,0,0,10" BorderThickness="1" BorderBrush="#2A4155">
+    </TabItem><TabItem Header="Passwords"><ScrollViewer VerticalScrollBarVisibility="Auto" Background="#111A2A"><StackPanel Margin="28" MaxWidth="840" HorizontalAlignment="Left"><TextBlock Text="Passwords for this website" FontSize="24" FontWeight="Bold" Margin="0,0,0,8"/><TextBlock Text="One master-password unlock lasts one hour, even if you visit other tabs. The encrypted vault relocks after your configurable Windows-lock timeout (10 minutes by default)." Foreground="#B6C8DD" TextWrapping="Wrap" Margin="0,0,0,7"/>
+<TextBlock x:Name="PasswordSessionLabel" Text="Locked · unlock to manage saved credentials." Foreground="#7FD9F8" Margin="0,0,0,13" TextWrapping="Wrap"/><TextBlock Text="Currently selected website:" Foreground="#9EB9D6"/><TextBlock x:Name="PasswordSiteName" FontSize="17" FontWeight="SemiBold" Margin="0,5,0,18"/><Border Background="#1B2636" CornerRadius="12" Padding="20" Margin="0,0,0,10" BorderThickness="1" BorderBrush="#2A4155">
               <StackPanel>
                 <DockPanel Margin="0,0,0,4">
                   <TextBlock Text="SECURE LOGIN DETAILS" Style="{StaticResource SectionHeader}" DockPanel.Dock="Left"/>
                   <TextBlock x:Name="CredentialStatus" Text="No password saved" Foreground="#6EE7D7" HorizontalAlignment="Right" VerticalAlignment="Top"/>
                 </DockPanel>
                 <TextBlock Text="Saved credentials are encrypted in your local vault. Both fields always stay masked. Leave either field blank to keep its saved value; enter a replacement and click Save credentials to update it." TextWrapping="Wrap" Foreground="#A7B8CB" Margin="0,0,0,11"/>
-                <CheckBox x:Name="AutoLoginCheck" Content="Automatically sign in using my saved password"/>
+                <TextBlock Text="How should LaunchFlow sign in?" Style="{StaticResource FieldLabel}" Margin="0,0,0,6"/>
+                <ComboBox x:Name="LoginModeCombo" SelectedIndex="0" AutomationProperties.Name="Sign-in mode"
+                          SelectionChanged="LoginModeCombo_SelectionChanged">
+                  <ComboBoxItem Content="Saved password — fill username/password from the vault" Tag="Auto"/>
+                  <ComboBoxItem Content="No login required — open page and run configured steps" Tag="None"/>
+                  <ComboBoxItem Content="SSO — browser sign-in only (no saved credential fill)" Tag="SSO"/>
+                </ComboBox>
+                <TextBlock Text="Pick one mode. Saved password uses the fields below (or KeePassXC). No login is for local dashboards. SSO leaves sign-in to your browser and organization." TextWrapping="Wrap" Foreground="#BED2E5" FontSize="12" Margin="0,8,0,0"/>
+                <!-- Compatibility: AutoLogin mirrors LoginMode; this control is not a second user decision. -->
+                <CheckBox x:Name="AutoLoginCheck" Visibility="Collapsed" Content="Automatically sign in using my saved password"/>
                 <TextBlock Text="Use a KeePassXC login (optional)" Style="{StaticResource FieldLabel}" Margin="0,14,0,6"/>
                 <StackPanel Orientation="Horizontal">
                   <Button Content="Choose KeePassXC login…" Click="ChooseKeePassEntry_Click"
@@ -340,13 +351,6 @@
                            TextChanged="KeePassEntryTextChanged"
                            ToolTip="Only needed for unusual KeePassXC database layouts"/>
                 </Expander>
-                <TextBlock Text="Sign-in mode" Style="{StaticResource FieldLabel}" Margin="0,9,0,6"/>
-                <ComboBox x:Name="LoginModeCombo" SelectedIndex="0" AutomationProperties.Name="Sign-in mode">
-                  <ComboBoxItem Content="Automatic" Tag="Auto"/>
-                  <ComboBoxItem Content="No login required — open page and run configured steps" Tag="None"/>
-                  <ComboBoxItem Content="SSO — browser sign-in only (no saved credential fill)" Tag="SSO"/>
-                </ComboBox>
-                <TextBlock Text="For local dashboards without a login, select No login required. LaunchFlow skips all sign-in verification but still runs your configured page actions. For SSO, follow your organization's login requirements." TextWrapping="Wrap" Foreground="#BED2E5" FontSize="12" Margin="0,8,0,0"/>
                 <Grid Margin="0,12,0,0">
                   <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="15"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                   <StackPanel Grid.Column="0"><TextBlock Text="Username or email (hidden)" Style="{StaticResource FieldLabel}"/>
@@ -399,15 +403,16 @@
         <TabItem Header="General"><ScrollViewer VerticalScrollBarVisibility="Auto">
           <StackPanel Margin="28" MaxWidth="760" HorizontalAlignment="Left">
             <TextBlock Text="Settings" FontSize="25" FontWeight="SemiBold" Margin="0,0,0,12"/>
-            <TextBlock Text="Configure LaunchFlow using the categories on the left." Foreground="#AEC5DD"
-                       FontSize="14" TextWrapping="Wrap" Margin="0,0,0,25"/>
-            <TextBlock Text="Startup and background" FontWeight="SemiBold" FontSize="18" Margin="0,0,0,7"/>
-            <TextBlock Text="Windows startup, unlock triggers and system tray behavior." Foreground="#A1BCD2" Margin="0,0,0,22"/>
-            <TextBlock Text="Security and passwords" FontWeight="SemiBold" FontSize="18" Margin="0,0,0,7"/>
-            <TextBlock Text="Passwords and KeePassXC." Foreground="#A1BCD2" Margin="0,0,0,22"/>
-            <TextBlock Text="Shortcuts, updates and advanced" FontWeight="SemiBold" FontSize="18" Margin="0,0,0,7"/>
-            <TextBlock Text="Customize your shortcut, check for new releases and adjust advanced sign-in."
-                       Foreground="#A1BCD2" TextWrapping="Wrap" Margin="0,0,0,25"/>
+            <TextBlock Text="Jump to a category, or use the list on the left. Click Save changes in the title bar when finished."
+                       Foreground="#AEC5DD" FontSize="14" TextWrapping="Wrap" Margin="0,0,0,18"/>
+            <WrapPanel Margin="0,0,0,22">
+              <Button Content="Startup &amp; background" Click="OpenSettingsStartup_Click" Padding="14,9" Margin="0,0,10,10"/>
+              <Button Content="Security &amp; KeePassXC" Click="OpenSettingsSecurity_Click" Padding="14,9" Margin="0,0,10,10"/>
+              <Button Content="Updates" Click="OpenSettingsUpdates_Click" Padding="14,9" Margin="0,0,10,10"/>
+              <Button Content="Shortcuts" Click="OpenSettingsShortcuts_Click" Padding="14,9" Margin="0,0,10,10"/>
+              <Button Content="Advanced sign-in" Click="OpenSettingsAdvanced_Click" Padding="14,9" Margin="0,0,10,10"/>
+              <Button Content="Import / Export" Click="OpenSettingsImportExport_Click" Padding="14,9" Margin="0,0,10,10"/>
+            </WrapPanel>
             <TextBlock Text="Language / Taal" FontWeight="SemiBold" FontSize="18" Margin="0,0,0,7"/>
             <ComboBox x:Name="LanguageCombo" Width="200" HorizontalAlignment="Left"
                       AutomationProperties.Name="Application language">
@@ -415,19 +420,19 @@
               <ComboBoxItem Content="English" Tag="en"/>
               <ComboBoxItem Content="Nederlands" Tag="nl"/>
             </ComboBox>
-            <TextBlock Text="Navigation and workspace controls support English and Dutch. Other text remains English."
+            <TextBlock Text="Navigation and website controls support English and Dutch. Other text remains English."
                        Foreground="#A1BCD2" TextWrapping="Wrap" Margin="0,7,0,16"/>
-            <TextBlock Text="Click Save when finished." Foreground="#6EE7D7"/>
+            
           </StackPanel>
         </ScrollViewer></TabItem>
         <TabItem Header="Startup"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="26" MaxWidth="760" HorizontalAlignment="Left"><TextBlock Text="Startup and triggers" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,10"/><Border Background="#141B29" CornerRadius="12" Padding="12" Width="640" Margin="0,0,0,10">
         <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel>
           <TextBlock Text="BACKGROUND &amp; TRIGGERS" FontWeight="SemiBold" Foreground="#A0B4CC" FontSize="11" Margin="0,0,0,7"/>
           <CheckBox x:Name="StartupCheck" Content="Start hidden with Windows (enables Ctrl+M)"/>
-          <CheckBox x:Name="UnlockCheck" Content="Run enabled workflows after Windows unlock"/>
-          <CheckBox x:Name="LaunchCheck" Content="Run enabled workflows when LaunchFlow starts"/>
+          <CheckBox x:Name="UnlockCheck" Content="Run enabled websites after Windows unlock"/>
+          <CheckBox x:Name="LaunchCheck" Content="Run enabled websites when LaunchFlow starts"/>
           <CheckBox x:Name="TrayCheck" Content="Allow LaunchFlow to run in the background (system tray)"/>
-          <CheckBox x:Name="NotifyCheck" Content="Show a notification when workflows finish" IsChecked="True"/>
+          <CheckBox x:Name="NotifyCheck" Content="Show a notification when websites finish" IsChecked="True"/>
           <CheckBox x:Name="TaskSchedulerCheck" Content="Use Windows Task Scheduler for Start with Windows (more reliable on some PCs)"/>
           <TextBlock Text="Ctrl+M: run all. Minimize: taskbar. X: choose Exit or Background. Tray menu: Exit." Foreground="#C0D4E5" TextWrapping="Wrap" FontSize="11"/>
           <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
@@ -495,7 +500,7 @@
                           AutomationProperties.Name="Export redacted diagnostic report"/>
                   <TextBlock x:Name="UpdateStatusLabel" Foreground="#6EE7D7" TextWrapping="Wrap" Margin="0,8,0,0"/>
           </StackPanel>
-        </ScrollViewer></TabItem><TabItem Header="Shortcuts"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="28" MaxWidth="750" HorizontalAlignment="Left"><TextBlock Text="Keyboard shortcut" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,10"/><TextBlock Text="LaunchFlow always listens for this shortcut while running, including when hidden in the system tray. Press a combination containing Ctrl, Alt or Shift." TextWrapping="Wrap" Foreground="#A9BBD3" Margin="0,0,0,20"/><StackPanel Orientation="Horizontal"><TextBox x:Name="ShortcutBox" IsReadOnly="True" Width="210" Text="Ctrl+M" Margin="0,0,14,0"/><Button x:Name="CaptureButton" Content="Change shortcut" Click="CaptureShortcut_Click"/></StackPanel><TextBlock x:Name="ShortcutHelpLabel" Text="Default: Ctrl+M" Margin="0,11,0,0" Foreground="#86DBF3" TextWrapping="Wrap"/></StackPanel></ScrollViewer></TabItem><TabItem Header="Advanced"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="28" MaxWidth="790" HorizontalAlignment="Left"><TextBlock Text="Advanced sign-in options" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,14"/><TextBlock Text="These optional fields apply to the currently selected workflow. Most websites do not require changing them." Foreground="#ABBDD3" TextWrapping="Wrap" Margin="0,0,0,14"/><Expander Header="Advanced settings (only if the website needs them)" Foreground="#D9F1FC" Background="#18283C" Padding="10" Margin="0,0,0,12" IsExpanded="True">
+        </ScrollViewer></TabItem><TabItem Header="Shortcuts"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="28" MaxWidth="750" HorizontalAlignment="Left"><TextBlock Text="Keyboard shortcut" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,10"/><TextBlock Text="LaunchFlow always listens for this shortcut while running, including when hidden in the system tray. Press a combination containing Ctrl, Alt or Shift." TextWrapping="Wrap" Foreground="#A9BBD3" Margin="0,0,0,20"/><StackPanel Orientation="Horizontal"><TextBox x:Name="ShortcutBox" IsReadOnly="True" Width="210" Text="Ctrl+M" Margin="0,0,14,0"/><Button x:Name="CaptureButton" Content="Change shortcut" Click="CaptureShortcut_Click"/></StackPanel><TextBlock x:Name="ShortcutHelpLabel" Text="Default: Ctrl+M" Margin="0,11,0,0" Foreground="#86DBF3" TextWrapping="Wrap"/></StackPanel></ScrollViewer></TabItem><TabItem Header="Advanced"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="28" MaxWidth="790" HorizontalAlignment="Left"><TextBlock Text="Advanced sign-in options" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,14"/><TextBlock Text="These optional fields apply to the currently selected website. Most websites do not require changing them." Foreground="#ABBDD3" TextWrapping="Wrap" Margin="0,0,0,14"/><Expander Header="Advanced settings (only if the website needs them)" Foreground="#D9F1FC" Background="#18283C" Padding="10" Margin="0,0,0,12" IsExpanded="True">
                   <StackPanel Margin="4,10,4,4">
                     <TextBlock Text="Trusted username page address (HTTPS; blank = start URL)" Style="{StaticResource FieldLabel}"/>
                     <TextBox x:Name="CredentialOriginBox" Margin="0,0,0,11" ToolTip="Example: https://login.example.com"/>
@@ -521,4 +526,9 @@
                   <TextBox x:Name="LoginWaitBox" Width="75" Text="60"/>
                   <TextBlock Text="MFA always stays under your control." Foreground="#96AFC3" VerticalAlignment="Center" Margin="14,0,0,0"/>
                 </StackPanel>
-              </StackPanel></ScrollViewer></TabItem><TabItem Header="Import / Export"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="28" MaxWidth="790" HorizontalAlignment="Left"><TextBlock Text="Move to another PC" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,14"/><TextBlock Text="Transfer websites and saved logins using a password-protected file." Foreground="#B3C6DD" TextWrapping="Wrap" Margin="0,0,0,16"/><CheckBox x:Name="IncludePasswordsCheck" Content="Include saved login passwords in encrypted export" IsChecked="True"/><Button Content="Export encrypted configuration…" Click="Export_Click" Width="275" HorizontalAlignment="Left" Margin="0,12,0,15"/><Button Content="Import configuration…" Click="Import_Click" Width="275" HorizontalAlignment="Left"/><TextBlock Text="Import replaces existing websites after confirmation. Keep your export password safe." Foreground="#E6B6A0" TextWrapping="Wrap" Margin="0,15,0,0"/></StackPanel></ScrollViewer></TabItem></TabControl></TabItem></TabControl></Grid></Window>
+              </StackPanel></ScrollViewer></TabItem><TabItem Header="Import / Export"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="28" MaxWidth="790" HorizontalAlignment="Left"><TextBlock Text="Move to another PC" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,14"/><TextBlock Text="Transfer websites and saved logins using a password-protected file." Foreground="#B3C6DD" TextWrapping="Wrap" Margin="0,0,0,16"/><CheckBox x:Name="IncludePasswordsCheck" Content="Include saved login passwords in encrypted export" IsChecked="True"/><Button Content="Export encrypted configuration…" Click="Export_Click" Width="275" HorizontalAlignment="Left" Margin="0,12,0,15"/><Button Content="Import configuration…" Click="Import_Click" Width="275" HorizontalAlignment="Left"/>
+<TextBlock Text="Import replaces existing websites after confirmation. Keep your export password safe." Foreground="#E6B6A0" TextWrapping="Wrap" Margin="0,15,0,12"/>
+<Border Background="#18283C" CornerRadius="10" Padding="14,12" Margin="0,8,0,0"><StackPanel>
+<TextBlock Text="Older workspace groups" FontWeight="SemiBold" Foreground="#D7E8F5" Margin="0,0,0,6"/>
+<TextBlock Text="Earlier LaunchFlow versions could save named workspace groups. Those encrypted records are still kept and still import/export with your configuration. The main screen now focuses on websites: enable the sites you need and use Run all. Named workspace edit controls stay hidden so they do not compete with the websites list." TextWrapping="Wrap" Foreground="#A9C0D3" FontSize="12"/>
+</StackPanel></Border></StackPanel></ScrollViewer></TabItem></TabControl></TabItem></TabControl></Grid></Window>
