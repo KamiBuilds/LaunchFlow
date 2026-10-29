@@ -237,8 +237,8 @@ public partial class MainWindow : Window
             (RunAllButton, "Run all enabled websites"), (StopButton, "Stop"),
             (WorkspaceCombo, "Saved workspace selector"), (WorkspaceNameBox, "Workspace name"),
             (LanguageCombo, "Application language"),
-            (NameBox, "Workflow name"), (StartUrlBox, "Website start URL"), (MonitorCombo, "Screen"),
-            (WorkflowStatusLabel, "Workflow status"), (EnabledCheck, "Enable or disable this workflow"),
+            (NameBox, "Website name"), (StartUrlBox, "Website start URL"), (MonitorCombo, "Screen"),
+            (WorkflowStatusLabel, "Website status"), (EnabledCheck, "Enable or disable this website"),
             (StepList, "Workflow steps after sign-in")
         }) System.Windows.Automation.AutomationProperties.SetName(control, Text(name));
         WorkspaceCombo.ToolTip = Text("Select a saved workspace");
@@ -273,14 +273,35 @@ public partial class MainWindow : Window
         }));
     }
 
-    private static int LoginModeIndex(string mode)
+    private static int LoginModeIndex(string mode) => WebsiteLoginMode.Index(mode);
+
+    private static string SelectedLoginMode(int index) => WebsiteLoginMode.FromIndex(index);
+
+    private void LoginModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        return mode switch { "None" => 1, "SSO" => 2, _ => 0 };
+        if (_loadingEditor) return;
+        AutoLoginCheck.IsChecked = WebsiteLoginMode.UsesSavedPassword(SelectedLoginMode(LoginModeCombo.SelectedIndex));
+        MarkUnsavedChanges();
     }
 
-    private static string SelectedLoginMode(int index)
+    private void OpenSettingsStartup_Click(object sender, RoutedEventArgs e) => OpenSettingsCategory(1);
+    private void OpenSettingsSecurity_Click(object sender, RoutedEventArgs e) => OpenSettingsCategory(2);
+    private void OpenSettingsUpdates_Click(object sender, RoutedEventArgs e) => OpenSettingsCategory(3);
+    private void OpenSettingsShortcuts_Click(object sender, RoutedEventArgs e) => OpenSettingsCategory(4);
+    private void OpenSettingsAdvanced_Click(object sender, RoutedEventArgs e) => OpenSettingsCategory(5);
+    private void OpenSettingsImportExport_Click(object sender, RoutedEventArgs e) => OpenSettingsCategory(6);
+
+    private void OpenWebsiteAdvancedSignIn_Click(object sender, RoutedEventArgs e)
     {
-        return index switch { 1 => "None", 2 => "SSO", _ => "Auto" };
+        MainTabs.SelectedIndex = 2;
+        OpenSettingsCategory(5);
+    }
+
+    private void OpenSettingsCategory(int index)
+    {
+        MainTabs.SelectedIndex = 2;
+        if (index >= 0 && index < SettingsTabs.Items.Count)
+            SettingsTabs.SelectedIndex = index;
     }
 
     private void UpdateRunButtons()
@@ -493,7 +514,7 @@ public partial class MainWindow : Window
         WorkflowEditorScroll.Visibility = Visibility.Collapsed;
         WorkflowEmptyState.Visibility = Visibility.Visible;
         bool noWorkflows = _configuration.Workflows.Count == 0;
-        EmptyStateHeading.Text = noWorkflows ? "No workflows yet" : "Select a workflow";
+        EmptyStateHeading.Text = noWorkflows ? "No websites yet" : "Select a website";
         EmptyStateDescription.Text = noWorkflows
             ? "Start by adding one website and choosing a browser and screen. Login and recorded actions are optional."
             : "Choose one of your saved websites on the left to view its settings, or add another website.";
@@ -504,8 +525,8 @@ public partial class MainWindow : Window
         KeepassEntryBox.Text = "";
         ClearCredentialEditor();
         StepList.ItemsSource = null;
-        CredentialStatus.Text = "No workflow selected";
-        PasswordSiteName.Text = "Select a workflow in the Workflows tab";
+        CredentialStatus.Text = "No website selected";
+        PasswordSiteName.Text = "Select a website in the Websites tab";
         _loadingEditor = false;
     }
 
@@ -527,10 +548,11 @@ public partial class MainWindow : Window
         MonitorCombo.ItemsSource = monitors;
         MonitorCombo.SelectedItem = MonitorService.Resolve(w, monitors);
         _monitorSelectionChanged = false;
-        LoginModeCombo.SelectedIndex = LoginModeIndex(w.LoginMode);
+        var resolvedMode = WebsiteLoginMode.Resolve(w.LoginMode, w.AutoLogin);
+        LoginModeCombo.SelectedIndex = LoginModeIndex(resolvedMode);
         UsernameContinueBox.Text = w.UsernameContinueSelector;
         PasswordOriginBox.Text = w.PasswordCredentialOrigin;
-        AutoLoginCheck.IsChecked = w.AutoLogin;
+        AutoLoginCheck.IsChecked = WebsiteLoginMode.UsesSavedPassword(resolvedMode);
         KeepassEntryBox.Text = w.KeepassEntryPath ?? "";
         UpdateKeePassEntryLabel();
         UsernameSelectorBox.Text = w.UsernameSelector;
@@ -624,7 +646,7 @@ public partial class MainWindow : Window
         if (_selected is null || _loadingEditor) return;
         var w = _selected;
         w.Enabled = EnabledCheck.IsChecked == true;
-        w.Name = string.IsNullOrWhiteSpace(NameBox.Text) ? "Unnamed workflow" : NameBox.Text.Trim();
+        w.Name = string.IsNullOrWhiteSpace(NameBox.Text) ? "Unnamed website" : NameBox.Text.Trim();
         w.StartUrl = StartUrlBox.Text.Trim();
         w.DestinationUrl = DestinationUrlBox.Text.Trim();
         var selectedBrowser = BrowserSelection(BrowserCombo);
@@ -640,7 +662,8 @@ public partial class MainWindow : Window
         w.LoginMode = SelectedLoginMode(LoginModeCombo.SelectedIndex);
         w.UsernameContinueSelector = UsernameContinueBox.Text.Trim();
         w.PasswordCredentialOrigin = PasswordOriginBox.Text.Trim();
-        w.AutoLogin = AutoLoginCheck.IsChecked == true;
+        w.AutoLogin = WebsiteLoginMode.UsesSavedPassword(w.LoginMode);
+        AutoLoginCheck.IsChecked = w.AutoLogin;
         w.KeepassEntryPath = KeepassEntryBox.Text.Trim();
         w.UsernameSelector = UsernameSelectorBox.Text.Trim();
         w.PasswordSelector = PasswordSelectorBox.Text.Trim();
@@ -813,7 +836,7 @@ public partial class MainWindow : Window
         try { ApplyCurrentEditor(); }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "Cannot save previous workflow", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, ex.Message, "Cannot save previous website", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -834,28 +857,30 @@ public partial class MainWindow : Window
                 _configuration.Workflows.Add(next);
                 _store.Save(_configuration);
                 RefreshWorkflowList(next);
-                AppendLog($"Created workflow '{next.Name}' with " +
-                    (next.AutoLogin ? "an encrypted login." : "manual sign-in."));
-                if (!_configuration.ShortcutTipShown)
+                AppendLog($"Created website '{next.Name}' with " +
+                    (next.AutoLogin ? "an encrypted login." : "no automatic login."));
+                var firstWebsite = !_configuration.ShortcutTipShown;
+                if (firstWebsite)
                 {
                     _configuration.ShortcutTipShown = true;
                     _store.Save(_configuration);
-                    MessageBox.Show(this,
-                        $"Your first workflow is ready. Press {ShortcutBox.Text} to run all enabled workflows.\n\nYou can change the shortcut under Settings → Shortcuts.",
-                        "Run your workspace", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
+                MessageBox.Show(this,
+                    WebsiteNextStepGuidance.ForCreatedWebsite(next.Name, next.AutoLogin, firstWebsite),
+                    WebsiteNextStepGuidance.DialogTitle(firstWebsite),
+                    MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
                 _configuration.Workflows.Remove(next);
                 try { _vault.Delete(next.Id); } catch { }
-                MessageBox.Show(this, "The new workflow could not be saved: " + ex.Message,
-                    "Create workflow", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(this, "The new website could not be saved: " + ex.Message,
+                    "Create website", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, "Could not open the new workflow window: " + ex.Message,
+            MessageBox.Show(this, "Could not open the new website window: " + ex.Message,
                 "Create workflow", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         finally
