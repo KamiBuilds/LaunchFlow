@@ -191,6 +191,20 @@ var tests = new List<(string Name, Func<Task> Body)>
         Check(ui._loadedCredentialWorkflowId is null, "denied editor authorized a new credential");
         return Task.CompletedTask;
     }),
+    ("credential save uses durable encrypted configuration storage", () =>
+    {
+        var ui = new UiFixture();
+        var workflow = ui._configuration.Workflows[0];
+        ui._selected = workflow;
+        ui._loadedCredentialWorkflowId = workflow.Id;
+        ui.UsernameBox.Password = "synthetic-user";
+        ui.PasswordInput.Password = "synthetic-password";
+        ui.SaveCredential();
+        Check(ui._store.DurableSaves == 1 &&
+            VaultDatabase.Current.Credentials[workflow.Id].Password == "synthetic-password",
+            "credential success did not require a durable config write");
+        return Task.CompletedTask;
+    }),
     ("SSO workflows never request a KeePass password", () =>
     {
         var ui = new UiFixture();
@@ -348,8 +362,33 @@ var tests = new List<(string Name, Func<Task> Body)>
         ui._runner.RunRelease.SetResult(result);
         ui.RecorderResult.SetResult(true);
         await ui.Run();
-        Check(ui._runner.LastTeachId == original.Id && other.Steps.Count == 0 && original.Steps.Count == 1, "repair switched workflow after its prompt");
+        Check(ui._openSignInDecisions.TryGetValue(original.Id, out var dialog) &&
+            !ui._runInProgress && ReferenceEquals(ui._selected, other),
+            "sign-in assistance blocked the main window or lost the original workflow");
+        dialog!.Choose(SignInDecisionWindow.Decision.Repair);
+        Check(ui._runner.LastTeachId == original.Id && other.Steps.Count == 0 && original.Steps.Count == 1,
+            "modeless Repair login retargeted the workflow after a selection change");
         Check(ui._runner.RunCalls == 1, "repair reran the workflow");
+    }),
+    ("sign-in choice window is modeless and deduplicated without authorizing a run", async () =>
+    {
+        var ui = new UiFixture();
+        var workflow = ui._configuration.Workflows[0];
+        var result = new AutomationEngine.RunResult();
+        result.LoginNeedsAttention.Add(new(workflow.Id, workflow.Name, "Unverified"));
+        ui._runner.RunRelease.SetResult(result);
+        await ui.Run();
+        Check(ui._openSignInDecisions.Count == 1 && !ui._runInProgress &&
+            ui.RunAllButton.IsEnabled && ui._runner.RunCalls == 1,
+            "modeless assistance kept the launch UI blocked");
+        var active = ui._openSignInDecisions[workflow.Id];
+        await ui.ShowSignInAttention(result.LoginNeedsAttention);
+        Check(ui._openSignInDecisions.Count == 1 &&
+            ReferenceEquals(active, ui._openSignInDecisions[workflow.Id]),
+            "repeated notification stacked duplicate windows");
+        active.Choose(SignInDecisionWindow.Decision.Later);
+        Check(ui._openSignInDecisions.Count == 0 && ui._runner.TeachCalls == 0,
+            "closing without action incorrectly launched repair");
     }),
     ("close barrier releases stalled run and Teach dispatch before UI observes them", async () =>
     {
@@ -478,6 +517,9 @@ static void Check(bool condition, string message) { if (!condition) throw new Ex
 partial class UiFixture
 {
     public readonly AutomationEngine _runner = new();
+    public Task ShowSignInAttention(IReadOnlyList<AutomationEngine.LoginAttention> items) =>
+        OfferRepairForLoginAttentionAsync(items);
+    public readonly Dictionary<Guid, SignInDecisionWindow> _openSignInDecisions = new();
     public readonly Configuration _configuration = new() { Workflows = new() { new WebsiteWorkflow() } };
     public WebsiteWorkflow? _selected = new();
     public bool _runStatusActive = false, _vaultCleanupFailed = false;
@@ -539,6 +581,25 @@ sealed class UnlockWindow
     public required UiFixture Owner { get; init; }
     public string Password => "synthetic-fixture-only";
     public bool? ShowDialog() { Owner.Prompts++; Owner.PromptHook?.Invoke(); Owner.UnlockHook?.Invoke(); return true; }
+}
+sealed class SignInDecisionWindow
+{
+    public enum Decision { Later, Repair, Confirmed }
+    public Decision Choice { get; private set; } = Decision.Later;
+    public object? Owner { get; set; }
+    public event EventHandler? Closed;
+    public SignInDecisionWindow(string website, string reason) { }
+    public void Show()
+    {
+        // Modeless: Show must return while the user can select another website.
+        MessageBox.Hook?.Invoke();
+    }
+    public bool Activate() => true;
+    public void Choose(Decision decision)
+    {
+        Choice = decision;
+        Closed?.Invoke(this, EventArgs.Empty);
+    }
 }
 sealed class VisualRecorderWindow
 {
@@ -650,7 +711,9 @@ namespace LaunchFlow.Services
     sealed class ConfigStore
     {
         public int Saves;
+        public int DurableSaves;
         public void Save(Configuration configuration) { if (!VaultDatabase.Current.IsUnlocked) throw new Exception("fixture vault locked"); Saves++; }
+        public void SaveDurable(Configuration configuration) { Save(configuration); DurableSaves++; }
     }
     static class ProfileVaultService
     {
@@ -674,6 +737,8 @@ namespace LaunchFlow.Services
     sealed class AutomationEngine
     {
         public sealed record LoginAttention(Guid WorkflowId, string WorkflowName, string Reason);
+        public Task<bool> ConfirmSignedInAsync(WebsiteWorkflow workflow, CancellationToken ct = default) =>
+            Task.FromResult(true);
         public sealed record StepAttention(Guid WorkflowId, string WorkflowName, string StepType);
         public enum WorkflowRunState { Running, WaitingForSignIn, Completed, Failed, Cancelled }
         public Task<Microsoft.Playwright.IPage> GetPageForRecorderAsync(WebsiteWorkflow workflow) { LastTeachId = workflow.Id; TeachCalls++; return StallTeach ? PendingTeach.Task : Task.FromResult<Microsoft.Playwright.IPage>(new Microsoft.Playwright.FakePage()); }

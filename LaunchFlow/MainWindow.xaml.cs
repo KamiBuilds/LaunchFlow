@@ -48,7 +48,9 @@ public partial class MainWindow : Window
     private Task _vaultLockTask = Task.CompletedTask;
     private Task<AutomationEngine.RunResult>? _activeRunTask;
     private Task<IPage>? _activeTeachTask;
+    private readonly Dictionary<Guid, SignInDecisionWindow> _openSignInDecisions = new();
     private NewWorkflowWindow? _newWorkflowWindow;
+    private int _openStepEditors;
     private bool _startupWorkflowViewReady;
     private bool _capturingShortcut;
     private string _activeShortcut = "";
@@ -165,6 +167,7 @@ public partial class MainWindow : Window
         UpdateFeedBox.Text = _configuration.UpdateFeedUrl ?? "";
         MonitorCombo.ItemsSource = MonitorService.GetMonitors();
         MonitorCombo.SelectedIndex = 0;
+        BrowserChoices.Refresh(BrowserCombo);
         WorkflowList.ItemsSource = _configuration.Workflows;
         WorkspaceCombo.ItemsSource = _configuration.Workspaces;
         LanguageCombo.SelectedIndex = _configuration.UiLanguage switch { "en" => 1, "nl" => 2, _ => 0 };
@@ -356,8 +359,43 @@ public partial class MainWindow : Window
         }));
     }
 
+    private bool HasPendingEditorDialog =>
+        _newWorkflowWindow is not null || _openStepEditors > 0 || _teachingInProgress;
+
+    private bool ShowTrackedStepEditor(StepEditorWindow editor)
+    {
+        _openStepEditors++;
+        try { return editor.ShowDialog() == true; }
+        finally { _openStepEditors--; }
+    }
+
+    // Both explicit Exit surfaces share this durability gate. A locked, dirty
+    // vault cannot be saved: keep the window alive instead of losing edits.
+    private bool TryCloseWithSavedChanges()
+    {
+        if (HasPendingEditorDialog)
+        {
+            ShowFromTray();
+            MessageBox.Show(this,
+                "Finish or cancel the open website editor or Teach recording before exiting.",
+                "Exit paused", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+        if (ExitSafety.TryPersistForExit(
+                () => VaultDatabase.Current.IsUnlocked,
+                () => _hasUnsavedChanges,
+                () => SaveAll())) return true;
+        ShowFromTray();
+        if (_hasUnsavedChanges && !VaultDatabase.Current.IsUnlocked)
+            MessageBox.Show(this,
+                "You have unsaved website changes. Unlock the vault and click Save before exiting.",
+                "Exit paused", MessageBoxButton.OK, MessageBoxImage.Warning);
+        return false;
+    }
+
     private void ExitFromTray()
     {
+        if (_installerShutdownInProgress || _exiting || !TryCloseWithSavedChanges()) return;
         _exiting = true;
         UpdateRunButtons();
         Close();
@@ -378,6 +416,11 @@ public partial class MainWindow : Window
         _installerProfileSealFailed = false;
         try
         {
+            // A modeless wizard or modal action editor can hold uncommitted data
+            // that has not reached the main window's dirty flag yet.
+            if (HasPendingEditorDialog)
+                throw new InvalidOperationException(
+                    "Finish or cancel the open website editor or Teach recording before updating.");
             // Do not allow the installer to replace running binaries until configuration,
             // browser sessions and profile ownership have been handled by the application.
             _unlockCancellation?.Cancel();
@@ -393,9 +436,18 @@ public partial class MainWindow : Window
             if (_hasUnsavedChanges)
                 throw new InvalidOperationException("Unsaved changes remain. Save them before updating.");
             await SecureVaultLockAsync("Installer requested shutdown; vault locked before replacing application files.");
-            if (_hasUnsavedChanges || _vaultCleanupFailed || _vaultLockInProgress || _installerProfileSealFailed)
+            // Do not collapse unrelated conditions into one message: this used
+            // to tell users to Save even after a successful durable save when
+            // only browser/profile cleanup failed.
+            if (_hasUnsavedChanges)
                 throw new InvalidOperationException(
-                    "Unsaved changes or encrypted-profile cleanup are incomplete. LaunchFlow remains open; save your work before updating.");
+                    "New unsaved changes appeared during shutdown. LaunchFlow remains open; unlock and save before retrying.");
+            if (_vaultCleanupFailed || _vaultLockInProgress)
+                throw new InvalidOperationException(
+                    "A browser session could not be closed safely. LaunchFlow is still open. Close the affected browser windows, then use Lock vault and retry Setup. Profiles were retained.");
+            if (_installerProfileSealFailed)
+                throw new InvalidOperationException(
+                    "Encrypted browser-profile sealing failed. LaunchFlow remains open and the original profile files are retained. Retry Lock vault before updating.");
             _exiting = true;
             UpdateRunButtons();
             Close();
@@ -422,8 +474,16 @@ public partial class MainWindow : Window
         Debug.WriteLine(message);
     }
 
-    private static string BrowserSelection(ComboBox combo) =>
-        (combo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Edge";
+    private static string BrowserSelection(ComboBox combo) => BrowserChoices.SelectedName(combo);
+
+    private void BrowserCombo_DropDownOpened(object sender, EventArgs e)
+    {
+        // Detect newly installed/uninstalled browsers each time the user opens
+        // the selector, without destroying the current unsaved selection.
+        _loadingEditor = true;
+        try { BrowserChoices.Refresh(BrowserCombo); }
+        finally { _loadingEditor = false; }
+    }
 
     private void ShowEmptyEditor()
     {
@@ -461,9 +521,7 @@ public partial class MainWindow : Window
         NameBox.Text = w.Name;
         StartUrlBox.Text = w.StartUrl;
         DestinationUrlBox.Text = w.DestinationUrl;
-        int index = Enumerable.Range(0, BrowserCombo.Items.Count)
-            .FirstOrDefault(i => ((ComboBoxItem)BrowserCombo.Items[i]).Content?.ToString() == w.Browser);
-        BrowserCombo.SelectedIndex = index;
+        BrowserChoices.Refresh(BrowserCombo, w.Browser);
         // Refresh on selection too: laptop docking may have changed since startup.
         var monitors = MonitorService.GetMonitors();
         MonitorCombo.ItemsSource = monitors;
@@ -534,21 +592,31 @@ public partial class MainWindow : Window
     private void LockPasswordManager(string reason)
     {
         if (!_passwordsUnlocked) return;
-        // Safely discard sensitive UI state when the session expires or Windows locks.
-        // Edits must be explicitly saved before expiration if authorization has elapsed.
-        try { ApplyCurrentEditor(); }
-        catch (Exception ex) { AppendLog("Cannot save credential changes before lock: " + ex.GetType().Name); }
-        _passwordsUnlocked = false;
-        _passwordSessionExpiresUtc = DateTimeOffset.MinValue;
-        ClearCredentialEditor();
-        PasswordSessionLabel.Text = "Locked · unlock to manage saved credentials.";
-        if (MainTabs.SelectedIndex == 1)
+        // Locking switches tabs and clears credential controls. Those internal UI
+        // transitions must not create a fresh unsaved website edit after the
+        // installer has already durably saved the configuration.
+        var wasLoading = _loadingEditor;
+        _loadingEditor = true;
+        try
         {
-            _revertingTab = true;
-            MainTabs.SelectedIndex = 0;
-            _revertingTab = false;
+            if (!_installerShutdownInProgress)
+            {
+                try { ApplyCurrentEditor(); }
+                catch (Exception ex) { AppendLog("Cannot save credential changes before lock: " + ex.GetType().Name); }
+            }
+            _passwordsUnlocked = false;
+            _passwordSessionExpiresUtc = DateTimeOffset.MinValue;
+            ClearCredentialEditor();
+            PasswordSessionLabel.Text = "Locked · unlock to manage saved credentials.";
+            if (MainTabs.SelectedIndex == 1)
+            {
+                _revertingTab = true;
+                try { MainTabs.SelectedIndex = 0; }
+                finally { _revertingTab = false; }
+            }
+            AppendLog(reason);
         }
-        AppendLog(reason);
+        finally { _loadingEditor = wasLoading; }
     }
 
     private void ApplyCurrentEditor()
@@ -559,7 +627,10 @@ public partial class MainWindow : Window
         w.Name = string.IsNullOrWhiteSpace(NameBox.Text) ? "Unnamed workflow" : NameBox.Text.Trim();
         w.StartUrl = StartUrlBox.Text.Trim();
         w.DestinationUrl = DestinationUrlBox.Text.Trim();
-        w.Browser = BrowserSelection(BrowserCombo);
+        var selectedBrowser = BrowserSelection(BrowserCombo);
+        if (string.IsNullOrWhiteSpace(selectedBrowser))
+            throw new InvalidOperationException("Choose an installed browser before saving this website.");
+        w.Browser = selectedBrowser;
         if (MonitorCombo.SelectedItem is MonitorChoice monitor &&
             (_monitorSelectionChanged || string.IsNullOrWhiteSpace(w.MonitorDeviceName)))
         {
@@ -801,6 +872,7 @@ public partial class MainWindow : Window
         var next = _selected.CloneWithoutCredential();
         _configuration.Workflows.Add(next);
         RefreshWorkflowList(next);
+        MarkUnsavedChanges();
         AppendLog("Workflow duplicated without a password (add credentials separately).");
     }
 
@@ -842,7 +914,8 @@ public partial class MainWindow : Window
                 "No workflow selected", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-        if (!PasswordSessionIsValid() || _loadedCredentialWorkflowId != _selected.Id)
+        if (_vaultLockInProgress || _windowsLocked || !VaultDatabase.Current.IsUnlocked ||
+            !PasswordSessionIsValid() || _loadedCredentialWorkflowId != _selected.Id)
         {
             MessageBox.Show(this, "Unlock the Password Manager before saving credentials.",
                 "Vault locked", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -880,7 +953,9 @@ public partial class MainWindow : Window
             // Login preference is not a secret; persist it with workflow settings.
             _selected.AutoLogin = AutoLoginCheck.IsChecked == true;
             _selected.KeepassEntryPath = KeepassEntryBox.Text.Trim();
-            _store.Save(_configuration);
+            // Credential writes must never report success for a transient,
+            // locked-vault configuration fallback.
+            _store.SaveDurable(_configuration);
             ClearCredentialEditor();
             _loadedCredentialWorkflowId = _selected.Id;
             CredentialStatus.Text = "Encrypted credentials saved";
@@ -937,7 +1012,7 @@ public partial class MainWindow : Window
         if (_selected is not { } workflow) return;
         var revision = _workspaceRevision;
         var editor = new StepEditorWindow(new WorkflowStep { Type = "Navigate", Target = "https://" }) { Owner = this };
-        if (editor.ShowDialog() != true) return;
+        if (!ShowTrackedStepEditor(editor)) return;
         if (!IsCurrentStepEditorOwner(workflow, revision)) return;
         workflow.Steps.Add(editor.Result);
         RefreshSteps();
@@ -1028,7 +1103,7 @@ public partial class MainWindow : Window
         if (_selected is not { } workflow) return;
         var revision = _workspaceRevision;
         var editor = new StepEditorWindow { Owner = this };
-        if (editor.ShowDialog() != true || !IsCurrentStepEditorOwner(workflow, revision)) return;
+        if (!ShowTrackedStepEditor(editor) || !IsCurrentStepEditorOwner(workflow, revision)) return;
         workflow.Steps.Add(editor.Result);
         RefreshSteps();
         MarkUnsavedChanges();
@@ -1043,7 +1118,7 @@ public partial class MainWindow : Window
         int index = workflow.Steps.IndexOf(current);
         if (index < 0) return;
         var editor = new StepEditorWindow(current) { Owner = this };
-        if (editor.ShowDialog() != true) return;
+        if (!ShowTrackedStepEditor(editor)) return;
         // ShowDialog pumps WPF messages. Import can replace the entire workflow
         // with an object having the same GUID and step count while it is open.
         if (!IsCurrentStepEditorOwner(workflow, revision) ||
@@ -1161,7 +1236,7 @@ public partial class MainWindow : Window
             MessageBox.Show(this, "Select a saved workspace first.");
             return;
         }
-        new WorkspacePreviewWindow(selected, _configuration) { Owner = this }.ShowDialog();
+        new WorkspacePreviewWindow(selected, _configuration) { Owner = this }.Show();
     }
 
     private void RunWorkspace_Click(object sender, RoutedEventArgs e)
@@ -1267,12 +1342,11 @@ public partial class MainWindow : Window
         UpdateRunButtons();
         try
         {
-            MessageBox.Show(this,
-                "1. Complete sign-in in your browser.\n" +
-                "2. Click buttons you want LaunchFlow to remember.\n" +
-                "3. Return to Teach and click Save clicks.\n\n" +
-                "Use Passwords to save a login; Teach does not record passwords.",
-                "Repair login", MessageBoxButton.OK, MessageBoxImage.Information);
+            // Instructions already live in the modeless Teach recorder.
+            // A blocking notice here prevented users from clicking their browser
+            // to sign in, which is precisely what Repair asks them to do.
+            AppendLog($"Repair login for '{workflow.Name}': sign in in the browser, teach safe clicks, then Save actions.");
+            WorkflowStatusLabel.Text = "Repair login · Use the browser and modeless Teach window";
             if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow)) return;
             _activeTeachTask = _runner.GetPageForRecorderAsync(workflow);
             var page = await _activeTeachTask;
@@ -1400,35 +1474,93 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task OfferRepairForLoginAttentionAsync(
+    private Task OfferRepairForLoginAttentionAsync(
         IReadOnlyList<AutomationEngine.LoginAttention> items)
     {
+        // Informational sign-in assistance is modeless. A completed run must
+        // release its UI state immediately, even if the user leaves a prompt
+        // open while reviewing other websites.
         ShowFromTray();
         MainTabs.SelectedIndex = 0;
         foreach (var item in items)
         {
-            if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked || _runCancellation?.IsCancellationRequested == true) return;
+            if (_vaultLockInProgress || _windowsLocked || _exiting ||
+                !VaultDatabase.Current.IsUnlocked || _runCancellation?.IsCancellationRequested == true)
+                break;
             var workflow = _configuration.Workflows.FirstOrDefault(w => w.Id == item.WorkflowId);
             if (workflow is null) continue;
+            if (_openSignInDecisions.TryGetValue(workflow.Id, out var existing))
+            {
+                // Do not flood the user with identical windows on repeated runs.
+                existing.Activate();
+                continue;
+            }
             WorkflowList.SelectedItem = workflow;
-            var answer = MessageBox.Show(this,
-                $"“{item.WorkflowName}” looks like sign-in did not finish.\n\n{item.Reason}\n\n" +
-                "Further steps for this site were paused.\n\nOpen Repair login now?",
-                "Sign-in needs attention",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
-            if (answer != MessageBoxResult.Yes) continue;
-            if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked ||
-                _runCancellation?.IsCancellationRequested == true || !TeachAllowed(workflow) ||
-                !_configuration.Workflows.Any(w => ReferenceEquals(w, workflow))) return;
+            var capturedRevision = _workspaceRevision;
+            var dialog = new SignInDecisionWindow(item.WorkflowName, item.Reason) { Owner = this };
+            _openSignInDecisions.Add(workflow.Id, dialog);
+            dialog.Closed += (_, _) =>
+            {
+                if (_openSignInDecisions.TryGetValue(workflow.Id, out var current) &&
+                    ReferenceEquals(current, dialog))
+                    _openSignInDecisions.Remove(workflow.Id);
+                // Closed fires synchronously; async work continues without
+                // disabling the main window or showing any modal repair dialog.
+                _ = ApplyModelessSignInDecisionAsync(workflow, capturedRevision, dialog.Choice);
+            };
+            try { dialog.Show(); }
+            catch
+            {
+                _openSignInDecisions.Remove(workflow.Id);
+                // A failed optional notice cannot turn a finished run into
+                // an unsafe retry or leak private Playwright error details.
+                AppendLog("Could not display the sign-in assistance window.");
+            }
+        }
+        return Task.CompletedTask;
+    }
+
+    private async Task ApplyModelessSignInDecisionAsync(
+        WebsiteWorkflow workflow, long capturedRevision, SignInDecisionWindow.Decision choice)
+    {
+        if (choice == SignInDecisionWindow.Decision.Later ||
+            _exiting || _windowsLocked || _vaultLockInProgress ||
+            !VaultDatabase.Current.IsUnlocked ||
+            capturedRevision != _workspaceRevision ||
+            !_configuration.Workflows.Any(w => ReferenceEquals(w, workflow))) return;
+
+        if (choice == SignInDecisionWindow.Decision.Confirmed)
+        {
             try
             {
-                await RepairLoginCoreAsync(workflow);
+                if (await _runner.ConfirmSignedInAsync(workflow))
+                {
+                    if (_exiting || _windowsLocked || _vaultLockInProgress ||
+                        !VaultDatabase.Current.IsUnlocked ||
+                        capturedRevision != _workspaceRevision ||
+                        !_configuration.Workflows.Any(w => ReferenceEquals(w, workflow))) return;
+                    WorkflowStatusLabel.Text = "Signed-in session confirmed · Run this website again to continue actions";
+                    AppendLog($"User confirmed the open signed-in session for '{workflow.Name}'. Run again to continue.");
+                }
+                else
+                {
+                    AppendLog($"Sign-in confirmation for '{workflow.Name}' was unavailable; check its browser challenge.");
+                    WorkflowStatusLabel.Text = "Sign-in was not confirmed · Check the browser page";
+                }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                MessageBox.Show(this, MakeBrowserFriendlyMessage(ex), "Repair login", MessageBoxButton.OK, MessageBoxImage.Warning);
+                AppendLog("Sign-in confirmation could not be completed safely.");
             }
+            return;
+        }
+
+        if (!TeachAllowed(workflow)) return;
+        try { await RepairLoginCoreAsync(workflow); }
+        catch (Exception ex)
+        {
+            if (!_exiting)
+                AppendLog("Repair login could not start: " + ex.GetType().Name);
         }
     }
 
@@ -1443,9 +1575,13 @@ public partial class MainWindow : Window
             ShowFromTray();
             MainTabs.SelectedIndex = 0;
             WorkflowList.SelectedItem = workflow;
-            MessageBox.Show(this, $"“{item.WorkflowName}” stopped at a {item.StepType} step.\n\n" +
-                "Review this workflow's steps or use Teach clicks to repair it. No later steps or destination navigation ran after the failure. Nothing will rerun automatically.",
-                "Workflow steps need repair", MessageBoxButton.OK, MessageBoxImage.Warning);
+            // Step failures are informational; never disable the workspace
+            // behind a modal alert after the automation has already stopped.
+            AppendLog($"Action {item.StepType} needs review for '{item.WorkflowName}'. Later steps were not run.");
+            // Preserve the final run's failed/sign-in/step counts in the status bar.
+            NotifyTray("Workflow steps need review",
+                $"Review the {item.StepType} action for '{item.WorkflowName}' using Edit or Teach.",
+                Forms.ToolTipIcon.Warning);
         }
     }
 
@@ -1464,11 +1600,11 @@ public partial class MainWindow : Window
 
     private void About_Click(object sender, RoutedEventArgs e)
     {
-        new AboutWindow { Owner = this }.ShowDialog();
+        new AboutWindow { Owner = this }.Show();
     }
 
     private void BrowserSetup_Click(object sender, RoutedEventArgs e) =>
-        new BrowserSetupWindow { Owner = this }.ShowDialog();
+        new BrowserSetupWindow { Owner = this }.Show();
 
     private void ExportDiagnostics_Click(object sender, RoutedEventArgs e)
     {
@@ -1574,10 +1710,31 @@ public partial class MainWindow : Window
             try { await _runner.CloseSessionsAsync(); }
             catch (Exception ex)
             {
-                AppendLog("Browser cleanup did not complete; profiles retained and automation blocked. Retry Lock vault.");
-                NotifyTray("Vault locked", "Browser cleanup did not complete; profiles retained and automation blocked. Retry Lock vault.", Forms.ToolTipIcon.Warning);
-                if (_configuration.DiagnosticsLogEnabled) CrashLog.Write("CloseSessions", ex);
-                return; // Never wrap/delete a profile while its browser may still be live.
+                // A browser can close at the same moment as installer shutdown,
+                // leaving a transient Playwright close error. Retry the remaining
+                // tracked contexts once, never kill a browser or discard profiles.
+                var recovered = false;
+                if (_installerShutdownInProgress)
+                {
+                    await Task.Delay(350);
+                    try
+                    {
+                        await _runner.CloseSessionsAsync();
+                        recovered = true;
+                    }
+                    catch (Exception retryError)
+                    {
+                        if (_configuration.DiagnosticsLogEnabled)
+                            CrashLog.Write("CloseSessionsRetry", retryError);
+                    }
+                }
+                if (!recovered)
+                {
+                    AppendLog("Browser cleanup did not complete; profiles retained and automation blocked. Close browser windows and retry Lock vault.");
+                    NotifyTray("Vault locked", "Browser cleanup did not complete; profiles retained and automation blocked. Close browser windows and retry Lock vault.", Forms.ToolTipIcon.Warning);
+                    if (_configuration.DiagnosticsLogEnabled) CrashLog.Write("CloseSessions", ex);
+                    return; // Never wrap/delete a profile while its browser may still be live.
+                }
             }
             try { if (pendingRun is not null) await pendingRun; }
             catch (Exception ex) { AppendLog("Automation ended during lock: " + ex.GetType().Name); }
@@ -2412,9 +2569,22 @@ public partial class MainWindow : Window
 
     private void OnClosing(object sender, CancelEventArgs e)
     {
-        // The tray menu's explicit Exit action (or Windows shutdown) must not
-        // show the dialog or secretly keep the process running.
-        if (_exiting || System.Windows.Application.Current.Dispatcher.HasShutdownStarted)
+        // Installer/tray explicit exits already passed the durability gate.
+        // A newly dirty editor must still cancel instead of silently closing.
+        if (_exiting)
+        {
+            if (_hasUnsavedChanges || HasPendingEditorDialog)
+            {
+                e.Cancel = true;
+                _exiting = false;
+                UpdateRunButtons();
+                ShowFromTray();
+            }
+            return;
+        }
+        // Do not open modal windows once WPF has begun OS shutdown.
+        // A forced Windows termination remains a separate native acceptance gate.
+        if (System.Windows.Application.Current.Dispatcher.HasShutdownStarted)
         {
             if (VaultDatabase.Current.IsUnlocked) SaveAll();
             return;
@@ -2428,24 +2598,27 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Never pretend unsaved edits have persisted. Keep the window open if
-        // the vault is unlocked but saving fails.
-        if (VaultDatabase.Current.IsUnlocked && !SaveAll())
-        {
-            e.Cancel = true;
-            return;
-        }
-
+        // Hiding the process preserves edits in memory; explicit exit must
+        // additionally pass the cold-storage durability gate.
         if (choice.Choice == CloseChoice.Background)
         {
+            if (VaultDatabase.Current.IsUnlocked && !SaveAll())
+            {
+                e.Cancel = true;
+                return;
+            }
             e.Cancel = true;
             Hide();
             AppendLog("Running in the system tray. Reopen from its icon or the desktop shortcut; choose Exit in the tray menu to stop LaunchFlow.");
             return;
         }
 
-        // Exit completely: OnClosed disposes the tray icon, cancels triggers,
-        // and tears down automation/browser connections.
+        // Exit completely only after the same durable-save gate as tray Exit.
+        if (!TryCloseWithSavedChanges())
+        {
+            e.Cancel = true;
+            return;
+        }
         _exiting = true;
     }
 

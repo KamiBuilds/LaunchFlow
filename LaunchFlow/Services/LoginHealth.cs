@@ -45,6 +45,52 @@ public static class LoginHealth
         }
     }
 
+    /// <summary>
+    /// Recognize a completed form submission when an outdated configured
+    /// success selector never appears. Only accept a real page transition to
+    /// a non-login destination with the password challenge gone; a blank
+    /// page, failed login or MFA prompt is never accepted as signed in.
+    /// This is intentionally separate from explicit post-login-step verification.
+    /// </summary>
+    public static async Task<bool> VerifiedRedirectAsync(
+        IPage page, string loginUrl, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        try
+        {
+            if (!Uri.TryCreate(loginUrl, UriKind.Absolute, out var before) ||
+                !Uri.TryCreate(page.Url, UriKind.Absolute, out var after) ||
+                after.Scheme != Uri.UriSchemeHttps ||
+                !string.Equals(before.Scheme, after.Scheme, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(before.Authority, after.Authority, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(before.PathAndQuery, after.PathAndQuery, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            var path = after.AbsolutePath.Trim('/').ToLowerInvariant();
+            if (path.Split('/', StringSplitOptions.RemoveEmptyEntries).Any(segment =>
+                segment is "login" or "signin" or "sign-in" or "logout" or "auth"
+                or "authenticate" or "verify" or "challenge" or "mfa" or "2fa"
+                or "error" or "failed" or "denied" or "forbidden" or "unauthorized"))
+                return false;
+
+            // Browser navigation may have completed before application state
+            // updates. A visible challenge cannot be mistaken for success.
+            if (await page.Locator("input[type='password']:visible").CountAsync().ConfigureAwait(false) > 0 ||
+                await page.Locator("input[autocomplete='one-time-code']:visible").CountAsync().ConfigureAwait(false) > 0)
+                return false;
+            var health = await InspectAsync(page, ct).ConfigureAwait(false);
+            if (health.NeedsAttention) return false;
+            var body = page.Locator("body");
+            return await body.CountAsync().ConfigureAwait(false) > 0 &&
+                !string.IsNullOrWhiteSpace(await body.InnerTextAsync(new LocatorInnerTextOptions
+                {
+                    Timeout = 2000
+                }).ConfigureAwait(false));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception) { return false; }
+    }
+
     public static async Task<Report> InspectAsync(IPage page, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();

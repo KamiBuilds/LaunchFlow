@@ -1,3 +1,68 @@
+# v0.7.30 — Nonblocking windows by default
+
+- Changed **Sign-in needs attention** from a modal dialog to a modeless window, keeping the main LaunchFlow interface and browser clickable while the user reviews the problem.
+- The run completes and re-enables its controls immediately without waiting for the sign-in window to close; one window per website prevents duplicates.
+- **I'm signed in** and **Repair login** now apply asynchronously to the original website after the window closes and only if the vault/session and imported workflow revision remain valid. Closing the window takes no action.
+- About, Browser Setup and Workspace Preview are now modeless read-only windows.
+- Password, credential, destructive-change and critical confirmation prompts retain blocking authorization semantics.
+- Windows UI regression fixtures validate modeless behavior, no duplicate messages and the original website identity across a selection change.
+- The original dark navy/blue color scheme and vault/profile database formats remain unchanged.
+
+**Unsigned developer preview.** Check Windows focus and multi-monitor placement manually before release.
+
+# v0.7.29 — Explicit session sign-in confirmation and cross-site Teach recording
+
+- A clear **I'm signed in** option appears alongside **Repair login** and **Not now**. Explicit confirmation applies only to the exact current HTTPS browser page and origin, not future launches or other sites.
+- A visible password/MFA challenge and changed browser session cannot be manually marked as authenticated. After confirming, click Run this site again to continue recorded steps without attempting password entry a second time.
+- Teach retains browser click capture across normal same-tab navigation and automatically adds a safe **Navigate** action for a change of website origin before the next click. URLs containing query parameters, fragments, user info or policy-blocked sites are never automatically stored.
+- New popup tabs remain unsupported for automatic click replay; explicitly add the page only when safe. Existing secret, keyboard and iframe recording safeguards remain active.
+- Chromium tests cover manual confirmation, challenge rejection, same-tab cross-site capture and OAuth query protection. Installer/data formats unchanged.
+
+**Developer preview:** Manual acceptance needed for live NPM and Windows multi-window browser behavior. Never merge before independent testing.
+
+# v0.7.28 — installer safe-exit and authenticated-dashboard verification
+
+- Installer shutdown now distinguishes actual unsaved work from browser/profile cleanup failures and retries a transient browser-close failure without killing browser processes or discarding encrypted profile data.
+- Password Manager internal tab changes during installer shutdown do not create a spurious dirty flag after settings have been durably saved. Genuine edits or failed cleanup still block the installer safely.
+- Auto-login recognizes a completed **same-origin** HTTPS navigation from a login page to a non-login dashboard even if an old completion selector is stale, including when the Submit button detaches during navigation.
+- MFA challenges, error routes, wrong-origin navigation and visible password prompts are not considered successful authentication; the existing policy/origin checks still apply.
+- Synthetic Chromium regression fixtures cover a dashboard redirect and rejected MFA redirect. No vault/profile schema changes or forced installer task termination.
+
+**Preview only:** Test v0.7.28 on Windows with a backup of encrypted data. Older running LaunchFlow versions may still need a manual Exit from the system tray before Setup can proceed.
+
+# v0.7.27 — Installed-browser detection and restored navy theme (development preview)
+
+- Scan Windows App Paths (both registry views) and conventional installation folders to offer only installed Edge, Chrome and Firefox browsers in both the new-website wizard and existing website editor. Re-scan whenever the selector opens.
+- Always keep the explicit Default browser (open only) choice; refuse automatic sign-in under open-only mode.
+- Preserve saved browser names when a browser has been uninstalled, label them as unavailable and fail closed on launch instead of silently switching to Edge.
+- Restore the prior dark navy/blue presentation and mint accent colors while retaining the new compact UI, custom dropdowns and editor layouts.
+- Add production-linked browser detection tests and source/GUI regression contracts.
+- Keep encrypted vault data, sign-in policy, installer AppId and profile formats unchanged.
+
+**Status:** Unsigned Windows test preview. Real Windows browser detection, installer upgrade and multi-monitor layout still require hands-on acceptance.
+
+# v0.7.26 — Universal automatic sign-in repairs (development preview)
+
+- Wait for JavaScript-rendered credential inputs without allowing stored passwords to retarget across a document change.
+- Prefer visible enabled inputs and Submit controls over hidden placeholder elements.
+- Require all configured credential fields to be filled before submitting; missing credentials no longer report a successful sign-in.
+- Recognize explicitly configured, already-authenticated browser sessions without treating generic BODY/HTML elements as success.
+- Preserve approved HTTPS origins, credential-policy checks, manual MFA/SSO handling and secret-safe diagnostics.
+- New synthetic browser cases: delayed form rendering, hidden field/button duplicates, missing required password, two-stage username/Next/password login, and existing signed-in sessions.
+- Consistent v0.7.26 app, unsigned installer and CI artifacts; vault data and profile formats unchanged.
+
+**Release status:** Developer test only. Validate real-browser login flows and Windows upgrade/lock/unlock before releasing.
+
+# v0.7.25 — Explicit-exit and editor-lifecycle hardening (development preview)
+
+- Prevent tray Exit and normal window Exit from losing pending edits while the encrypted vault is locked or a durable write fails. Clean locked vaults still exit without prompting.
+- Keep LaunchFlow open if a New Website wizard, Step Editor or Teach recording remains active during a requested exit or automatic installer shutdown.
+- Require durable encrypted configuration persistence before displaying credential-save success, and track duplicated website workflows as unsaved until saved.
+- Add production-linked exit-safety scenarios and a UI credential-save durable-write regression, plus Windows source contracts.
+- Updated the app, installer and unsigned CI test artifact version to 0.7.25. The AppId, database/vault schema, profile formats and updater policy remain unchanged.
+
+**Release status:** Developer preview only. Real Windows WPF dialogs, 10-minute session lock, DPI/physical monitors, DPAPI, encrypted SQLite import/restart, and installer upgrade/rollback remain native verification gates. CI and cross-builds are not release authorization.
+
 # v0.7.24 — Independent review P0 repairs (development preview)
 
 - **Data-loss prevention:** Automatic installer shutdown refuses exit if unsaved edits exist and the vault is locked. A clean locked vault can still exit; unlocked configuration must be durably saved before automatic exit.

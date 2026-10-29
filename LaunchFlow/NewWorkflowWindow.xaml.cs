@@ -18,6 +18,7 @@ public partial class NewWorkflowWindow : Window
         InitializeComponent();
         MonitorCombo.ItemsSource = MonitorService.GetMonitors();
         MonitorCombo.SelectedIndex = 0;
+        BrowserChoices.Refresh(BrowserCombo);
         Loaded += (_, _) =>
         {
             DarkWindowChrome.Apply(this);
@@ -52,7 +53,19 @@ public partial class NewWorkflowWindow : Window
             return;
         }
 
-        var browser = (BrowserCombo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Edge";
+        var browser = BrowserChoices.SelectedName(BrowserCombo);
+        if (string.IsNullOrWhiteSpace(browser) || !BrowserInstallations.IsInstalled(browser))
+        {
+            MessageBox.Show(this, "Choose a browser installed on this computer.",
+                "Browser unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        if (browser == BrowserInstallations.DefaultBrowser && AutoLoginCheck.IsChecked == true)
+        {
+            MessageBox.Show(this, "The default-browser option only opens the site. Choose Edge, Chrome or Firefox for automatic sign-in.",
+                "Automatic login needs a supported browser", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
         var monitor = (MonitorCombo.SelectedItem as MonitorChoice)?.Index ?? 0;
         var autoLogin = AutoLoginCheck.IsChecked == true;
         if (autoLogin && url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
@@ -135,6 +148,9 @@ public partial class NewWorkflowWindow : Window
         host.EndsWith(".lan", StringComparison.OrdinalIgnoreCase) ||
         !host.Contains('.') ||
         System.Net.IPAddress.TryParse(host, out _);
+
+    private void BrowserCombo_DropDownOpened(object sender, EventArgs e) =>
+        BrowserChoices.Refresh(BrowserCombo);
 
     private void PasteUrl_Click(object sender, RoutedEventArgs e)
     {

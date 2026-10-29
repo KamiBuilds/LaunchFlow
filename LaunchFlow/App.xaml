@@ -3,10 +3,10 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 >
   <Application.Resources>
-    <SolidColorBrush x:Key="AppBackground" Color="#091420"/>
-    <SolidColorBrush x:Key="PanelBackground" Color="#111F30"/>
-    <SolidColorBrush x:Key="CardBackground" Color="#182A3D"/>
-    <SolidColorBrush x:Key="AccentBrush" Color="#46DACB"/>
+    <SolidColorBrush x:Key="AppBackground" Color="#0B1220"/>
+    <SolidColorBrush x:Key="PanelBackground" Color="#141B29"/>
+    <SolidColorBrush x:Key="CardBackground" Color="#1B2636"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="#6EE7D7"/>
     <SolidColorBrush x:Key="BorderBrushMuted" Color="#294257"/>
     <SolidColorBrush x:Key="SecondaryText" Color="#A5BDD0"/>
     <Style TargetType="TabItem">
@@ -24,7 +24,7 @@
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsSelected" Value="True">
-                <Setter TargetName="TabSurface" Property="Background" Value="#155D73"/>
+                <Setter TargetName="TabSurface" Property="Background" Value="#2457A6"/>
                 <Setter Property="Foreground" Value="White"/>
               </Trigger>
             </ControlTemplate.Triggers>
@@ -36,42 +36,42 @@
       <Setter Property="Background" Value="#0B1522"/>
       <Setter Property="Foreground" Value="#EEF6FA"/>
     </Style>
-    <SolidColorBrush x:Key="Surface" Color="#111D2C"/>
-    <SolidColorBrush x:Key="Surface2" Color="#16283A"/>
-    <SolidColorBrush x:Key="Accent" Color="#46DACB"/>
+    <SolidColorBrush x:Key="Surface" Color="#141B29"/>
+    <SolidColorBrush x:Key="Surface2" Color="#1B2636"/>
+    <SolidColorBrush x:Key="Accent" Color="#6EE7D7"/>
     <SolidColorBrush x:Key="Muted" Color="#91A1B7"/>
     <Style TargetType="TextBlock">
       <Setter Property="Foreground" Value="#EEF6FA"/>
       <Setter Property="FontFamily" Value="Segoe UI"/>
     </Style>
     <Style TargetType="TextBox">
-      <Setter Property="Background" Value="#101E30"/>
+      <Setter Property="Background" Value="#0D1522"/>
       <Setter Property="Foreground" Value="White"/>
-      <Setter Property="CaretBrush" Value="#46DACB"/>
+      <Setter Property="CaretBrush" Value="#6EE7D7"/>
       <Setter Property="BorderBrush" Value="#3D5A70"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="Padding" Value="11,9"/>
       <Setter Property="FontSize" Value="13"/>
       <Setter Property="MinHeight" Value="38"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
-      <Setter Property="SelectionBrush" Value="#245B71"/>
+      <Setter Property="SelectionBrush" Value="#285F75"/>
     </Style>
     <Style TargetType="PasswordBox">
-      <Setter Property="Background" Value="#101E30"/>
+      <Setter Property="Background" Value="#0D1522"/>
       <Setter Property="Foreground" Value="White"/>
-      <Setter Property="CaretBrush" Value="#46DACB"/>
+      <Setter Property="CaretBrush" Value="#6EE7D7"/>
       <Setter Property="BorderBrush" Value="#3D5A70"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="Padding" Value="11,9"/>
       <Setter Property="FontSize" Value="13"/>
-      <Setter Property="SelectionBrush" Value="#245B71"/>
+      <Setter Property="SelectionBrush" Value="#285F75"/>
     </Style>
 
     <!-- Dark Fluent-like scrollbars (replaces the light Windows system chrome) -->
     <SolidColorBrush x:Key="ScrollTrackBrush" Color="#121A28"/>
     <SolidColorBrush x:Key="ScrollThumbBrush" Color="#3A4F68"/>
     <SolidColorBrush x:Key="ScrollThumbHoverBrush" Color="#5A738F"/>
-    <SolidColorBrush x:Key="ScrollThumbDragBrush" Color="#46DACB"/>
+    <SolidColorBrush x:Key="ScrollThumbDragBrush" Color="#6EE7D7"/>
 
     <ControlTemplate x:Key="DarkScrollBarThumb" TargetType="Thumb">
       <Border x:Name="ThumbBd" Background="{StaticResource ScrollThumbBrush}" CornerRadius="4" Margin="1"/>
@@ -167,7 +167,7 @@
     <!-- Avoid the operating-system light ComboBox popup. Both the selected item
          and the opened dropdown use the same high-contrast dark palette. -->
     <Style TargetType="ComboBox">
-      <Setter Property="Background" Value="#172B41"/>
+      <Setter Property="Background" Value="#182A40"/>
       <Setter Property="Foreground" Value="#F7FBFF"/>
       <Setter Property="BorderBrush" Value="#4E7286"/>
       <Setter Property="FontSize" Value="13"/>
@@ -177,7 +177,7 @@
         <Setter.Value>
           <Style TargetType="ComboBoxItem">
             <Setter Property="Foreground" Value="#FFFFFF"/>
-            <Setter Property="Background" Value="#172B41"/>
+            <Setter Property="Background" Value="#182A40"/>
             <Setter Property="Padding" Value="10,8"/>
             <Setter Property="Template">
               <Setter.Value>
@@ -186,8 +186,8 @@
                     <ContentPresenter/>
                   </Border>
                   <ControlTemplate.Triggers>
-                    <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="ItemBorder" Property="Background" Value="#1B6976"/></Trigger>
-                    <Trigger Property="IsSelected" Value="True"><Setter TargetName="ItemBorder" Property="Background" Value="#1B6976"/></Trigger>
+                    <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="ItemBorder" Property="Background" Value="#285F75"/></Trigger>
+                    <Trigger Property="IsSelected" Value="True"><Setter TargetName="ItemBorder" Property="Background" Value="#285F75"/></Trigger>
                   </ControlTemplate.Triggers>
                 </ControlTemplate>
               </Setter.Value>
@@ -211,7 +211,7 @@
                 </Grid>
                 <ToggleButton.Template>
                   <ControlTemplate TargetType="ToggleButton">
-                    <Border Background="#172B41" BorderBrush="#4E7286" BorderThickness="1" CornerRadius="5" Padding="8,4">
+                    <Border Background="#182A40" BorderBrush="#4E7286" BorderThickness="1" CornerRadius="5" Padding="8,4">
                       <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
                     </Border>
                   </ControlTemplate>
@@ -220,7 +220,7 @@
               <Popup x:Name="PART_Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}"
                      AllowsTransparency="True" Focusable="False" PopupAnimation="Fade"
                      MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
-                <Border Background="#172B41" BorderBrush="#4E7286" BorderThickness="1" CornerRadius="8" Padding="4" MinWidth="205"
+                <Border Background="#182A40" BorderBrush="#4E7286" BorderThickness="1" CornerRadius="8" Padding="4" MinWidth="205"
                         MaxHeight="330">
                   <ScrollViewer VerticalScrollBarVisibility="Auto" CanContentScroll="True"
                                 KeyboardNavigation.DirectionalNavigation="Contained"><ItemsPresenter/></ScrollViewer>
@@ -251,7 +251,7 @@
               <Trigger Property="IsMouseOver" Value="True"><Setter Property="Opacity" Value="0.90"/></Trigger>
               <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.4"/></Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="Bd" Property="BorderBrush" Value="#46DACB"/>
+                <Setter TargetName="Bd" Property="BorderBrush" Value="#6EE7D7"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -259,7 +259,7 @@
       </Setter>
     </Style>
     <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-      <Setter Property="Background" Value="#46DACB"/>
+      <Setter Property="Background" Value="#6EE7D7"/>
       <Setter Property="Foreground" Value="#08201D"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
@@ -283,10 +283,10 @@
             </StackPanel>
             <ControlTemplate.Triggers>
               <Trigger Property="IsChecked" Value="True">
-                <Setter TargetName="Track" Property="Background" Value="#46DACB"/>
+                <Setter TargetName="Track" Property="Background" Value="#6EE7D7"/>
                 <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/>
                 <Setter TargetName="Thumb" Property="Margin" Value="0,0,3,0"/>
-                <Setter TargetName="Thumb" Property="Fill" Value="#0D2430"/>
+                <Setter TargetName="Thumb" Property="Fill" Value="#0F1826"/>
               </Trigger>
               <Trigger Property="IsChecked" Value="{x:Null}">
                 <Setter TargetName="Track" Property="Background" Value="#426D79"/>
@@ -298,7 +298,7 @@
                 <Setter Property="Opacity" Value="0.45"/>
               </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="Track" Property="BorderBrush" Value="#46DACB"/>
+                <Setter TargetName="Track" Property="BorderBrush" Value="#6EE7D7"/>
                 <Setter TargetName="Track" Property="BorderThickness" Value="1"/>
               </Trigger>
             </ControlTemplate.Triggers>
@@ -307,7 +307,7 @@
       </Setter>
     </Style>
     <Style TargetType="ListBox">
-      <Setter Property="Background" Value="#0D1929"/>
+      <Setter Property="Background" Value="#0F1826"/>
       <Setter Property="Foreground" Value="#EEF6FA"/>
       <Setter Property="BorderThickness" Value="0"/>
       <Setter Property="Padding" Value="4"/>
@@ -331,11 +331,11 @@
                 <Setter TargetName="ItemBd" Property="Background" Value="#1E2F45"/>
               </Trigger>
               <Trigger Property="IsSelected" Value="True">
-                <Setter TargetName="ItemBd" Property="Background" Value="#155D73"/>
+                <Setter TargetName="ItemBd" Property="Background" Value="#2457A6"/>
                 <Setter Property="Foreground" Value="White"/>
               </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="ItemBd" Property="BorderBrush" Value="#46DACB"/>
+                <Setter TargetName="ItemBd" Property="BorderBrush" Value="#6EE7D7"/>
                 <Setter TargetName="ItemBd" Property="BorderThickness" Value="1"/>
               </Trigger>
             </ControlTemplate.Triggers>
@@ -344,7 +344,7 @@
       </Setter>
     </Style>
     <Style TargetType="GridViewColumnHeader">
-      <Setter Property="Background" Value="#1A3042"/>
+      <Setter Property="Background" Value="#1E2F45"/>
       <Setter Property="Foreground" Value="#C4DAE5"/>
       <Setter Property="BorderBrush" Value="#29465A"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
@@ -360,7 +360,7 @@
       <Setter Property="Padding" Value="8"/>
     </Style>
     <Style TargetType="ToolTip">
-      <Setter Property="Background" Value="#1B3447"/>
+      <Setter Property="Background" Value="#1B2636"/>
       <Setter Property="Foreground" Value="#F0F8FB"/>
       <Setter Property="BorderBrush" Value="#355C6D"/>
       <Setter Property="Padding" Value="10,8"/>

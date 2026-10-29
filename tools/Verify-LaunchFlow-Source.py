@@ -110,8 +110,32 @@ check('VaultBackupService' not in main_code and 'VaultBackupService' not in db,
       'automatic database backup calls removed')
 check(not (root/'LaunchFlow/Services/VaultBackupService.cs').exists(),
       'unused database backup service removed')
-check('Value="#46DACB"' in styles and 'Value="#46DACB"' in main_xaml,
-      'switches use the same LaunchFlow teal')
+check('if (_installerShutdownInProgress)' in main_code and
+      'await _runner.CloseSessionsAsync();' in main_code and
+      'var wasLoading = _loadingEditor;' in main_code and
+      'A browser session could not be closed safely' in main_code,
+      'installer exit distinguishes dirty edits from cleanup failure and retries transient close errors')
+check('VerifiedRedirectAsync' in auto and
+      'ObserveLoginCompletionAsync' in auto and
+      'LoginHealth.VerifiedRedirectAsync' in auto,
+      'automatic login requires validated dashboard transitions rather than one outdated selector')
+check((root/'LaunchFlow/SignInDecisionWindow.xaml').is_file() and
+      'ConfirmSignedInAsync' in auto and
+      'SignInDecisionWindow.Decision.Confirmed' in main_code and
+      'ManuallyConfirmedAsync' in auto,
+      'explicit sign-in acknowledgment is scoped to a verified open browser session')
+check('session._pendingActions.Enqueue(("Navigate", safeUrl))' in teach_service and
+      'string.IsNullOrEmpty(next.Query)' in teach_service,
+      'Teach automatically records allowed same-tab cross-site navigation without URL secrets')
+check('Value="#6EE7D7"' in styles and 'Value="#6EE7D7"' in main_xaml,
+      'switches use the restored LaunchFlow navy/mint palette')
+check('BrowserChoices.Refresh(BrowserCombo, w.Browser)' in main_code and
+      'BrowserChoices.SelectedName(combo)' in main_code and
+      'BrowserChoices.Refresh(BrowserCombo);' in new_workflow and
+      'BrowserInstallations.IsInstalled(browser)' in new_workflow and
+      'BrowserCombo_DropDownOpened' in main_xaml and
+      'BrowserCombo_DropDownOpened' in new_workflow_xaml,
+      'browser selectors enumerate detected browsers and preserve saved missing choices')
 check('x:Name="Check"' not in styles and 'x:Name="Thumb"' in styles,
       'checkbox controls have no checkmark glyph')
 recorder=(root/'LaunchFlow/VisualRecorderWindow.xaml.cs').read_text(encoding='utf-8')

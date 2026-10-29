@@ -108,6 +108,26 @@ style = (root / "LaunchFlow/App.xaml").read_text(encoding="utf-8")
 check('SelectionBoxItemTemplate' in style and 'PART_Popup' in style
       and 'ItemsPresenter' in style,
       "dropdown renders display-member templates and accessible popup items")
+check('BrowserChoices.Refresh(BrowserCombo, w.Browser)' in source and
+      'BrowserCombo_DropDownOpened' in ET.tostring(ui, encoding="unicode") and
+      'BrowserInstallations.IsInstalled(browser)' in (root / "LaunchFlow/NewWorkflowWindow.xaml.cs").read_text(encoding="utf-8"),
+      "both browser selectors use installation detection and retain configured browser identity")
+check('ObserveLoginCompletionAsync' in (root / "LaunchFlow/Services/AutomationEngine.cs").read_text(encoding="utf-8") and
+      'VerifiedRedirectAsync' in (root / "LaunchFlow/Services/LoginHealth.cs").read_text(encoding="utf-8") and
+      'var wasLoading = _loadingEditor;' in source and
+      'CloseSessionsRetry' in source,
+      "sign-in verification and safe installer cleanup recovery remain wired")
+check('SignInDecisionWindow.Decision.Confirmed' in source and
+      (root / "LaunchFlow/SignInDecisionWindow.xaml").is_file() and
+      'ConfirmSignedInAsync' in (root / "LaunchFlow/Services/AutomationEngine.cs").read_text(encoding="utf-8") and
+      'session._pendingActions.Enqueue(("Navigate", safeUrl))' in (root / "LaunchFlow/Services/TeachRecorder.cs").read_text(encoding="utf-8"),
+      "human sign-in confirmation and automatic cross-site Teach navigation are connected")
+check('dialog.Show();' in source and
+      'ApplyModelessSignInDecisionAsync' in source and
+      'decision.ShowDialog();' not in source and
+      'new AboutWindow { Owner = this }.Show();' in source and
+      'new BrowserSetupWindow { Owner = this }.Show();' in source,
+      "noncritical windows remain modeless while dedicated authorization prompts stay gated")
 check('HeaderVersionLabel.Text = "v" + AppInfo.VersionString' in source
       and 'CurrentVersionLabel.Text = "Installed version " + AppInfo.VersionString' in source,
       "UI version labels use assembly version instead of hardcoded display text")
@@ -115,9 +135,9 @@ csproj = ET.parse(root / "LaunchFlow/LaunchFlow.csproj")
 version = csproj.findtext("./PropertyGroup/Version")
 iss = (root / "installer/LaunchFlow.iss").read_text(encoding="utf-8")
 info = (root / "LaunchFlow/Services/AppInfo.cs").read_text(encoding="utf-8")
-check(version == "0.7.24" and f'#define AppVersion "{version}"' in iss
+check(version == "0.7.30" and f'#define AppVersion "{version}"' in iss
       and f'return v is null ? "{version}"' in info,
-      "assembly, installer and fallback version match 0.7.24")
+      "assembly, installer and fallback version match 0.7.30")
 guide = ET.parse(root / "LaunchFlow/TutorialWindow.xaml").getroot()
 guide_source = (root / "LaunchFlow/TutorialWindow.xaml.cs").read_text(encoding="utf-8")
 check('new TutorialWindow { Owner = this }.ShowDialog()' not in source and
@@ -142,11 +162,25 @@ check('SelectionMode="Extended"' in ET.tostring(ui, encoding="unicode") and
       'MarkUnsavedChanges()' in source and
       'ConstrainMaximizedWindowToWorkArea' in source,
       "Website steps have bulk editing, save feedback and monitor-safe maximize")
+check('HasPendingEditorDialog' in source and
+      'private bool ShowTrackedStepEditor(StepEditorWindow editor)' in source and
+      source.count('!ShowTrackedStepEditor(editor)') == 3 and
+      'if (_hasUnsavedChanges || HasPendingEditorDialog)' in source and
+      'if (HasPendingEditorDialog)' in source,
+      "installer and explicit exit refuse a still-open website wizard, step editor or Teach recording")
+check('ExitSafety.TryPersistForExit(' in source and
+      'if (_installerShutdownInProgress || _exiting || !TryCloseWithSavedChanges()) return;' in source and
+      'if (!TryCloseWithSavedChanges())' in source and
+      'if (_hasUnsavedChanges)' in source and
+      'MarkUnsavedChanges();\n        AppendLog("Workflow duplicated' in source and
+      '_store.SaveDurable(_configuration);\n            ClearCredentialEditor();' in source,
+      "explicit tray/window exits refuse dirty locked saves, credential preference writes are durable and duplicates become dirty")
 check('if (_hasUnsavedChanges && !VaultDatabase.Current.IsUnlocked)' in source and
-      'if (_hasUnsavedChanges || _vaultCleanupFailed' in source and
+      'if (_vaultCleanupFailed || _vaultLockInProgress)' in source and
+      'if (_installerProfileSealFailed)' in source and
       'Unlock LaunchFlow and click Save before updating.' in source and
       'if (VaultDatabase.Current.IsUnlocked && !SaveAll())' in source,
-      "installer refuses automatic shutdown with unsaved locked-vault edits")
+      "installer refuses dirty locked-vault edits and distinguishes browser/profile cleanup failures")
 check('IsCurrentStepEditorOwner(WebsiteWorkflow workflow, long revision)' in source and
       'WorkflowEditGuard.IsCurrent(_configuration, _selected, workflow, current,' in source and
       'index >= 0 && index < original.Steps.Count' in

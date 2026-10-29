@@ -37,6 +37,11 @@ public sealed partial class AutomationEngine
             }
         }
 
+        // A saved browser may have been uninstalled since the website was added.
+        // Never silently launch a different browser with a different profile.
+        if (OperatingSystem.IsWindows() && !BrowserInstallations.IsInstalled(workflow.Browser))
+            throw new InvalidOperationException(
+                $"The selected browser ({workflow.Browser}) is not installed. Install it or select an available browser in website settings.");
         var browserType = ResolveBrowserType(workflow.Browser);
         var profileDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

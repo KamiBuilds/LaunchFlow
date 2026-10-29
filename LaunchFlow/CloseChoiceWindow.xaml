@@ -26,7 +26,7 @@
             <Button Content="Exit completely" Width="127" Height="38" Margin="0,0,10,0" Click="Exit_Click"
                     Background="#303D50" Foreground="White" BorderBrush="#54677E"/>
             <Button Content="Keep running in background" Width="200" Height="38" Click="Background_Click"
-                    Background="#147D88" Foreground="White" BorderThickness="0"/>
+                    Background="#2457A6" Foreground="White" BorderThickness="0"/>
         </StackPanel>
     </Grid>
 </Window>

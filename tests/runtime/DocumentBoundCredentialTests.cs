@@ -12,7 +12,12 @@ internal static class DocumentBoundCredentialTests
         if (args.Contains("--profile-only")) return;
         var tests = new List<(string Name, Func<IBrowser, Task> Run)>
         {
-            ("delayed-password", DelayedPasswordAsync)
+            ("delayed-password", DelayedPasswordAsync),
+            ("spa-rendered-login", SpaRenderedLoginAsync),
+            ("hidden-first-login-controls", HiddenFirstLoginAsync),
+            ("missing-required-password", MissingRequiredPasswordAsync),
+            ("two-stage-js-password", TwoStageJavaScriptPasswordAsync),
+            ("existing-signed-in-session", ExistingSignedInSessionAsync)
         };
         foreach (var field in new[] { "user", "password" })
         {
@@ -116,6 +121,102 @@ internal static class DocumentBoundCredentialTests
 
     private const string Fields = "<input id='user'><input id='password' type='password'><button id='submit' onclick=\"document.body.dataset.submitted='yes'\">submit</button>";
     private static string Input(string field, string attributes = "") => $"<input id='{field}' type='{(field == "password" ? "password" : "text")}' {attributes}>";
+
+    private static async Task SpaRenderedLoginAsync(IBrowser browser)
+    {
+        await using var f = await Fixture.CreateAsync(browser, "user", """
+            <script>
+            setTimeout(() => {
+              const form = document.createElement('form');
+              form.innerHTML = '<input id="user"><input id="password" type="password"><button id="submit" type="submit">Sign in</button>';
+              form.addEventListener('submit', event => {
+                event.preventDefault();
+                document.body.dataset.submitted = 'yes';
+              });
+              document.body.append(form);
+            }, 300);
+            </script>
+            """);
+        f.Workflow.PasswordSelector = "#password";
+        await f.LoginAsync();
+        Check(await f.Page.InputValueAsync("#user") == f.Vault.Credential.Username &&
+              await f.Page.InputValueAsync("#password") == f.Vault.Credential.Password,
+            "late JavaScript-rendered login fields receive the configured credential");
+        Check(await f.Page.GetAttributeAsync("body", "data-submitted") == "yes",
+            "late rendered login form submits once the username and password are filled");
+    }
+
+    private static async Task HiddenFirstLoginAsync(IBrowser browser)
+    {
+        await using var f = await Fixture.CreateAsync(browser, "user", """
+            <form onsubmit="event.preventDefault();document.body.dataset.submitted='yes'">
+              <input id="hiddenUser" type="text" style="display:none">
+              <input id="user" type="text">
+              <input id="hiddenPassword" type="password" style="display:none">
+              <input id="password" type="password">
+              <button type="submit" hidden>Do not use</button>
+              <button id="submit" type="submit">Sign in</button>
+            </form>
+            """);
+        f.Workflow.UsernameSelector = "input[type=text]";
+        f.Workflow.PasswordSelector = "input[type=password]";
+        f.Workflow.SubmitSelector = "button[type=submit]";
+        await f.LoginAsync();
+        Check(await f.Page.InputValueAsync("#user") == f.Vault.Credential.Username &&
+              await f.Page.InputValueAsync("#password") == f.Vault.Credential.Password &&
+              await f.Page.InputValueAsync("#hiddenUser") == "" &&
+              await f.Page.InputValueAsync("#hiddenPassword") == "",
+            "login chooses visible fields instead of hidden duplicate template inputs");
+        Check(await f.Page.GetAttributeAsync("body", "data-submitted") == "yes",
+            "login clicks the visible submit button even if a hidden match comes first");
+    }
+
+    private static async Task MissingRequiredPasswordAsync(IBrowser browser)
+    {
+        await using var f = await Fixture.CreateAsync(browser, "user", """
+            <form onsubmit="event.preventDefault();document.body.dataset.submitted='yes'">
+              <input id="user"><button id="submit" type="submit">Sign in</button>
+            </form>
+            """);
+        f.Workflow.PasswordSelector = "#password";
+        f.Workflow.LoginWaitSeconds = 1;
+        await f.LoginAsync();
+        Check(await f.Page.InputValueAsync("#user") == f.Vault.Credential.Username,
+            "available username can still be filled");
+        Check(await f.Page.GetAttributeAsync("body", "data-submitted") is null,
+            "incomplete login does not click Submit when configured password field is absent");
+        f.ManualRetry();
+    }
+
+    private static async Task TwoStageJavaScriptPasswordAsync(IBrowser browser)
+    {
+        await using var f = await Fixture.CreateAsync(browser, "user", """
+            <input id="user"><button id="next" onclick="
+              setTimeout(() => {
+                document.body.innerHTML = '<input id=password type=password><button id=submit onclick=&quot;document.body.dataset.submitted=\'yes\'&quot;>Sign in</button>';
+              }, 350);
+            ">Next</button>
+            """);
+        f.Workflow.UsernameContinueSelector = "#next";
+        f.Workflow.PasswordSelector = "#password";
+        await f.LoginAsync();
+        Check(await f.Page.InputValueAsync("#password") == f.Vault.Credential.Password,
+            "two-stage JS login fills its delayed password field after Next");
+        Check(await f.Page.GetAttributeAsync("body", "data-submitted") == "yes",
+            "two-stage JS login submits after delayed password entry");
+    }
+
+    private static async Task ExistingSignedInSessionAsync(IBrowser browser)
+    {
+        await using var f = await Fixture.CreateAsync(browser, "user",
+            "<main id='signed-in'><h1>Dashboard</h1></main>");
+        f.Workflow.PasswordSelector = "#password";
+        f.Workflow.LoginSuccessSelector = "#signed-in";
+        await f.LoginAsync();
+        Check(f.Logs.Any(x => x.Contains("Already signed in", StringComparison.Ordinal)),
+            "saved signed-in session does not depend on a missing login form");
+        Check(f.Prompts.Count == 0, "already authenticated website does not request credential origin approval");
+    }
 
     private static async Task DelayedPasswordAsync(IBrowser browser)
     {
