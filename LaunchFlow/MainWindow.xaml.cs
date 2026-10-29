@@ -48,6 +48,7 @@ public partial class MainWindow : Window
     private Task _vaultLockTask = Task.CompletedTask;
     private Task<AutomationEngine.RunResult>? _activeRunTask;
     private Task<IPage>? _activeTeachTask;
+    private readonly Dictionary<Guid, SignInDecisionWindow> _openSignInDecisions = new();
     private NewWorkflowWindow? _newWorkflowWindow;
     private int _openStepEditors;
     private bool _startupWorkflowViewReady;
@@ -1235,7 +1236,7 @@ public partial class MainWindow : Window
             MessageBox.Show(this, "Select a saved workspace first.");
             return;
         }
-        new WorkspacePreviewWindow(selected, _configuration) { Owner = this }.ShowDialog();
+        new WorkspacePreviewWindow(selected, _configuration) { Owner = this }.Show();
     }
 
     private void RunWorkspace_Click(object sender, RoutedEventArgs e)
@@ -1474,62 +1475,93 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task OfferRepairForLoginAttentionAsync(
+    private Task OfferRepairForLoginAttentionAsync(
         IReadOnlyList<AutomationEngine.LoginAttention> items)
     {
+        // Informational sign-in assistance is modeless. A completed run must
+        // release its UI state immediately, even if the user leaves a prompt
+        // open while reviewing other websites.
         ShowFromTray();
         MainTabs.SelectedIndex = 0;
         foreach (var item in items)
         {
-            if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked || _runCancellation?.IsCancellationRequested == true) return;
+            if (_vaultLockInProgress || _windowsLocked || _exiting ||
+                !VaultDatabase.Current.IsUnlocked || _runCancellation?.IsCancellationRequested == true)
+                break;
             var workflow = _configuration.Workflows.FirstOrDefault(w => w.Id == item.WorkflowId);
             if (workflow is null) continue;
-            WorkflowList.SelectedItem = workflow;
-            var decision = new SignInDecisionWindow(item.WorkflowName, item.Reason) { Owner = this };
-            decision.ShowDialog();
-            if (decision.Choice == SignInDecisionWindow.Decision.Later) continue;
-            if (decision.Choice == SignInDecisionWindow.Decision.Confirmed)
+            if (_openSignInDecisions.TryGetValue(workflow.Id, out var existing))
             {
-                if (_vaultLockInProgress || _windowsLocked || _exiting ||
-                    !VaultDatabase.Current.IsUnlocked ||
-                    !_configuration.Workflows.Any(w => ReferenceEquals(w, workflow))) return;
-                try
-                {
-                    if (await _runner.ConfirmSignedInAsync(workflow))
-                    {
-                        WorkflowStatusLabel.Text = "Signed-in session confirmed · Run this website again to continue actions";
-                        MessageBox.Show(this,
-                            "Signed in confirmed for the current browser session.\n\n" +
-                            "Click Run this site again to continue its recorded actions. " +
-                            "LaunchFlow will check the same page before reusing this confirmation.",
-                            "Sign-in confirmed", MessageBoxButton.OK, MessageBoxImage.Information);
-                    }
-                    else
-                    {
-                        MessageBox.Show(this,
-                            "This page could not be safely confirmed. It may still show a password/MFA challenge, " +
-                            "have navigated away, or be on a different website. Check the browser and choose Repair login if needed.",
-                            "Confirmation unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    }
-                }
-                catch (Exception)
-                {
-                    MessageBox.Show(this, "The current browser session could not be confirmed safely.",
-                        "Confirmation unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
-                }
+                // Do not flood the user with identical windows on repeated runs.
+                existing.Activate();
                 continue;
             }
-            if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked ||
-                _runCancellation?.IsCancellationRequested == true || !TeachAllowed(workflow) ||
-                !_configuration.Workflows.Any(w => ReferenceEquals(w, workflow))) return;
+            WorkflowList.SelectedItem = workflow;
+            var capturedRevision = _workspaceRevision;
+            var dialog = new SignInDecisionWindow(item.WorkflowName, item.Reason) { Owner = this };
+            _openSignInDecisions.Add(workflow.Id, dialog);
+            dialog.Closed += (_, _) =>
+            {
+                if (_openSignInDecisions.TryGetValue(workflow.Id, out var current) &&
+                    ReferenceEquals(current, dialog))
+                    _openSignInDecisions.Remove(workflow.Id);
+                // Closed fires synchronously; async work continues without
+                // disabling the main window or showing any modal repair dialog.
+                _ = ApplyModelessSignInDecisionAsync(workflow, capturedRevision, dialog.Choice);
+            };
+            try { dialog.Show(); }
+            catch
+            {
+                _openSignInDecisions.Remove(workflow.Id);
+                // A failed optional notice cannot turn a finished run into
+                // an unsafe retry or leak private Playwright error details.
+                AppendLog("Could not display the sign-in assistance window.");
+            }
+        }
+        return Task.CompletedTask;
+    }
+
+    private async Task ApplyModelessSignInDecisionAsync(
+        WebsiteWorkflow workflow, long capturedRevision, SignInDecisionWindow.Decision choice)
+    {
+        if (choice == SignInDecisionWindow.Decision.Later ||
+            _exiting || _windowsLocked || _vaultLockInProgress ||
+            !VaultDatabase.Current.IsUnlocked ||
+            capturedRevision != _workspaceRevision ||
+            !_configuration.Workflows.Any(w => ReferenceEquals(w, workflow))) return;
+
+        if (choice == SignInDecisionWindow.Decision.Confirmed)
+        {
             try
             {
-                await RepairLoginCoreAsync(workflow);
+                if (await _runner.ConfirmSignedInAsync(workflow))
+                {
+                    if (_exiting || _windowsLocked || _vaultLockInProgress ||
+                        !VaultDatabase.Current.IsUnlocked ||
+                        capturedRevision != _workspaceRevision ||
+                        !_configuration.Workflows.Any(w => ReferenceEquals(w, workflow))) return;
+                    WorkflowStatusLabel.Text = "Signed-in session confirmed · Run this website again to continue actions";
+                    AppendLog($"User confirmed the open signed-in session for '{workflow.Name}'. Run again to continue.");
+                }
+                else
+                {
+                    AppendLog($"Sign-in confirmation for '{workflow.Name}' was unavailable; check its browser challenge.");
+                    WorkflowStatusLabel.Text = "Sign-in was not confirmed · Check the browser page";
+                }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                MessageBox.Show(this, MakeBrowserFriendlyMessage(ex), "Repair login", MessageBoxButton.OK, MessageBoxImage.Warning);
+                AppendLog("Sign-in confirmation could not be completed safely.");
             }
+            return;
+        }
+
+        if (!TeachAllowed(workflow)) return;
+        try { await RepairLoginCoreAsync(workflow); }
+        catch (Exception ex)
+        {
+            if (!_exiting)
+                AppendLog("Repair login could not start: " + ex.GetType().Name);
         }
     }
 
@@ -1565,11 +1597,11 @@ public partial class MainWindow : Window
 
     private void About_Click(object sender, RoutedEventArgs e)
     {
-        new AboutWindow { Owner = this }.ShowDialog();
+        new AboutWindow { Owner = this }.Show();
     }
 
     private void BrowserSetup_Click(object sender, RoutedEventArgs e) =>
-        new BrowserSetupWindow { Owner = this }.ShowDialog();
+        new BrowserSetupWindow { Owner = this }.Show();
 
     private void ExportDiagnostics_Click(object sender, RoutedEventArgs e)
     {
