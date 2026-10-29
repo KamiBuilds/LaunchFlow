@@ -14,6 +14,9 @@
     <Compile Include="../../LaunchFlow/Services/CredentialDeleteGuard.cs" Link="CredentialDeleteGuard.cs" />
     <Compile Include="../../LaunchFlow/Services/ImportConfigurationProjection.cs" Link="ImportConfigurationProjection.cs" />
     <Compile Include="SafetyIntegrationTests.cs" />
+    <Compile Include="../../LaunchFlow/Services/WebsiteLoginMode.cs" Link="WebsiteLoginMode.cs" />
+    <Compile Include="../../LaunchFlow/Services/WebsiteNextStepGuidance.cs" Link="WebsiteNextStepGuidance.cs" />
+    <Compile Include="WebsiteLoginModeTests.cs" />
     <Compile Include="../../LaunchFlow/Services/WindowsApplicationControl.cs" Link="WindowsApplicationControl.cs" />
     <Compile Include="ApplicationControlTests.cs" />
     <Compile Include="../../LaunchFlow/Services/BrowserInstallations.cs" Link="BrowserInstallations.cs" />

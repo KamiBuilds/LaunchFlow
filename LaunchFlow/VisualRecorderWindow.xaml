@@ -15,6 +15,8 @@
     </Grid.RowDefinitions>
     <StackPanel>
       <TextBlock Text="Record website actions safely" FontSize="20" FontWeight="SemiBold"/>
+      <TextBlock Text="Before you start: stay in the same browser tab LaunchFlow opened. Popup windows and separate tabs are not recorded automatically — add an explicit page step for those. Complete MFA yourself; LaunchFlow never stores codes."
+                 Foreground="#E6B96F" TextWrapping="Wrap" Margin="0,8,0,0"/>
       <TextBlock Text="1. Use the original browser tab.  2. Click across websites; same-tab moves are captured automatically.  3. Return here and Save. New popup tabs still need an explicit page step."
                  Margin="0,8,0,0" Foreground="#C3D5E7" TextWrapping="Wrap"/>
       <TextBlock Text="Records clicks and safe keys (Enter, Tab, Escape, arrows). Typed text, email, passwords and one-time codes are NEVER captured. Use Passwords for login; record only AFTER signing in."

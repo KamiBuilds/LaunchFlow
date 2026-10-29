@@ -40,7 +40,7 @@ public partial class NewWorkflowWindow : Window
 
     private void Create_Click(object sender, RoutedEventArgs e)
     {
-        var name = string.IsNullOrWhiteSpace(NameBox.Text) ? "Unnamed workflow" : NameBox.Text.Trim();
+        var name = string.IsNullOrWhiteSpace(NameBox.Text) ? "Unnamed website" : NameBox.Text.Trim();
         string url;
         try
         {

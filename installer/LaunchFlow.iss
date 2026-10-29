@@ -1,4 +1,4 @@
-#define AppVersion "0.7.33"
+#define AppVersion "0.7.34"
 #define AppName "LaunchFlow"
 [Setup]
 AppId={{9B1A7C15-093B-4DBA-BDA7-BF43A2E67320}
