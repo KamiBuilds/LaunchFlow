@@ -438,6 +438,8 @@ public sealed partial class AutomationEngine : IAsyncDisposable
             return false;
         }
 
+        string? submitPageBeforeClick = null;
+        var submitWasAttempted = false;
         try
         {
             var requiresUser = !string.IsNullOrWhiteSpace(workflow.UsernameSelector);
@@ -493,6 +495,8 @@ public sealed partial class AutomationEngine : IAsyncDisposable
             // button instead of the hidden template many JS applications render first.
             if (!string.IsNullOrWhiteSpace(workflow.SubmitSelector))
             {
+                submitPageBeforeClick = page.Url;
+                submitWasAttempted = true;
                 if (!await ClickLoginSubmitAsync(workflow, page, approvedSubmitOrigin, ct).ConfigureAwait(false))
                 {
                     Log($"Login submit button not ready for '{workflow.Name}'. Check its selector.");
@@ -502,21 +506,20 @@ public sealed partial class AutomationEngine : IAsyncDisposable
 
             ct.ThrowIfCancellationRequested();
             var waitMs = Math.Clamp(workflow.LoginWaitSeconds, 5, 180) * 1000;
-            if (!string.IsNullOrWhiteSpace(workflow.LoginSuccessSelector))
+            if (!string.IsNullOrWhiteSpace(workflow.LoginSuccessSelector) ||
+                !string.IsNullOrWhiteSpace(workflow.LoginSuccessUrlContains))
             {
-                await page.Locator(workflow.LoginSuccessSelector).First
-                    .WaitForAsync(new LocatorWaitForOptions { Timeout = waitMs })
-                    .ConfigureAwait(false);
-            }
-            else if (!string.IsNullOrWhiteSpace(workflow.LoginSuccessUrlContains))
-            {
-                await page.WaitForURLAsync(
-                        u => u.Contains(workflow.LoginSuccessUrlContains, StringComparison.OrdinalIgnoreCase),
-                        new PageWaitForURLOptions { Timeout = waitMs })
-                    .ConfigureAwait(false);
+                if (!await ObserveLoginCompletionAsync(workflow, page,
+                    submitPageBeforeClick, waitMs, ct).ConfigureAwait(false))
+                {
+                    Log($"Sign-in for '{workflow.Name}' was not verified. Check or repair the completion condition.");
+                    return false;
+                }
             }
             else
             {
+                // If no explicit success condition was taught, keep the prior
+                // conservative challenge inspection in RunOneAsync.
                 await Task.Delay(Math.Min(waitMs, 3000), ct).ConfigureAwait(false);
             }
 
@@ -526,10 +529,65 @@ public sealed partial class AutomationEngine : IAsyncDisposable
         catch (OperationCanceledException) { throw; }
         catch (Exception)
         {
+            // Playwright may report that a submitted button detached during
+            // successful navigation. Admit only a *verified* same-origin signed-in
+            // redirect, never an arbitrary failed/blocked/MFA page.
+            if (submitWasAttempted && submitPageBeforeClick is not null &&
+                await ObserveVerifiedRedirectAsync(page, submitPageBeforeClick, 2000, ct).ConfigureAwait(false))
+            {
+                try
+                {
+                    RequireCredentialAccess();
+                    RequireAutomationUrl(page.Url);
+                    Log($"Signed-in dashboard confirmed for '{workflow.Name}' after navigation.");
+                    return true;
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception) { /* revoked policy never authorizes success */ }
+            }
             Log($"Auto-login for '{workflow.Name}' incomplete. " +
                 "Leaving the browser open for manual sign-in / MFA.");
             return false;
         }
+    }
+
+    private static async Task<bool> ObserveVerifiedRedirectAsync(
+        IPage page, string startingUrl, int maxWaitMs, CancellationToken ct)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddMilliseconds(maxWaitMs);
+        do
+        {
+            ct.ThrowIfCancellationRequested();
+            if (await LoginHealth.VerifiedRedirectAsync(page, startingUrl, ct).ConfigureAwait(false))
+                return true;
+            if (DateTimeOffset.UtcNow >= deadline) return false;
+            await Task.Delay(200, ct).ConfigureAwait(false);
+        } while (true);
+    }
+
+    private static async Task<bool> ObserveLoginCompletionAsync(
+        WebsiteWorkflow workflow, IPage page, string? submittedFrom, int waitMs, CancellationToken ct)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddMilliseconds(waitMs);
+        do
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                bool selectorReady = string.IsNullOrWhiteSpace(workflow.LoginSuccessSelector) ||
+                    await page.Locator(workflow.LoginSuccessSelector).First.IsVisibleAsync().ConfigureAwait(false);
+                bool urlReady = string.IsNullOrWhiteSpace(workflow.LoginSuccessUrlContains) ||
+                    page.Url.Contains(workflow.LoginSuccessUrlContains, StringComparison.OrdinalIgnoreCase);
+                if (selectorReady && urlReady) return true;
+                if (submittedFrom is not null &&
+                    await LoginHealth.VerifiedRedirectAsync(page, submittedFrom, ct).ConfigureAwait(false))
+                    return true;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception) { /* page may be mid-navigation */ }
+            if (DateTimeOffset.UtcNow >= deadline) return false;
+            await Task.Delay(250, ct).ConfigureAwait(false);
+        } while (true);
     }
 
     private async Task<IElementHandle?> ResolveCredentialElementAsync(
