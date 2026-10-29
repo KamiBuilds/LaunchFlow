@@ -60,9 +60,15 @@ Priority: thumbprint → subject → PFX.
 
 When a cert is configured and `signtool.exe` is available (Windows SDK):
 
-1. **Unsigned top-level `publish\*.exe` and `publish\*.dll`**, including `Microsoft.Data.Sqlite.dll`, before Inno packs the app. Existing valid vendor signatures are retained; invalid/untrusted signatures fail the build.  
+1. **Every unsigned published `.exe` and `.dll` recursively**, including `Microsoft.Data.Sqlite.dll`, Playwright's nested binaries and SQLite native dependencies, before Inno packs the app. Existing valid vendor signatures are retained; invalid/untrusted signatures fail the build.  
 2. **Setup.exe and the uninstaller** via Inno Setup `SignTool=lfsign` (`/Slfsign=` from the builder)  
 3. A final pass on `dist\LaunchFlow-Setup-*.exe` if Inno did not sign it
+
+## Build gates and compatibility claims
+
+Use `BUILD-INSTALLER.ps1 -RequireSignedDistribution` for distribution candidates. It refuses a missing signing certificate or `signtool.exe` **before** replacing output files; a signed build also verifies the final setup signature. The normal unsigned builder remains available for developer-only smoke testing and must never be described as App Control compatible.
+
+A signature passing `Get-AuthenticodeSignature` on the build PC is necessary for this signing workflow, but is **not sufficient** to guarantee another machine permits execution. Test the exact binaries under the target machine's policy and Windows 10/11 x64 configuration before approving deployment. An explicit denial rule can block even a valid signed DLL.
 
 ## Important for WDAC / Smart App Control
 

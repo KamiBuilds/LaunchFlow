@@ -16,7 +16,7 @@ The new startup preflight checks required SQLite code and opens only an **in-mem
 
 ## Developer checklist
 - Test clean first-run and existing encrypted-vault unlock on an unrestricted Windows 10/11 VM.
-- Build with a valid publisher certificate and verify the published `Microsoft.Data.Sqlite.dll`, `SQLitePCLRaw.*`, native `e_sqlite3.dll`, app executable and installer signatures.
+- Build with a valid publisher certificate using `BUILD-INSTALLER.ps1 -RequireSignedDistribution` and verify every nested published PE, including `Microsoft.Data.Sqlite.dll`, `SQLitePCLRaw.*`, native `e_sqlite3.dll`, browser runtimes, app executable and installer signatures.
 - Test on the intended **policy-enforced** Windows machine with an approved signer policy before claiming compatibility.
 - Preserve existing encrypted SQLite and profile files; never delete a vault due to dependency-load failure.
 - Check policy logs for additional blocked dependencies and request legitimate policy review.

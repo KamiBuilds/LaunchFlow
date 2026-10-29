@@ -67,6 +67,20 @@ $global:LASTEXITCODE = 0
                 if ((Get-Content -LiteralPath $sourceFile -Raw).Trim() -cne 'Owner/Existing') { throw 'Invalid repository changed the configured source.' }
             }
         }
+        Test-Case "signed distribution gate rejects missing certificate before changing outputs" {
+            $target = Join-Path $fixture 'dist/LaunchFlow-Setup-v0.7.19-x64.exe'
+            Set-Content -LiteralPath $target -Value 'preserve existing build'
+            $message = $null
+            try {
+                & (Join-Path $fixture 'BUILD-INSTALLER.ps1') -NoAutoInstall -RequireSignedDistribution -InnoCompiler $innoDouble
+            } catch { $message = $_.Exception.Message }
+            if ($message -notlike 'A trusted signed distribution was requested*') {
+                throw "Expected early certificate gate, got '$message'."
+            }
+            if ((Get-Content -LiteralPath $target -Raw).Trim() -cne 'preserve existing build') {
+                throw 'Signed distribution gate modified an existing artifact before rejecting the request.'
+            }
+        }
         foreach ($mode in @('success', 'no-output', 'empty', 'failure', 'publish-failure')) {
             Test-Case "builder $mode never reuses stale artifacts" {
                 $env:LF_TEST_COMPILER_MODE = $mode

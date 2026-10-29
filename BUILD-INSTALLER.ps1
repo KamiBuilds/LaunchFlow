@@ -8,7 +8,8 @@ param(
     [string]$InnoCompiler = '',
     [switch]$NoAutoInstall,
     [switch]$Yes,
-    [switch]$LaunchSetup
+    [switch]$LaunchSetup,
+    [switch]$RequireSignedDistribution
 )
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
@@ -25,6 +26,16 @@ if ($projectVersion -cnotmatch '\A(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-
 }
 $installer = Get-LaunchFlowSetupPath -Root $PSScriptRoot -Version $projectVersion
 
+# The distribution gate runs before any published output is removed or replaced.
+# A successful unsigned CI smoke build is not proof of App Control compatibility.
+if ($RequireSignedDistribution) {
+    if (-not (Test-LaunchFlowSigningConfigured)) {
+        throw 'A trusted signed distribution was requested, but no publisher signing certificate is configured. Unsigned installers must not be labelled compatible with Windows Application Control.'
+    }
+    if (-not (Get-LaunchFlowSignTool)) {
+        throw 'A trusted signed distribution was requested, but signtool.exe is unavailable.'
+    }
+}
 
 if ($env:OS -ne 'Windows_NT') {
     throw 'LaunchFlow installer builds require Windows 10 or Windows 11 (x64).'
@@ -266,7 +277,9 @@ if (Test-LaunchFlowSigningConfigured) {
     # but preserve existing valid vendor signatures instead of replacing them.
     # Signing does not itself grant policy permission: administrator approval or
     # a trusted publisher rule may still be required on a managed computer.
-    $binaryFiles = @(Get-ChildItem -LiteralPath $publishDir -File | Where-Object {
+    # Browser runtimes and native dependencies can live under subfolders.
+    # Scan every nested published PE, not just DLLs beside LaunchFlow.exe.
+    $binaryFiles = @(Get-ChildItem -LiteralPath $publishDir -Recurse -File | Where-Object {
         $_.Extension -in @('.dll', '.exe')
     })
     foreach ($binary in $binaryFiles) {
@@ -312,6 +325,15 @@ if (-not (Test-Path -LiteralPath $installer -PathType Leaf) -or (Get-Item -Liter
 }
 # Fallback if Inno did not sign (no /Slfsign=): sign the outer setup.exe here.
 Invoke-LaunchFlowSign -PathToSign $installer -QuietIfUnsigned | Out-Null
+
+if ($RequireSignedDistribution) {
+    $setupSignature = Get-AuthenticodeSignature -LiteralPath $installer
+    if ($setupSignature.Status -ne 'Valid') {
+        throw "Signed distribution requested but the Setup signature is not valid [$($setupSignature.Status)]."
+    }
+    Write-Host '[OK] Published PE files and Setup passed local signature verification.' -ForegroundColor Green
+    Write-Host 'Target-device App Control approval and native acceptance tests are still required.' -ForegroundColor Yellow
+}
 
 Write-Host ''
 Write-Host '===========================================' -ForegroundColor Green
