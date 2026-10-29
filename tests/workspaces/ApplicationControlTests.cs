@@ -22,7 +22,7 @@ internal static class ApplicationControlTests
             Check(result.Reason == WindowsApplicationControl.Failure.ApplicationControl &&
                 result.Message.Contains("administrator") &&
                 result.Message.Contains("CodeIntegrity") &&
-                !result.Message.Contains("disable Windows security", StringComparison.OrdinalIgnoreCase),
+                result.Message.Contains("Do not disable Windows security", StringComparison.OrdinalIgnoreCase),
                 "policy warning must help administrator without suggesting a security bypass");
             Check(WindowsApplicationControl.HasApplicationControlFailure(blocked),
                 "file-load error containing explicit policy block was missed");

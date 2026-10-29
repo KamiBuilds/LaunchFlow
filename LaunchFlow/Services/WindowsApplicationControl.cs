@@ -100,7 +100,9 @@ public static class WindowsApplicationControl
         var type = sqlite.GetType("Microsoft.Data.Sqlite.SqliteConnection", throwOnError: true)!;
         using var connection = (IDisposable)(Activator.CreateInstance(type, "Data Source=:memory:") ??
             throw new InvalidOperationException("SQLite connection unavailable."));
-        type.GetMethod("Open", Type.EmptyTypes)?.Invoke(connection, null);
+        (type.GetMethod("Open", Type.EmptyTypes) ??
+            throw new MissingMethodException("SQLite runtime has no Open method."))
+            .Invoke(connection, null);
         // Opening an in-memory connection forces native SQLite runtime loading,
         // but never touches %LOCALAPPDATA%/LaunchFlow or an encrypted vault.
     }

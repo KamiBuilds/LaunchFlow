@@ -60,9 +60,18 @@ Priority: thumbprint → subject → PFX.
 
 When a cert is configured and `signtool.exe` is available (Windows SDK):
 
-1. **`publish\LaunchFlow.exe`** before Inno packs the app  
+1. **Unsigned top-level `publish\*.exe` and `publish\*.dll`**, including `Microsoft.Data.Sqlite.dll`, before Inno packs the app. Existing valid vendor signatures are retained; invalid/untrusted signatures fail the build.  
 2. **Setup.exe and the uninstaller** via Inno Setup `SignTool=lfsign` (`/Slfsign=` from the builder)  
 3. A final pass on `dist\LaunchFlow-Setup-*.exe` if Inno did not sign it
+
+## Important for WDAC / Smart App Control
+
+A valid Authenticode signature on the setup EXE alone does **not** authorize its DLL dependencies.
+When signing is configured, the builder now verifies signatures for top-level published EXE/DLL files, and stops if a signature is missing or invalid. This is an ordinary signed-distribution pathway, **not a policy bypass**.
+
+Even an Authenticode-signed build can be denied by a device's Windows Defender Application Control (WDAC/App Control for Business) or Smart App Control rules. The device owner or administrator must decide whether the verified publisher/package is permitted, using the applicable Windows security policy. Do not disable enforcement to test LaunchFlow.
+
+See `docs/APP-CONTROL-STARTUP.md` for the specific `0x800711C7` diagnostic and escalation path.
 
 ## Requirements on the builder PC
 
