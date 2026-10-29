@@ -2543,46 +2543,62 @@ public partial class MainWindow : Window
         try
         {
             var imported = SecureTransferService.Read(path, prompt.Secret);
+            var originalConfiguration = _configuration;
+            var capturedRevision = _workspaceRevision;
             if (MessageBox.Show(this,
                     $"Replace your {_configuration.Workflows.Count} existing workflow(s) with {imported.Config.Workflows.Count} imported workflow(s) and their credentials?\n\n" +
                     "File:\n" + path + "\n\nExisting workflows/passwords will be replaced.",
                     "Confirm import", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
                 return;
 
-            // Database transaction replaces both workflows and encrypted credentials
-            // atomically; partial import never corrupts existing settings.
-            VaultDatabase.Current.ReplaceSnapshot(imported.Config, imported.Credentials);
+            // Modal confirmation allows imports, selection changes and machine
+            // lock callbacks. Never publish a stale import after those events.
+            if (_windowsLocked || _vaultLockInProgress || _exiting ||
+                !VaultDatabase.Current.IsUnlocked ||
+                capturedRevision != _workspaceRevision ||
+                !ReferenceEquals(originalConfiguration, _configuration))
+            {
+                AppendLog("Import canceled: configuration or vault authorization changed during confirmation.");
+                return;
+            }
+
+            // One explicit projection is used for the encrypted database,
+            // live configuration and every corresponding control. Machine-local
+            // startup registration and hotkey bindings remain local.
+            var projected = ImportConfigurationProjection.ForThisDevice(
+                imported.Config, originalConfiguration, _activeShortcut);
+            VaultDatabase.Current.ReplaceSnapshot(projected, imported.Credentials);
+
             _workspaceRevision++;
             _keepassMasterPassword = null;
-            _configuration.Workflows.Clear();
-            _configuration.Workflows.AddRange(imported.Config.Workflows);
-            _configuration.Workspaces.Clear();
-            _configuration.Workspaces.AddRange(imported.Config.Workspaces);
-            WorkspaceCombo.Items.Refresh();
-            WorkspaceCombo.SelectedItem = null;
-            WorkspaceNameBox.Clear();
-            _configuration.UiLanguage = imported.Config.UiLanguage;
-            _configuration.AdditionalSettings = imported.Config.AdditionalSettings;
-            LanguageCombo.SelectedIndex = _configuration.UiLanguage switch { "en" => 1, "nl" => 2, _ => 0 };
-            ApplyUiLanguage();
-            _configuration.StartWithWindows = imported.Config.StartWithWindows;
-            _configuration.RunOnUnlock = imported.Config.RunOnUnlock;
-            _configuration.RunOnAppStart = imported.Config.RunOnAppStart;
-            _configuration.MinimizeToTray = imported.Config.MinimizeToTray;
-            _configuration.TrayNotificationsEnabled = imported.Config.TrayNotificationsEnabled;
-            _configuration.UnlockDelaySeconds = imported.Config.UnlockDelaySeconds;
-            _configuration.ShortcutTipShown = imported.Config.ShortcutTipShown;
-            // No automatic registration of imported startup settings or hotkeys.
-            _configuration.GlobalShortcut = _activeShortcut;
-            _configuration.VaultLockMinutes = Math.Clamp(imported.Config.VaultLockMinutes, 1, 120);
-            VaultTimeoutBox.Text = _configuration.VaultLockMinutes.ToString();
-            StartupCheck.IsChecked = _configuration.StartWithWindows;
-            UnlockCheck.IsChecked = _configuration.RunOnUnlock;
-            LaunchCheck.IsChecked = _configuration.RunOnAppStart;
-            TrayCheck.IsChecked = _configuration.MinimizeToTray;
-            NotifyCheck.IsChecked = _configuration.TrayNotificationsEnabled;
-            DelayBox.Text = _configuration.UnlockDelaySeconds.ToString();
-            RefreshWorkflowList(_configuration.Workflows.FirstOrDefault());
+            _configuration = projected;
+            _loadingEditor = true;
+            try
+            {
+                WorkflowList.ItemsSource = _configuration.Workflows;
+                WorkspaceCombo.ItemsSource = _configuration.Workspaces;
+                WorkspaceCombo.SelectedItem = null;
+                WorkspaceNameBox.Clear();
+                LanguageCombo.SelectedIndex = _configuration.UiLanguage switch { "en" => 1, "nl" => 2, _ => 0 };
+                ApplyUiLanguage();
+                StartupCheck.IsChecked = _configuration.StartWithWindows;
+                UnlockCheck.IsChecked = _configuration.RunOnUnlock;
+                LaunchCheck.IsChecked = _configuration.RunOnAppStart;
+                TrayCheck.IsChecked = _configuration.MinimizeToTray;
+                NotifyCheck.IsChecked = _configuration.TrayNotificationsEnabled;
+                SealProfilesCheck.IsChecked = _configuration.SealBrowserProfilesOnLock;
+                TaskSchedulerCheck.IsChecked = _configuration.PreferTaskSchedulerAutostart;
+                DelayBox.Text = _configuration.UnlockDelaySeconds.ToString();
+                VaultTimeoutBox.Text = _configuration.VaultLockMinutes.ToString();
+                ShortcutBox.Text = _configuration.GlobalShortcut;
+                KeePassDbBox.Text = _configuration.KeePassDatabasePath ?? "";
+                KeePassKeyBox.Text = _configuration.KeePassKeyFilePath ?? "";
+                UpdateFeedBox.Text = _configuration.UpdateFeedUrl ?? "";
+                RefreshKeePassStatus();
+                RefreshWorkflowList(_configuration.Workflows.FirstOrDefault());
+            }
+            finally { _loadingEditor = false; }
+            MarkSaved();
             AppendLog("Imported configuration from " + path);
             MessageBox.Show(this,
                 "Import complete. Review your websites, enable the ones you need and click Save.",
