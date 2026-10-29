@@ -60,6 +60,8 @@ jobs:
         run: dotnet run --project tests/diagnostics/DiagnosticTests.csproj -c Release
       - name: Exercise profile recovery with simulated DPAPI
         run: dotnet run --project tests/profiles/ProfileTests.csproj -c Release -p:TreatWarningsAsErrors=true
+      - name: Preserve encrypted profiles across partial filesystem cleanup failures
+        run: DOTNET=dotnet bash tests/profile-cleanup/run.sh
       - name: Exercise recorder capture and production replay
         run: dotnet run --project tests/recorder/RecorderTests.csproj -c Release -p:TreatWarningsAsErrors=true
       - name: Exercise workspace, localization and UI behavioral seams

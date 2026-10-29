@@ -1,6 +1,6 @@
 # LaunchFlow rescue contract
 
-LaunchFlow is the user's active engineering priority. Work on `hermes`, based on the user's latest `chatgpt` snapshot (`0df5185`, v0.7.19), not on `chatgpt` or `main`. Earlier rescue work from `feature/kiss-rule-sol` (`5645305`) remains isolated in sibling worktrees and may be integrated only after compatibility review. Preserve original product identity and licensing; do not invent a license or new product.
+LaunchFlow is the user's active engineering priority. This repair works only on `hermes-safety-repair-20261029`, based on the frozen `chatgpt-safety-hardening-20261028` commit `7b4b888ee1188fd5d74ea89085131f468eeea9b6` (v0.7.29 development preview). Preserve the collaborator branch, `hermes-next`, `both`, `both-2`, `both-3`, `main` and `develop`. Do not chase a moving branch tip or blanket-merge shared UI code. The selected profile-cleanup fix is ported deliberately from `hermes-next`; its other lifecycle changes remain separate. Earlier rescue work from `feature/kiss-rule-sol` (`5645305`) remains isolated in sibling worktrees and may be integrated only after compatibility review. Preserve original product identity and licensing; do not invent a license or new product.
 
 ## Acceptance gates
 
@@ -16,6 +16,6 @@ LaunchFlow is the user's active engineering priority. Work on `hermes`, based on
 
 ## Continuity
 
-Main checkout: `/root/projects/LaunchFlow-rescue`. Pre-change backup: `/root/projects/LaunchFlow-before-rescue.bundle`. Disposable development .NET SDK: `/root/.cache/launchflow/dotnet/dotnet`. Small RED/GREEN/build evidence: `/root/projects/launchflow-evidence`.
+Current repair checkout: `/root/projects/LaunchFlow-hermes-safety-repair-20261029`. Audit/checkpoint evidence: `/root/projects/launchflow-evidence/latest-safety-audit-20261029`. Original rescue checkout and pre-change backup remain `/root/projects/LaunchFlow-rescue` and `/root/projects/LaunchFlow-before-rescue.bundle`. Disposable development .NET SDK: `/root/.cache/launchflow/dotnet/dotnet`. Keep build payloads in owned `/dev/shm` copies when disk space is tight. See `docs/SAFETY-AUDIT-20261029.md` for this bounded repair and unexecuted native gates.
 
 Other project automation is intentionally paused by the user's exclusive-focus instruction. Do not resume it until the user changes that instruction. Keep existing servers/services running. Project focus state and paused IDs are recorded outside the public repo at `/root/projects/launchflow-evidence/focus-state.json`.
