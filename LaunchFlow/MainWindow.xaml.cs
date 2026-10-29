@@ -1485,13 +1485,40 @@ public partial class MainWindow : Window
             var workflow = _configuration.Workflows.FirstOrDefault(w => w.Id == item.WorkflowId);
             if (workflow is null) continue;
             WorkflowList.SelectedItem = workflow;
-            var answer = MessageBox.Show(this,
-                $"“{item.WorkflowName}” looks like sign-in did not finish.\n\n{item.Reason}\n\n" +
-                "Further steps for this site were paused.\n\nOpen Repair login now?",
-                "Sign-in needs attention",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
-            if (answer != MessageBoxResult.Yes) continue;
+            var decision = new SignInDecisionWindow(item.WorkflowName, item.Reason) { Owner = this };
+            decision.ShowDialog();
+            if (decision.Choice == SignInDecisionWindow.Decision.Later) continue;
+            if (decision.Choice == SignInDecisionWindow.Decision.Confirmed)
+            {
+                if (_vaultLockInProgress || _windowsLocked || _exiting ||
+                    !VaultDatabase.Current.IsUnlocked ||
+                    !_configuration.Workflows.Any(w => ReferenceEquals(w, workflow))) return;
+                try
+                {
+                    if (await _runner.ConfirmSignedInAsync(workflow))
+                    {
+                        WorkflowStatusLabel.Text = "Signed-in session confirmed · Run this website again to continue actions";
+                        MessageBox.Show(this,
+                            "Signed in confirmed for the current browser session.\n\n" +
+                            "Click Run this site again to continue its recorded actions. " +
+                            "LaunchFlow will check the same page before reusing this confirmation.",
+                            "Sign-in confirmed", MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                    else
+                    {
+                        MessageBox.Show(this,
+                            "This page could not be safely confirmed. It may still show a password/MFA challenge, " +
+                            "have navigated away, or be on a different website. Check the browser and choose Repair login if needed.",
+                            "Confirmation unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                }
+                catch (Exception)
+                {
+                    MessageBox.Show(this, "The current browser session could not be confirmed safely.",
+                        "Confirmation unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+                continue;
+            }
             if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked ||
                 _runCancellation?.IsCancellationRequested == true || !TeachAllowed(workflow) ||
                 !_configuration.Workflows.Any(w => ReferenceEquals(w, workflow))) return;
