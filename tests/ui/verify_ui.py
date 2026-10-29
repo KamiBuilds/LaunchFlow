@@ -67,7 +67,9 @@ check('WorkspaceCatalog.Save(_configuration, name' in source and
       "workspace save, preview and run share rollback-safe validated selection")
 check('WorkspaceCatalog.ConfirmationStillValid(' in source and
       '_workspaceRevision++' in source and
-      'VaultDatabase.Current.ReplaceSnapshot(imported.Config, imported.Credentials);\n            _workspaceRevision++;' in source,
+      'VaultDatabase.Current.ReplaceSnapshot(projected, imported.Credentials);' in source and
+      'ImportConfigurationProjection.ForThisDevice(' in source and
+      '_workspaceRevision++;' in source,
       "encrypted import invalidates modal workspace overwrite approval")
 check('WorkspaceCatalog.PendingRunIsCurrent(' in source and
       'launchRevision = _workspaceRevision' in source and
