@@ -122,6 +122,12 @@ check('SignInDecisionWindow.Decision.Confirmed' in source and
       'ConfirmSignedInAsync' in (root / "LaunchFlow/Services/AutomationEngine.cs").read_text(encoding="utf-8") and
       'session._pendingActions.Enqueue(("Navigate", safeUrl))' in (root / "LaunchFlow/Services/TeachRecorder.cs").read_text(encoding="utf-8"),
       "human sign-in confirmation and automatic cross-site Teach navigation are connected")
+check('decision.Show();' in source and
+      'ApplyModelessSignInDecisionAsync' in source and
+      'dialog.ShowDialog()' not in source and
+      'new AboutWindow { Owner = this }.Show();' in source and
+      'new BrowserSetupWindow { Owner = this }.Show();' in source,
+      "noncritical windows remain modeless while dedicated authorization prompts stay gated")
 check('HeaderVersionLabel.Text = "v" + AppInfo.VersionString' in source
       and 'CurrentVersionLabel.Text = "Installed version " + AppInfo.VersionString' in source,
       "UI version labels use assembly version instead of hardcoded display text")
@@ -129,9 +135,9 @@ csproj = ET.parse(root / "LaunchFlow/LaunchFlow.csproj")
 version = csproj.findtext("./PropertyGroup/Version")
 iss = (root / "installer/LaunchFlow.iss").read_text(encoding="utf-8")
 info = (root / "LaunchFlow/Services/AppInfo.cs").read_text(encoding="utf-8")
-check(version == "0.7.29" and f'#define AppVersion "{version}"' in iss
+check(version == "0.7.30" and f'#define AppVersion "{version}"' in iss
       and f'return v is null ? "{version}"' in info,
-      "assembly, installer and fallback version match 0.7.29")
+      "assembly, installer and fallback version match 0.7.30")
 guide = ET.parse(root / "LaunchFlow/TutorialWindow.xaml").getroot()
 guide_source = (root / "LaunchFlow/TutorialWindow.xaml.cs").read_text(encoding="utf-8")
 check('new TutorialWindow { Owner = this }.ShowDialog()' not in source and

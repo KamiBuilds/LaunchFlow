@@ -362,8 +362,33 @@ var tests = new List<(string Name, Func<Task> Body)>
         ui._runner.RunRelease.SetResult(result);
         ui.RecorderResult.SetResult(true);
         await ui.Run();
-        Check(ui._runner.LastTeachId == original.Id && other.Steps.Count == 0 && original.Steps.Count == 1, "repair switched workflow after its prompt");
+        Check(ui._openSignInDecisions.TryGetValue(original.Id, out var dialog) &&
+            !ui._runInProgress && ReferenceEquals(ui._selected, other),
+            "sign-in assistance blocked the main window or lost the original workflow");
+        dialog!.Choose(SignInDecisionWindow.Decision.Repair);
+        Check(ui._runner.LastTeachId == original.Id && other.Steps.Count == 0 && original.Steps.Count == 1,
+            "modeless Repair login retargeted the workflow after a selection change");
         Check(ui._runner.RunCalls == 1, "repair reran the workflow");
+    }),
+    ("sign-in choice window is modeless and deduplicated without authorizing a run", async () =>
+    {
+        var ui = new UiFixture();
+        var workflow = ui._configuration.Workflows[0];
+        var result = new AutomationEngine.RunResult();
+        result.LoginNeedsAttention.Add(new(workflow.Id, workflow.Name, "Unverified"));
+        ui._runner.RunRelease.SetResult(result);
+        await ui.Run();
+        Check(ui._openSignInDecisions.Count == 1 && !ui._runInProgress &&
+            ui.RunAllButton.IsEnabled && ui._runner.RunCalls == 1,
+            "modeless assistance kept the launch UI blocked");
+        var active = ui._openSignInDecisions[workflow.Id];
+        await ui.OfferRepairForLoginAttentionAsync(result.LoginNeedsAttention);
+        Check(ui._openSignInDecisions.Count == 1 &&
+            ReferenceEquals(active, ui._openSignInDecisions[workflow.Id]),
+            "repeated notification stacked duplicate windows");
+        active.Choose(SignInDecisionWindow.Decision.Later);
+        Check(ui._openSignInDecisions.Count == 0 && ui._runner.TeachCalls == 0,
+            "closing without action incorrectly launched repair");
     }),
     ("close barrier releases stalled run and Teach dispatch before UI observes them", async () =>
     {
@@ -492,6 +517,7 @@ static void Check(bool condition, string message) { if (!condition) throw new Ex
 partial class UiFixture
 {
     public readonly AutomationEngine _runner = new();
+    public readonly Dictionary<Guid, SignInDecisionWindow> _openSignInDecisions = new();
     public readonly Configuration _configuration = new() { Workflows = new() { new WebsiteWorkflow() } };
     public WebsiteWorkflow? _selected = new();
     public bool _runStatusActive = false, _vaultCleanupFailed = false;
@@ -559,14 +585,18 @@ sealed class SignInDecisionWindow
     public enum Decision { Later, Repair, Confirmed }
     public Decision Choice { get; private set; } = Decision.Later;
     public object? Owner { get; set; }
+    public event EventHandler? Closed;
     public SignInDecisionWindow(string website, string reason) { }
-    public bool? ShowDialog()
+    public void Show()
     {
-        // Simulate modal selection changes and the existing Yes/No repair
-        // fixture while the production dialog now offers three explicit choices.
+        // Modeless: Show must return while the user can select another website.
         MessageBox.Hook?.Invoke();
-        Choice = MessageBox.Result == MessageBoxResult.Yes ? Decision.Repair : Decision.Later;
-        return true;
+    }
+    public bool Activate() => true;
+    public void Choose(Decision decision)
+    {
+        Choice = decision;
+        Closed?.Invoke(this, EventArgs.Empty);
     }
 }
 sealed class VisualRecorderWindow

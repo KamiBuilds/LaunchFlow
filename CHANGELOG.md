@@ -1,3 +1,15 @@
+# v0.7.30 — Nonblocking windows by default
+
+- Changed **Sign-in needs attention** from a modal dialog to a modeless window, keeping the main LaunchFlow interface and browser clickable while the user reviews the problem.
+- The run completes and re-enables its controls immediately without waiting for the sign-in window to close; one window per website prevents duplicates.
+- **I'm signed in** and **Repair login** now apply asynchronously to the original website after the window closes and only if the vault/session and imported workflow revision remain valid. Closing the window takes no action.
+- About, Browser Setup and Workspace Preview are now modeless read-only windows.
+- Password, credential, destructive-change and critical confirmation prompts retain blocking authorization semantics.
+- Windows UI regression fixtures validate modeless behavior, no duplicate messages and the original website identity across a selection change.
+- The original dark navy/blue color scheme and vault/profile database formats remain unchanged.
+
+**Unsigned developer preview.** Check Windows focus and multi-monitor placement manually before release.
+
 # v0.7.29 — Explicit session sign-in confirmation and cross-site Teach recording
 
 - A clear **I'm signed in** option appears alongside **Repair login** and **Not now**. Explicit confirmation applies only to the exact current HTTPS browser page and origin, not future launches or other sites.

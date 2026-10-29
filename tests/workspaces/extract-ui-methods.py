@@ -5,7 +5,7 @@ import re
 
 root = pathlib.Path(__file__).resolve().parents[2]
 source = (root / "LaunchFlow/MainWindow.xaml.cs").read_text(encoding="utf-8")
-names = ["RunEnabledAsync", "RequestCrashCleanup", "RecordSteps_Click", "SecureVaultLockAsync", "SecureVaultLockCoreAsync", "UpdateRunButtons", "RequireMasterPassword", "SaveTaughtStepsAsync", "ChooseKeePassEntry_Click", "DescribeCredentialStatus", "NeedsKeePassForRun", "EnsureKeePassPasswordForRun", "LoadCredentialEditor", "SaveCredentials_Click", "ConfirmLoginOriginAsync", "AutomationAllowed", "TeachAllowed", "CredentialReadAllowed", "LoginModeIndex", "SelectedLoginMode", "QueueWorkflowStatus", "OfferRepairForLoginAttentionAsync", "OfferRepairForStepAttention", "RepairLoginCoreAsync"]
+names = ["RunEnabledAsync", "RequestCrashCleanup", "RecordSteps_Click", "SecureVaultLockAsync", "SecureVaultLockCoreAsync", "UpdateRunButtons", "RequireMasterPassword", "SaveTaughtStepsAsync", "ChooseKeePassEntry_Click", "DescribeCredentialStatus", "NeedsKeePassForRun", "EnsureKeePassPasswordForRun", "LoadCredentialEditor", "SaveCredentials_Click", "ConfirmLoginOriginAsync", "AutomationAllowed", "TeachAllowed", "CredentialReadAllowed", "LoginModeIndex", "SelectedLoginMode", "QueueWorkflowStatus", "OfferRepairForLoginAttentionAsync", "ApplyModelessSignInDecisionAsync", "OfferRepairForStepAttention", "RepairLoginCoreAsync"]
 methods = []
 for name in names:
     match = re.search(r"^    (?:private|internal) (?:async )?[^\n]+\b" + name + r"\([^)]*\)\s*\n    \{", source, re.M)
