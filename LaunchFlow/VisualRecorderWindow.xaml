@@ -18,7 +18,7 @@
       <TextBlock Text="1. Switch to the original browser tab.  2. Click buttons and links to repeat.  3. Return here and choose Save clicks."
                  Margin="0,8,0,0" Foreground="#C3D5E7" TextWrapping="Wrap"/>
       <TextBlock Text="Records clicks and safe keys (Enter, Tab, Escape, arrows). Typed text, email, passwords and one-time codes are NEVER captured. Use Passwords for login; record only AFTER signing in."
-                 Margin="0,8,0,0" Foreground="#87DCD2" TextWrapping="Wrap"/>
+                 Margin="0,8,0,0" Foreground="#6EE7D7" TextWrapping="Wrap"/>
     </StackPanel>
     <WrapPanel Grid.Row="1" Margin="0,14,0,8">
       <Button x:Name="CaptureToggle" Content="Pause recording" Style="{StaticResource PrimaryButton}"
@@ -26,7 +26,7 @@
       <Button Content="Add current page" Click="CaptureUrl_Click" Margin="0,0,8,5"
               ToolTip="Remember the current website address as a step"/>
     </WrapPanel>
-    <TextBlock Grid.Row="2" x:Name="CaptureStatus" Foreground="#46DACB" Margin="0,0,0,9" TextWrapping="Wrap"
+    <TextBlock Grid.Row="2" x:Name="CaptureStatus" Foreground="#6EE7D7" Margin="0,0,0,9" TextWrapping="Wrap"
                Text="Connecting to the browser…"/>
     <Grid Grid.Row="3">
       <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
@@ -34,7 +34,7 @@
                MouseDoubleClick="EditSelected_Click" Margin="0,0,0,8"
                AutomationProperties.Name="Recorded website clicks"/>
       <Expander Grid.Row="1" Header="More options (optional)" Foreground="#D5E8F8"
-                Background="#1B2B3D" Margin="0,0,0,12" Padding="8">
+                Background="#1B2636" Margin="0,0,0,12" Padding="8">
         <WrapPanel Margin="4,7,4,2">
           <Button Content="Add a page" Click="AddNavigate_Click" Margin="0,0,6,6"/>
           <Button Content="Add a click" Click="AddClick_Click" Margin="0,0,6,6"/>

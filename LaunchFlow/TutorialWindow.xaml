@@ -30,21 +30,21 @@
         <StackPanel>
           <TextBlock Text="VISUAL GUIDE · EXAMPLE" Foreground="#91B6D0" FontSize="10" FontWeight="SemiBold"
                      Margin="0,0,0,12"/>
-          <Border Background="#173C45" CornerRadius="6" Padding="10,9" Margin="0,0,0,8">
+          <Border Background="#203854" CornerRadius="6" Padding="10,9" Margin="0,0,0,8">
             <TextBlock x:Name="ExampleTitle" Text="Websites" Foreground="#6FE6D5" FontWeight="SemiBold"/>
           </Border>
           <Border Background="#192D40" CornerRadius="6" Padding="9,12" Margin="0,0,0,8">
             <StackPanel>
               <TextBlock Text="YOUR WEBSITES" Foreground="#A9C5D5" FontSize="10"/>
-              <Border Background="#225869" CornerRadius="5" Padding="10" Margin="0,10,0,6">
+              <Border Background="#2457A6" CornerRadius="5" Padding="10" Margin="0,10,0,6">
                 <TextBlock x:Name="ExampleWebsite" Text="Example website" Foreground="White"/>
               </Border>
               <TextBlock Text="Select a website to edit its settings" TextWrapping="Wrap"
                          Foreground="#AAC1D1" FontSize="11"/>
             </StackPanel>
           </Border>
-          <Border Background="#38D2C5" CornerRadius="6" Padding="11,10">
-            <TextBlock x:Name="ExampleAction" Text="+ New website" Foreground="#062A30"
+          <Border Background="#55D8C8" CornerRadius="6" Padding="11,10">
+            <TextBlock x:Name="ExampleAction" Text="+ New website" Foreground="#0B1220"
                        FontWeight="SemiBold" HorizontalAlignment="Center" TextWrapping="Wrap"/>
           </Border>
           <TextBlock Text="Illustration only — no personal data or passwords." Foreground="#90A8BF"

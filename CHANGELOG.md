@@ -1,3 +1,14 @@
+# v0.7.27 — Installed-browser detection and restored navy theme (development preview)
+
+- Scan Windows App Paths (both registry views) and conventional installation folders to offer only installed Edge, Chrome and Firefox browsers in both the new-website wizard and existing website editor. Re-scan whenever the selector opens.
+- Always keep the explicit Default browser (open only) choice; refuse automatic sign-in under open-only mode.
+- Preserve saved browser names when a browser has been uninstalled, label them as unavailable and fail closed on launch instead of silently switching to Edge.
+- Restore the prior dark navy/blue presentation and mint accent colors while retaining the new compact UI, custom dropdowns and editor layouts.
+- Add production-linked browser detection tests and source/GUI regression contracts.
+- Keep encrypted vault data, sign-in policy, installer AppId and profile formats unchanged.
+
+**Status:** Unsigned Windows test preview. Real Windows browser detection, installer upgrade and multi-monitor layout still require hands-on acceptance.
+
 # v0.7.26 — Universal automatic sign-in repairs (development preview)
 
 - Wait for JavaScript-rendered credential inputs without allowing stored passwords to retarget across a document change.
