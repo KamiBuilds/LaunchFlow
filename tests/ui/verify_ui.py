@@ -38,7 +38,7 @@ check(legacy is not None and legacy.get("Visibility") == "Collapsed" and
       "workspace profile controls are inaccessible and hidden while legacy profile data remains usable")
 markup = ET.tostring(ui, encoding="unicode")
 check('Text="YOUR WEBSITES"' in markup and
-      'Content="+ New website"' in markup and
+      'Content="+ Add website"' in markup and
       'Content="▶ Run all"' in markup and
       'Text="New / existing name"' not in markup and
       'Text="Saved workspace"' not in markup and
