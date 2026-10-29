@@ -299,7 +299,7 @@
             <Border Width="76" Height="76" Background="#203854" CornerRadius="18" HorizontalAlignment="Center" Margin="0,0,0,18">
               <TextBlock Text="+" FontSize="48" FontWeight="Light" Foreground="#6EE7D7" HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
-            <TextBlock x:Name="EmptyStateHeading" Text="No workflows yet" FontSize="26" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+            <TextBlock x:Name="EmptyStateHeading" Text="No websites yet" FontSize="26" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,10"/>
             <TextBlock x:Name="EmptyStateDescription" Text="LaunchFlow opens websites on your chosen screen and can perform recorded actions. Start with one website. Login and automation are optional." Foreground="#A9BDD4" FontSize="14" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="460" Margin="0,0,0,22"/>
             <Border Background="#192B3E" BorderBrush="#2D4B60" BorderThickness="1"
                      CornerRadius="10" Padding="15,12" Margin="0,0,0,18" MaxWidth="470">
