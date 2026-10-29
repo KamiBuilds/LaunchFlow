@@ -164,7 +164,10 @@ check('0x800711C7' in compat and 'Data Source=:memory:' in compat and
       'Microsoft.Data.Sqlite' in compat,
       'blocked SQLite dependency is diagnosed without reading or creating the vault')
 check('Get-AuthenticodeSignature' in builder and
-      'Invoke-LaunchFlowSign -PathToSign $binary.FullName' in builder,
-      'configured publisher signing covers dependency DLLs, not only the setup executable')
+      'Invoke-LaunchFlowSign -PathToSign $binary.FullName' in builder and
+      'Get-ChildItem -LiteralPath $publishDir -Recurse -File' in builder and
+      'if ($RequireSignedDistribution)' in builder and
+      'Signed distribution requested but the Setup signature is not valid' in builder,
+      'trusted distribution gate covers nested PE dependencies, preflight and setup signature')
 print('\n'+ ('FAILED: '+', '.join(errors) if errors else 'Source/configuration checks PASS. Native Windows build remains required.'))
 sys.exit(bool(errors))
