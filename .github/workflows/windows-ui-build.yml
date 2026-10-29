@@ -2,7 +2,7 @@ name: LaunchFlow Windows UI and installer smoke
 
 on:
   push:
-    branches: [both-2, both-3, chatgpt-next, chatgpt-safety-hardening-20261028]
+    branches: [both-2, both-3, chatgpt-next, chatgpt-safety-hardening-20261028, chatgpt-selective-safety-review-20261029]
   pull_request:
     branches: [both]
 
