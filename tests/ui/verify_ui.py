@@ -128,6 +128,13 @@ check('dialog.Show();' in source and
       'new AboutWindow { Owner = this }.Show();' in source and
       'new BrowserSetupWindow { Owner = this }.Show();' in source,
       "noncritical windows remain modeless while dedicated authorization prompts stay gated")
+check('CredentialDeleteGuard.IsCurrent(' in source and
+      'ImportConfigurationProjection.ForThisDevice(' in source and
+      'VaultDatabase.Current.ReplaceSnapshot(projected, imported.Credentials)' in source and
+      '_configuration = projected;' in source and
+      'SealProfilesCheck.IsChecked = _configuration.SealBrowserProfilesOnLock;' in source and
+      'KeePassDbBox.Text = _configuration.KeePassDatabasePath ?? "";' in source,
+      "safe deletion and full imported configuration projection remain wired to storage and UI")
 check('HeaderVersionLabel.Text = "v" + AppInfo.VersionString' in source
       and 'CurrentVersionLabel.Text = "Installed version " + AppInfo.VersionString' in source,
       "UI version labels use assembly version instead of hardcoded display text")
