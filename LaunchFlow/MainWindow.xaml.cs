@@ -57,7 +57,7 @@ public partial class MainWindow : Window
 
     private readonly CredentialVault _vault;
     private readonly AutomationEngine _runner;
-    private readonly Configuration _configuration;
+    private Configuration _configuration;
     private WebsiteWorkflow? _selected;
     private bool _loadingEditor;
     private bool _exiting;
