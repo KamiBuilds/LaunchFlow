@@ -25,7 +25,7 @@ internal static class EngineBehaviorTests
         {
             ContentType = "text/html",
             Body = route.Request.Url.EndsWith("/login", StringComparison.OrdinalIgnoreCase)
-                ? "<form onsubmit=\\"event.preventDefault();location.href='/';\\"><input id='user'><input id='password' type='password'><button type='submit'>Sign in</button></form>"
+                ? "<form onsubmit='event.preventDefault();location.href=String.fromCharCode(47);'><input id='user'><input id='password' type='password'><button type='submit'>Sign in</button></form>"
                 : "<nav><a href='/'>Dashboard</a><a href='/hosts'>Proxy Hosts</a></nav><main id='signed-in'>Proxy Hosts</main>"
         }));
         var page = await context.NewPageAsync();
@@ -54,7 +54,7 @@ internal static class EngineBehaviorTests
         {
             ContentType = "text/html",
             Body = route.Request.Url.EndsWith("/login", StringComparison.OrdinalIgnoreCase)
-                ? "<form onsubmit=\\"event.preventDefault();location.href='/auth';\\"><input id='user'><input id='password' type='password'><button type='submit'>Sign in</button></form>"
+                ? "<form onsubmit='event.preventDefault();location.href=String.fromCharCode(47,97,117,116,104);'><input id='user'><input id='password' type='password'><button type='submit'>Sign in</button></form>"
                 : "<h1>Verification required</h1><input autocomplete='one-time-code'>"
         }));
         var page = await context.NewPageAsync();
