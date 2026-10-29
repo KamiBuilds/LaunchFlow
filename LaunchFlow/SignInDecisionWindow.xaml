@@ -1,0 +1,25 @@
+<Window x:Class="LaunchFlow.SignInDecisionWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Sign-in needs attention" Width="570" Height="280" MinWidth="490" MinHeight="240"
+        WindowStartupLocation="CenterOwner" ResizeMode="CanResize" ShowInTaskbar="False"
+        Background="#111A2A" Foreground="#E9F1FB" FontFamily="Segoe UI" FontSize="13"
+        Icon="pack://application:,,,/Assets/LaunchFlow.ico">
+    <Grid Margin="22">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/>
+      </Grid.RowDefinitions>
+      <StackPanel>
+        <TextBlock x:Name="WebsiteTitle" FontSize="19" FontWeight="SemiBold" TextWrapping="Wrap" Text="Check sign-in"/>
+        <TextBlock Text="Check the website in your browser. Did you successfully reach the signed-in page?"
+                   Foreground="#A8BED6" Margin="0,12,0,7" TextWrapping="Wrap"/>
+      </StackPanel>
+      <TextBlock x:Name="ReasonText" Grid.Row="1" Margin="0,6,0,14" Foreground="#C3D5E7"
+                 TextWrapping="Wrap" VerticalAlignment="Top"/>
+      <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button Content="Not now" Width="85" Margin="0,0,8,0" Click="Later_Click"/>
+        <Button Content="Repair login" Width="110" Margin="0,0,8,0" Click="Repair_Click"/>
+        <Button Content="I'm signed in" Width="132" Style="{StaticResource PrimaryButton}" Click="Confirmed_Click"/>
+      </StackPanel>
+    </Grid>
+</Window>

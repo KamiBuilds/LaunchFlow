@@ -10,6 +10,9 @@ public sealed partial class AutomationEngine : IAsyncDisposable
     private readonly object _gate = new();
     private readonly SemaphoreSlim _sessionGate = new(1, 1);
     private readonly Dictionary<Guid, TrackedSession> _sessions = new();
+    // Explicit user acknowledgment applies only to this exact browser page and
+    // URL, never to a new login, navigation, restored profile, or future launch.
+    private readonly Dictionary<Guid, (IPage Page, string Url)> _confirmedLogins = new();
     private readonly HashSet<IBrowserContext> _unclaimedContexts = new();
     private IPlaywright? _playwright;
     private bool _running;
@@ -171,6 +174,88 @@ public sealed partial class AutomationEngine : IAsyncDisposable
         return result;
     }
 
+    /// <summary>
+    /// Called only after the user explicitly clicks "I'm signed in" while
+    /// looking at their browser. Does not edit credentials or trust future
+    /// sessions. An unapproved site or visible MFA/password challenge is
+    /// never accepted as a completed login.
+    /// </summary>
+    public async Task<bool> ConfirmSignedInAsync(WebsiteWorkflow workflow, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        IPage page;
+        lock (_gate)
+        {
+            if (_running || _closing || _cleanupRequired || _disposed ||
+                !_sessions.TryGetValue(workflow.Id, out var session) || session.Page.IsClosed)
+                return false;
+            page = session.Page;
+        }
+        RequireCredentialAccess();
+        if (!await SafeConfirmationPageAsync(workflow, page, ct).ConfigureAwait(false)) return false;
+        var url = page.Url;
+        lock (_gate)
+        {
+            if (_running || _closing || _cleanupRequired || _disposed ||
+                !_sessions.TryGetValue(workflow.Id, out var current) ||
+                !ReferenceEquals(current.Page, page) || page.IsClosed ||
+                !string.Equals(page.Url, url, StringComparison.Ordinal))
+                return false;
+            _confirmedLogins[workflow.Id] = (page, url);
+        }
+        Log($"User confirmed the signed-in state for '{workflow.Name}' in this browser session.");
+        return true;
+    }
+
+    private static async Task<bool> SafeConfirmationPageAsync(
+        WebsiteWorkflow workflow, IPage page, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        try
+        {
+            if (page.IsClosed ||
+                !Uri.TryCreate(workflow.StartUrl, UriKind.Absolute, out var start) ||
+                !Uri.TryCreate(page.Url, UriKind.Absolute, out var current) ||
+                current.Scheme != Uri.UriSchemeHttps ||
+                !string.Equals(start.Scheme, current.Scheme, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(start.Authority, current.Authority, StringComparison.OrdinalIgnoreCase))
+                return false;
+            RequireAutomationUrl(page.Url);
+            RequireCredentialAccess();
+            var pathParts = current.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (pathParts.Any(part => part.Equals("login", StringComparison.OrdinalIgnoreCase) ||
+                part.Equals("signin", StringComparison.OrdinalIgnoreCase) ||
+                part.Equals("sign-in", StringComparison.OrdinalIgnoreCase) ||
+                part.Equals("mfa", StringComparison.OrdinalIgnoreCase) ||
+                part.Equals("challenge", StringComparison.OrdinalIgnoreCase)))
+                return false;
+            // Do not use unrelated dashboard text to infer a failure. Explicit
+            // human confirmation is still rejected if authentication inputs
+            // are visible or a one-time-code challenge remains on screen.
+            if (await page.Locator("input[type='password']:visible").CountAsync().ConfigureAwait(false) > 0 ||
+                await page.Locator("input[autocomplete='one-time-code']:visible").CountAsync().ConfigureAwait(false) > 0)
+                return false;
+            return await page.Locator("body").CountAsync().ConfigureAwait(false) > 0;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception) { return false; }
+    }
+
+    private async Task<bool> ManuallyConfirmedAsync(WebsiteWorkflow workflow, IPage page, CancellationToken ct)
+    {
+        (IPage Page, string Url) accepted;
+        lock (_gate)
+        {
+            if (!_confirmedLogins.TryGetValue(workflow.Id, out accepted) ||
+                !ReferenceEquals(accepted.Page, page) ||
+                !string.Equals(accepted.Url, page.Url, StringComparison.Ordinal))
+                return false;
+        }
+        if (await SafeConfirmationPageAsync(workflow, page, ct).ConfigureAwait(false)) return true;
+        lock (_gate) _confirmedLogins.Remove(workflow.Id);
+        return false;
+    }
+
     public async Task<IPage> GetPageForRecorderAsync(WebsiteWorkflow workflow)
     {
         RequireTeachUrl(workflow.StartUrl);
@@ -227,6 +312,7 @@ public sealed partial class AutomationEngine : IAsyncDisposable
         var failed = false;
         try
         {
+            lock (_gate) _confirmedLogins.Clear();
             Task cancellation = Task.CompletedTask;
             try { if (active is not null) cancellation = active.CancelAsync(); }
             catch (ObjectDisposedException) { /* The run has already finished. */ }
@@ -349,7 +435,9 @@ public sealed partial class AutomationEngine : IAsyncDisposable
         if (workflow.AutoLogin &&
             !string.Equals(workflow.LoginMode, "None", StringComparison.OrdinalIgnoreCase))
         {
-            var loginCompleted = string.Equals(workflow.LoginMode, "SSO", StringComparison.OrdinalIgnoreCase) ||
+            var manualConfirmation = await ManuallyConfirmedAsync(workflow, page, ct).ConfigureAwait(false);
+            var loginCompleted = manualConfirmation ||
+                string.Equals(workflow.LoginMode, "SSO", StringComparison.OrdinalIgnoreCase) ||
                 await TryAutoLoginAsync(workflow, page, ct, configuration, keepassMasterPassword)
                     .ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
@@ -357,7 +445,9 @@ public sealed partial class AutomationEngine : IAsyncDisposable
             if (!loginCompleted)
                 return new LoginAttention(workflow.Id, workflow.Name,
                     "Auto-login was interrupted or its credential field was not approved/ready. Retry sign-in manually before continuing.");
-            var health = await LoginHealth.InspectAsync(page, ct).ConfigureAwait(false);
+            var health = manualConfirmation
+                ? new LoginHealth.Report(false, "User explicitly confirmed sign-in for the current page.")
+                : await LoginHealth.InspectAsync(page, ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
             RequireAutomationUrl(page.Url);
             if (health.NeedsAttention)
@@ -365,7 +455,8 @@ public sealed partial class AutomationEngine : IAsyncDisposable
                 Log($"Login needs attention for '{workflow.Name}': {health.Reason} Pausing further steps for this site.");
                 return new LoginAttention(workflow.Id, workflow.Name, health.Reason);
             }
-            if (workflow.Steps.Count > 0 || !string.IsNullOrWhiteSpace(workflow.DestinationUrl))
+            if (!manualConfirmation &&
+                (workflow.Steps.Count > 0 || !string.IsNullOrWhiteSpace(workflow.DestinationUrl)))
             {
                 var verified = await LoginHealth.VerifySuccessAsync(
                     page, workflow.LoginSuccessSelector, workflow.LoginSuccessUrlContains, ct)
