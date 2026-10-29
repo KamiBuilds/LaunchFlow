@@ -11,9 +11,46 @@ internal static class EngineBehaviorTests
         await PrivacyAsync(playwright);
         await ExactOriginAsync(playwright);
         await SsoAsync(playwright);
+        await ExplicitSignInConfirmationAsync(playwright);
         await NpmDashboardAfterStaleSelectorAsync(playwright);
         await MfaRedirectNeverVerifiesAsync(playwright);
         await CredentialContinuationCancellationAsync(playwright);
+    }
+
+    private static async Task ExplicitSignInConfirmationAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        await context.RouteAsync("https://confirmed.test/**", route => route.FulfillAsync(new()
+        {
+            ContentType = "text/html",
+            Body = route.Request.Url.EndsWith("/login", StringComparison.Ordinal)
+                ? "<input type='password'><button>Sign in</button>"
+                : "<h1>Signed-in dashboard</h1><button id='next' onclick=\\"document.body.dataset.followed='yes'\\">Continue</button>"
+        }));
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://confirmed.test/dashboard");
+        var wf = new WebsiteWorkflow
+        {
+            StartUrl = "https://confirmed.test/", AutoLogin = true,
+            UsernameSelector = "#user", PasswordSelector = "#password",
+            LoginSuccessSelector = "#old-missing-success"
+        };
+        wf.Steps.Add(new WorkflowStep { Type = "Click", Target = "#next" });
+        await using var engine = new AutomationEngine(new CredentialVault());
+        Track(engine, wf, context, page);
+        var before = await engine.RunAsync(new[] { wf }, CancellationToken.None);
+        Check(before.LoginNeedsAttention.Count == 1 &&
+            await page.GetAttributeAsync("body", "data-followed") is null,
+            "unverified login cannot run follow-up actions before human confirmation");
+        Check(await engine.ConfirmSignedInAsync(wf), "the user can confirm a visible authenticated dashboard");
+        var after = await engine.RunAsync(new[] { wf }, CancellationToken.None);
+        Check(after.FinishedCount == 1 && after.LoginNeedsAttention.Count == 0 &&
+            await page.GetAttributeAsync("body", "data-followed") == "yes",
+            "explicit current-session sign-in confirmation permits follow-up actions");
+        await page.GotoAsync("https://confirmed.test/login");
+        Check(!await engine.ConfirmSignedInAsync(wf),
+            "a fresh visible password challenge cannot be manually confirmed");
     }
 
     private static async Task NpmDashboardAfterStaleSelectorAsync(IPlaywright playwright)

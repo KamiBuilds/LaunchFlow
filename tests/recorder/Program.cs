@@ -278,6 +278,41 @@ targetWindow.TestCancel();
 await targetWindow.TestWaitForUpdatesAsync();
 await otherPage.CloseAsync();
 
+// Cross-site same-tab recording must add its URL automatically without
+// recording OAuth query tokens or ever crossing to an unrelated popup tab.
+await context.RouteAsync("https://other-workspace.test/**", route => route.FulfillAsync(new()
+{
+    ContentType = "text/html",
+    Body = "<button id='cross'>Different website</button>"
+}));
+var crossPage = await context.NewPageAsync();
+await crossPage.GotoAsync("https://recorder.test/cross-origin-start");
+using (var cross = new TeachRecorder(crossPage))
+{
+    await cross.SynchronizeAsync();
+    await crossPage.ClickAsync("button");
+    await Flush(crossPage);
+    var firstActions = cross.DrainActions();
+    Assert(firstActions.Count == 1 && firstActions[0].Type == "Click",
+        "same-origin initial click has no extra Navigate step");
+    await crossPage.GotoAsync("https://other-workspace.test/second-site");
+    await Flush(crossPage);
+    await crossPage.ClickAsync("#cross");
+    await Flush(crossPage);
+    var moved = cross.DrainActions();
+    Assert(moved.Count == 2 && moved[0] == ("Navigate", "https://other-workspace.test/second-site") &&
+        moved[1].Type == "Click",
+        "new website automatically adds Navigate before its first captured click");
+
+    await crossPage.GotoAsync("https://recorder.test/callback?code=private-oauth-token");
+    await Flush(crossPage);
+    await crossPage.ClickAsync("button");
+    await Flush(crossPage);
+    Assert(cross.DrainActions().Count == 0 && cross.UnsupportedTargetObserved,
+        "OAuth callback URL with credentials is never captured automatically");
+}
+await crossPage.CloseAsync();
+
 using (var shadow = new TeachRecorder(page))
 {
     await shadow.SynchronizeAsync();

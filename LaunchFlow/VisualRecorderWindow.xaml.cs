@@ -105,7 +105,7 @@ public partial class VisualRecorderWindow : Window
             ? "Recording safe actions — " + RecordedSteps.Count + " step(s) captured."
             : "Paused — " + RecordedSteps.Count + " step(s) captured.";
         if (_recorder.UnsupportedTargetObserved)
-            CaptureStatus.Text += " Some keys or actions were not recorded (sensitive form, unsupported shortcut, popup or frame). Add safe actions manually.";
+            CaptureStatus.Text += " Some actions were not recorded (sensitive form, popup/new tab, frame, or URL containing private query data). Add safe actions manually.";
     }
 
     private void DrainActions()
@@ -118,7 +118,12 @@ public partial class VisualRecorderWindow : Window
             {
                 Type = action.Type,
                 Target = action.Target,
-                Description = action.Type == "Press" ? "Press " + action.Target : "Click " + action.Target
+                Description = action.Type switch
+                {
+                    "Press" => "Press " + action.Target,
+                    "Navigate" => "Open " + action.Target + " (captured automatically)",
+                    _ => "Click " + action.Target
+                }
             });
         if (actions.Count > 0) RefreshList();
         if (actions.Count > 0 || _recorder.UnsupportedTargetObserved || _page.IsClosed) ShowCaptureState();

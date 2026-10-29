@@ -15,7 +15,7 @@
     </Grid.RowDefinitions>
     <StackPanel>
       <TextBlock Text="Record website actions safely" FontSize="20" FontWeight="SemiBold"/>
-      <TextBlock Text="1. Switch to the original browser tab.  2. Click buttons and links to repeat.  3. Return here and choose Save clicks."
+      <TextBlock Text="1. Use the original browser tab.  2. Click across websites; same-tab moves are captured automatically.  3. Return here and Save. New popup tabs still need an explicit page step."
                  Margin="0,8,0,0" Foreground="#C3D5E7" TextWrapping="Wrap"/>
       <TextBlock Text="Records clicks and safe keys (Enter, Tab, Escape, arrows). Typed text, email, passwords and one-time codes are NEVER captured. Use Passwords for login; record only AFTER signing in."
                  Margin="0,8,0,0" Foreground="#6EE7D7" TextWrapping="Wrap"/>
