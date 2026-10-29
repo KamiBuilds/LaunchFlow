@@ -273,9 +273,15 @@ public partial class MainWindow : Window
         }));
     }
 
-    private static int LoginModeIndex(string mode) => WebsiteLoginMode.Index(mode);
+    private static int LoginModeIndex(string mode)
+    {
+        return WebsiteLoginMode.Index(mode);
+    }
 
-    private static string SelectedLoginMode(int index) => WebsiteLoginMode.FromIndex(index);
+    private static string SelectedLoginMode(int index)
+    {
+        return WebsiteLoginMode.FromIndex(index);
+    }
 
     private void LoginModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {

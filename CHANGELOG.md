@@ -1,3 +1,15 @@
+# v0.7.34 — Websites-first clarity and sign-in mode
+
+- More consistent website-focused language across the editor, Passwords and Settings.
+- One explicit sign-in mode (saved password, no login, or SSO) determines automatic credential entry; hidden legacy flag follows that mode.
+- After adding a website, show its next steps: Test this site, optional Passwords, optional Record clicks.
+- Settings General offers direct category links, and the website editor links to advanced sign-in.
+- Teach explains popup-tab and MFA limitations before recording starts.
+- Legacy workspace-group data is preserved with a compatibility explanation.
+- Source-linked tests cover sign-in mode and setup guidance.
+
+**Preview only.** Native Windows acceptance and trusted publisher signing remain required. Not a stable release.
+
 # v0.7.33 — Clear first-time website setup
 
 - Start page displays **3 easy steps** and an interactive getting-started guide.

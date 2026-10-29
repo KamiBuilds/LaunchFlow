@@ -159,6 +159,16 @@ check('1. Which website?' in wizard_xml and
       "wizard keeps required data fields and hides optional login controls")
 check('Click Add website.' in tutorial_code and 'Run all opens every enabled website.' in tutorial_code,
       "getting-started tutorial reflects the revised workflow")
+check('Text="No websites yet"' in main_xml and
+      'Currently selected website:' in main_xml and
+      'How should LaunchFlow sign in?' in main_xml and
+      'Click="OpenWebsiteAdvancedSignIn_Click"' in main_xml and
+      'Click="OpenSettingsStartup_Click"' in main_xml and
+      'Older workspace groups' in main_xml and
+      'WebsiteLoginMode.UsesSavedPassword' in source and
+      'WebsiteNextStepGuidance.ForCreatedWebsite' in source and
+      named['AutoLoginCheck'].get('Visibility') == 'Collapsed',
+      "website-focused UI, one sign-in mode and Settings category navigation are present")
 check('HeaderVersionLabel.Text = "v" + AppInfo.VersionString' in source
       and 'CurrentVersionLabel.Text = "Installed version " + AppInfo.VersionString' in source,
       "UI version labels use assembly version instead of hardcoded display text")
@@ -166,9 +176,9 @@ csproj = ET.parse(root / "LaunchFlow/LaunchFlow.csproj")
 version = csproj.findtext("./PropertyGroup/Version")
 iss = (root / "installer/LaunchFlow.iss").read_text(encoding="utf-8")
 info = (root / "LaunchFlow/Services/AppInfo.cs").read_text(encoding="utf-8")
-check(version == "0.7.33" and f'#define AppVersion "{version}"' in iss
+check(version == "0.7.34" and f'#define AppVersion "{version}"' in iss
       and f'return v is null ? "{version}"' in info,
-      "assembly, installer and fallback version match 0.7.33")
+      "assembly, installer and fallback version match 0.7.34")
 guide = ET.parse(root / "LaunchFlow/TutorialWindow.xaml").getroot()
 guide_source = (root / "LaunchFlow/TutorialWindow.xaml.cs").read_text(encoding="utf-8")
 check('new TutorialWindow { Owner = this }.ShowDialog()' not in source and

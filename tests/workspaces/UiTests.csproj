@@ -13,5 +13,6 @@
     <Compile Include="../../LaunchFlow/Services/WorkspaceCatalog.cs" Link="WorkspaceCatalog.cs" />
     <Compile Include="../../LaunchFlow/Services/MonitorService.cs" Link="MonitorService.cs" />
     <Compile Include="../../LaunchFlow/Services/LocalizationService.cs" Link="LocalizationService.cs" />
+    <Compile Include="../../LaunchFlow/Services/WebsiteLoginMode.cs" Link="WebsiteLoginMode.cs" />
   </ItemGroup>
 </Project>
