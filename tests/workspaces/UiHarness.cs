@@ -557,10 +557,17 @@ sealed class UnlockWindow
 sealed class SignInDecisionWindow
 {
     public enum Decision { Later, Repair, Confirmed }
-    public Decision Choice { get; set; } = Decision.Later;
+    public Decision Choice { get; private set; } = Decision.Later;
     public object? Owner { get; set; }
     public SignInDecisionWindow(string website, string reason) { }
-    public bool? ShowDialog() => true;
+    public bool? ShowDialog()
+    {
+        // Simulate modal selection changes and the existing Yes/No repair
+        // fixture while the production dialog now offers three explicit choices.
+        MessageBox.Hook?.Invoke();
+        Choice = MessageBox.Result == MessageBoxResult.Yes ? Decision.Repair : Decision.Later;
+        return true;
+    }
 }
 sealed class VisualRecorderWindow
 {
