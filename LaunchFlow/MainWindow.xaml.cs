@@ -166,6 +166,7 @@ public partial class MainWindow : Window
         UpdateFeedBox.Text = _configuration.UpdateFeedUrl ?? "";
         MonitorCombo.ItemsSource = MonitorService.GetMonitors();
         MonitorCombo.SelectedIndex = 0;
+        BrowserChoices.Refresh(BrowserCombo);
         WorkflowList.ItemsSource = _configuration.Workflows;
         WorkspaceCombo.ItemsSource = _configuration.Workspaces;
         LanguageCombo.SelectedIndex = _configuration.UiLanguage switch { "en" => 1, "nl" => 2, _ => 0 };
@@ -463,8 +464,16 @@ public partial class MainWindow : Window
         Debug.WriteLine(message);
     }
 
-    private static string BrowserSelection(ComboBox combo) =>
-        (combo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Edge";
+    private static string BrowserSelection(ComboBox combo) => BrowserChoices.SelectedName(combo);
+
+    private void BrowserCombo_DropDownOpened(object sender, EventArgs e)
+    {
+        // Detect newly installed/uninstalled browsers each time the user opens
+        // the selector, without destroying the current unsaved selection.
+        _loadingEditor = true;
+        try { BrowserChoices.Refresh(BrowserCombo); }
+        finally { _loadingEditor = false; }
+    }
 
     private void ShowEmptyEditor()
     {
@@ -502,9 +511,7 @@ public partial class MainWindow : Window
         NameBox.Text = w.Name;
         StartUrlBox.Text = w.StartUrl;
         DestinationUrlBox.Text = w.DestinationUrl;
-        int index = Enumerable.Range(0, BrowserCombo.Items.Count)
-            .FirstOrDefault(i => ((ComboBoxItem)BrowserCombo.Items[i]).Content?.ToString() == w.Browser);
-        BrowserCombo.SelectedIndex = index;
+        BrowserChoices.Refresh(BrowserCombo, w.Browser);
         // Refresh on selection too: laptop docking may have changed since startup.
         var monitors = MonitorService.GetMonitors();
         MonitorCombo.ItemsSource = monitors;
@@ -600,7 +607,10 @@ public partial class MainWindow : Window
         w.Name = string.IsNullOrWhiteSpace(NameBox.Text) ? "Unnamed workflow" : NameBox.Text.Trim();
         w.StartUrl = StartUrlBox.Text.Trim();
         w.DestinationUrl = DestinationUrlBox.Text.Trim();
-        w.Browser = BrowserSelection(BrowserCombo);
+        var selectedBrowser = BrowserSelection(BrowserCombo);
+        if (string.IsNullOrWhiteSpace(selectedBrowser))
+            throw new InvalidOperationException("Choose an installed browser before saving this website.");
+        w.Browser = selectedBrowser;
         if (MonitorCombo.SelectedItem is MonitorChoice monitor &&
             (_monitorSelectionChanged || string.IsNullOrWhiteSpace(w.MonitorDeviceName)))
         {

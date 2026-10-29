@@ -1,4 +1,4 @@
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework" x:Class="LaunchFlow.MainWindow" Title="LaunchFlow — Website workspace automation" Width="1230" Height="820" MinWidth="920" MinHeight="640" WindowStyle="None" ResizeMode="CanResize" ShowInTaskbar="True" WindowStartupLocation="CenterScreen" Background="#09131F" Foreground="#E9F1FB" FontFamily="Segoe UI" FontSize="13" Closing="OnClosing" Closed="OnClosed" Loaded="OnLoaded" StateChanged="Window_StateChanged" Icon="pack://application:,,,/Assets/LaunchFlow.ico" PreviewKeyDown="Window_PreviewKeyDown">
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework" x:Class="LaunchFlow.MainWindow" Title="LaunchFlow — Website workspace automation" Width="1230" Height="820" MinWidth="920" MinHeight="640" WindowStyle="None" ResizeMode="CanResize" ShowInTaskbar="True" WindowStartupLocation="CenterScreen" Background="#0B1220" Foreground="#E9F1FB" FontFamily="Segoe UI" FontSize="13" Closing="OnClosing" Closed="OnClosed" Loaded="OnLoaded" StateChanged="Window_StateChanged" Icon="pack://application:,,,/Assets/LaunchFlow.ico" PreviewKeyDown="Window_PreviewKeyDown">
   <!-- WPF WindowChrome keeps native drag, double-click maximize, and resize while
        allowing all app navigation to occupy the actual title-bar region. -->
   <shell:WindowChrome.WindowChrome>
@@ -30,8 +30,8 @@
           </Border>
           <ControlTemplate.Triggers>
             <Trigger Property="IsChecked" Value="True">
-              <Setter TargetName="NavFace" Property="Background" Value="#1C3749"/>
-              <Setter TargetName="NavFace" Property="BorderBrush" Value="#46DACB"/>
+              <Setter TargetName="NavFace" Property="Background" Value="#20364C"/>
+              <Setter TargetName="NavFace" Property="BorderBrush" Value="#6EE7D7"/>
               <Setter Property="Foreground" Value="White"/>
             </Trigger>
             <Trigger Property="IsMouseOver" Value="True">
@@ -55,10 +55,10 @@
           </StackPanel>
           <ControlTemplate.Triggers>
             <Trigger Property="IsChecked" Value="True">
-              <Setter TargetName="Track" Property="Background" Value="#46DACB"/>
+              <Setter TargetName="Track" Property="Background" Value="#6EE7D7"/>
               <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/>
               <Setter TargetName="Thumb" Property="Margin" Value="0,0,3,0"/>
-              <Setter TargetName="Thumb" Property="Fill" Value="#0A1B26"/>
+              <Setter TargetName="Thumb" Property="Fill" Value="#101827"/>
               <Setter TargetName="SwitchLabel" Property="Text" Value="Enabled"/>
               <Setter TargetName="SwitchLabel" Property="Foreground" Value="#E9F5F5"/>
             </Trigger>
@@ -82,7 +82,7 @@
           </Border>
           <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
-              <Setter TargetName="ButtonFace" Property="Background" Value="#2D4257"/>
+              <Setter TargetName="ButtonFace" Property="Background" Value="#283B50"/>
               <Setter Property="Foreground" Value="White"/>
             </Trigger>
           </ControlTemplate.Triggers>
@@ -105,10 +105,10 @@
       </Setter.Value></Setter>
     </Style>
   </Window.Resources>
-  <Grid Background="#09131F">
+  <Grid Background="#0B1220">
     <Grid.RowDefinitions><RowDefinition Height="92"/><RowDefinition Height="*"/></Grid.RowDefinitions>
     <!-- Actual custom WINDOW TITLE BAR: no second toolbar below native caption. -->
-    <Border Grid.Row="0" Background="#0D1B2B" BorderBrush="#294254"
+    <Border Grid.Row="0" Background="#101827" BorderBrush="#294254"
             BorderThickness="0,0,0,1" Padding="18,0">
       <Grid>
         <Grid.RowDefinitions><RowDefinition Height="49"/><RowDefinition Height="43"/></Grid.RowDefinitions>
@@ -118,7 +118,7 @@
             <ColumnDefinition Width="Auto"/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
           <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-            <Border Width="32" Height="32" CornerRadius="9" Background="#154F56" Padding="6" Margin="0,0,10,0">
+            <Border Width="32" Height="32" CornerRadius="9" Background="#203854" Padding="6" Margin="0,0,10,0">
               <Image Source="pack://application:,,,/Assets/LaunchFlow.ico" Stretch="Uniform"/>
             </Border>
             <StackPanel VerticalAlignment="Center">
@@ -138,7 +138,7 @@
                          Style="{StaticResource TopNavStyle}" Click="TopNavigation_Click"
                          shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
           </StackPanel>
-          <Border Grid.Column="4" Background="#173C43" BorderBrush="#2B6667"
+          <Border Grid.Column="4" Background="#223950" BorderBrush="#29425D"
                   BorderThickness="1" CornerRadius="9" Padding="10,5" VerticalAlignment="Center"
                   Margin="0,0,12,0">
             <TextBlock x:Name="HeaderVersionLabel" Text="v0.7.22" Foreground="#79E7D6"
@@ -177,23 +177,23 @@
 <TabControl x:Name="MainTabs" Grid.Row="1" Margin="12,10,12,12" SelectionChanged="MainTabs_SelectionChanged">
       <TabControl.Template>
         <ControlTemplate TargetType="TabControl">
-          <Border Background="#0F1C2C" BorderBrush="#26364C" BorderThickness="1" CornerRadius="8">
+          <Border Background="#141B29" BorderBrush="#26364C" BorderThickness="1" CornerRadius="8">
             <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent"/>
           </Border>
         </ControlTemplate>
       </TabControl.Template><TabItem Header="Websites"><Grid>
       <Grid.ColumnDefinitions><ColumnDefinition Width="274" x:Name="SidebarColumn"/><ColumnDefinition Width="36"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-      <Button x:Name="SidebarToggleButton" Grid.Column="1" Content="❮" Click="ToggleSidebar_Click" ToolTip="Show or hide the workflow list" Width="31" Height="42" VerticalAlignment="Top" Margin="0,3,0,0" Padding="2" Background="#20384C"/><Border Grid.Column="0" Background="#111F30" CornerRadius="13" Padding="17" x:Name="SidebarPanel" BorderBrush="#263C50" BorderThickness="1">
+      <Button x:Name="SidebarToggleButton" Grid.Column="1" Content="❮" Click="ToggleSidebar_Click" ToolTip="Show or hide the workflow list" Width="31" Height="42" VerticalAlignment="Top" Margin="0,3,0,0" Padding="2" Background="#203854"/><Border Grid.Column="0" Background="#141B29" CornerRadius="13" Padding="17" x:Name="SidebarPanel" BorderBrush="#263C50" BorderThickness="1">
         <DockPanel>
           <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
             <TextBlock Text="YOUR WEBSITES" FontWeight="SemiBold" FontSize="12"
                        Foreground="#92B4C6" Margin="1,0,0,5"/>
             <TextBlock Text="Select a website to edit or test. Run all opens every enabled website."
                        Foreground="#A8BECD" FontSize="11" TextWrapping="Wrap" Margin="1,0,0,10"/>
-            <Border CornerRadius="8" Background="#14323E" Padding="9,6"
+            <Border CornerRadius="8" Background="#18283C" Padding="9,6"
                     HorizontalAlignment="Left" Margin="0,0,0,16">
               <StackPanel Orientation="Horizontal">
-                <Ellipse Width="7" Height="7" Fill="#46DACB" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <Ellipse Width="7" Height="7" Fill="#6EE7D7" VerticalAlignment="Center" Margin="0,0,8,0"/>
                 <TextBlock x:Name="WorkflowStatusLabel" Text="Ready" Foreground="#91EBDD"
                            FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center"
                            AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Workflow status"/>
@@ -223,7 +223,7 @@
                    AutomationProperties.Name="Saved website workflows"/>
         </DockPanel>
       </Border>
-      <Border Grid.Column="2" Background="#111F30" CornerRadius="13" Padding="22" BorderBrush="#263C50" BorderThickness="1">
+      <Border Grid.Column="2" Background="#141B29" CornerRadius="13" Padding="22" BorderBrush="#263C50" BorderThickness="1">
         <Grid>
         <ScrollViewer x:Name="WorkflowEditorScroll" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
           <StackPanel x:Name="EditorPanel">
@@ -241,11 +241,9 @@
               <StackPanel Grid.Column="0"><TextBlock Text="Login / start URL" Style="{StaticResource FieldLabel}"/>
                 <TextBox x:Name="StartUrlBox" ToolTip="Full URL, including https://" AutomationProperties.Name="Website start URL"/></StackPanel>
               <StackPanel Grid.Column="2"><TextBlock Text="Browser" Style="{StaticResource FieldLabel}"/>
-                <ComboBox x:Name="BrowserCombo" SelectedIndex="0">
-                  <ComboBoxItem Content="Edge"/><ComboBoxItem Content="Chrome"/>
-                  <ComboBoxItem Content="Firefox"/>
-                  <ComboBoxItem Content="Default browser (open only)"/>
-                </ComboBox></StackPanel>
+                <ComboBox x:Name="BrowserCombo" DropDownOpened="BrowserCombo_DropDownOpened"
+                          ToolTip="Only browsers detected on this computer are offered for automatic login."
+                          AutomationProperties.Name="Installed browser"/></StackPanel>
             </Grid>
             <Grid Margin="0,0,0,10">
               <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="14"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -257,7 +255,7 @@
             </Grid>
             <!-- Legacy control retained for settings compatibility. Old destinations migrate to steps. -->
             <TextBox x:Name="DestinationUrlBox" Visibility="Collapsed"/>
-            <Border Background="#153440" CornerRadius="8" Padding="12,9" Margin="0,2,0,16">
+            <Border Background="#18283C" CornerRadius="8" Padding="12,9" Margin="0,2,0,16">
               <TextBlock Text="Configure the website above, then add any steps you want to run after sign-in."
                          Foreground="#C3DEDF" TextWrapping="Wrap" FontSize="12"/>
             </Border>
@@ -288,7 +286,7 @@
         <Grid x:Name="WorkflowEmptyState" Visibility="Visible" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="520" Margin="16">
           <StackPanel HorizontalAlignment="Center">
             <Border Width="76" Height="76" Background="#203854" CornerRadius="18" HorizontalAlignment="Center" Margin="0,0,0,18">
-              <TextBlock Text="+" FontSize="48" FontWeight="Light" Foreground="#46DACB" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              <TextBlock Text="+" FontSize="48" FontWeight="Light" Foreground="#6EE7D7" HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <TextBlock x:Name="EmptyStateHeading" Text="No workflows yet" FontSize="26" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,10"/>
             <TextBlock x:Name="EmptyStateDescription" Text="Create your first workflow to choose a website, add your login, and pick a monitor. The editor will appear after you create it." Foreground="#A9BDD4" FontSize="14" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="460" Margin="0,0,0,22"/>
@@ -303,7 +301,7 @@
               <StackPanel>
                 <DockPanel Margin="0,0,0,4">
                   <TextBlock Text="SECURE LOGIN DETAILS" Style="{StaticResource SectionHeader}" DockPanel.Dock="Left"/>
-                  <TextBlock x:Name="CredentialStatus" Text="No password saved" Foreground="#46DACB" HorizontalAlignment="Right" VerticalAlignment="Top"/>
+                  <TextBlock x:Name="CredentialStatus" Text="No password saved" Foreground="#6EE7D7" HorizontalAlignment="Right" VerticalAlignment="Top"/>
                 </DockPanel>
                 <TextBlock Text="Saved credentials are encrypted in your local vault. Both fields always stay masked. Leave either field blank to keep its saved value; enter a replacement and click Save credentials to update it." TextWrapping="Wrap" Foreground="#A7B8CB" Margin="0,0,0,11"/>
                 <CheckBox x:Name="AutoLoginCheck" Content="Automatically sign in using my saved password"/>
@@ -335,7 +333,7 @@
                     <PasswordBox x:Name="PasswordInput" Background="#0D1522" Foreground="White" BorderBrush="#354358" Padding="9" FontSize="13" Height="35"/></StackPanel>
                 </Grid>
                 <StackPanel Orientation="Horizontal" Margin="0,10,0,12">
-                  <Button Content="Save credentials" Click="SaveCredentials_Click" Background="#36CBBB" Foreground="#061421" FontWeight="SemiBold"/>
+                  <Button Content="Save credentials" Click="SaveCredentials_Click" Background="#55D8C8" Foreground="#061421" FontWeight="SemiBold"/>
                   <Button Content="Remove saved credentials" Click="ClearCredential_Click" Margin="10,0,0,0"/>
                 </StackPanel>
                 <StackPanel Margin="0,0,0,12">
@@ -365,7 +363,7 @@
                 <ControlTemplate.Triggers>
                   <Trigger Property="IsSelected" Value="True">
                     <Setter TargetName="NavItem" Property="Background" Value="#223950"/>
-                    <Setter TargetName="NavItem" Property="BorderBrush" Value="#46DACB"/>
+                    <Setter TargetName="NavItem" Property="BorderBrush" Value="#6EE7D7"/>
                     <Setter Property="Foreground" Value="White"/>
                   </Trigger>
                   <Trigger Property="IsMouseOver" Value="True">
@@ -397,10 +395,10 @@
             </ComboBox>
             <TextBlock Text="Navigation and workspace controls support English and Dutch. Other text remains English."
                        Foreground="#A1BCD2" TextWrapping="Wrap" Margin="0,7,0,16"/>
-            <TextBlock Text="Click Save when finished." Foreground="#46DACB"/>
+            <TextBlock Text="Click Save when finished." Foreground="#6EE7D7"/>
           </StackPanel>
         </ScrollViewer></TabItem>
-        <TabItem Header="Startup"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="26" MaxWidth="760" HorizontalAlignment="Left"><TextBlock Text="Startup and triggers" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,10"/><Border Background="#111F30" CornerRadius="12" Padding="12" Width="640" Margin="0,0,0,10">
+        <TabItem Header="Startup"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="26" MaxWidth="760" HorizontalAlignment="Left"><TextBlock Text="Startup and triggers" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,10"/><Border Background="#141B29" CornerRadius="12" Padding="12" Width="640" Margin="0,0,0,10">
         <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel>
           <TextBlock Text="BACKGROUND &amp; TRIGGERS" FontWeight="SemiBold" Foreground="#A0B4CC" FontSize="11" Margin="0,0,0,7"/>
           <CheckBox x:Name="StartupCheck" Content="Start hidden with Windows (enables Ctrl+M)"/>
@@ -438,7 +436,7 @@
                     </DockPanel>
                   </Expander>
                   <TextBlock x:Name="KeePassStatusLabel" Text="KeePassXC is not configured"
-                             Foreground="#46DACB" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                             Foreground="#6EE7D7" TextWrapping="Wrap" Margin="0,4,0,0"/>
                   <CheckBox x:Name="SealProfilesCheck" Content="Encrypt browser profiles at rest when the vault locks (recommended)" IsChecked="True" Margin="0,0,0,8"/>
                   <TextBlock Text="Windows Hello" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,8"/>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
@@ -453,7 +451,7 @@
             <Border Background="#173440" BorderBrush="#275E64" BorderThickness="1"
                     CornerRadius="11" Padding="14,11" Margin="0,0,0,15" HorizontalAlignment="Left">
               <StackPanel Orientation="Horizontal">
-                <Ellipse Fill="#46DACB" Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,9,0"/>
+                <Ellipse Fill="#6EE7D7" Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,9,0"/>
                 <TextBlock x:Name="CurrentVersionLabel" Text="Installed version" Foreground="#B8EFEB"
                            FontWeight="SemiBold" FontSize="13"/>
               </StackPanel>
@@ -473,7 +471,7 @@
                           HorizontalAlignment="Left" Margin="0,10,0,0"
                           ToolTip="Save a local report containing only version, timestamps and redacted event codes"
                           AutomationProperties.Name="Export redacted diagnostic report"/>
-                  <TextBlock x:Name="UpdateStatusLabel" Foreground="#46DACB" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                  <TextBlock x:Name="UpdateStatusLabel" Foreground="#6EE7D7" TextWrapping="Wrap" Margin="0,8,0,0"/>
           </StackPanel>
         </ScrollViewer></TabItem><TabItem Header="Shortcuts"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="28" MaxWidth="750" HorizontalAlignment="Left"><TextBlock Text="Keyboard shortcut" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,10"/><TextBlock Text="LaunchFlow always listens for this shortcut while running, including when hidden in the system tray. Press a combination containing Ctrl, Alt or Shift." TextWrapping="Wrap" Foreground="#A9BBD3" Margin="0,0,0,20"/><StackPanel Orientation="Horizontal"><TextBox x:Name="ShortcutBox" IsReadOnly="True" Width="210" Text="Ctrl+M" Margin="0,0,14,0"/><Button x:Name="CaptureButton" Content="Change shortcut" Click="CaptureShortcut_Click"/></StackPanel><TextBlock x:Name="ShortcutHelpLabel" Text="Default: Ctrl+M" Margin="0,11,0,0" Foreground="#86DBF3" TextWrapping="Wrap"/></StackPanel></ScrollViewer></TabItem><TabItem Header="Advanced"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="28" MaxWidth="790" HorizontalAlignment="Left"><TextBlock Text="Advanced sign-in options" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,14"/><TextBlock Text="These optional fields apply to the currently selected workflow. Most websites do not require changing them." Foreground="#ABBDD3" TextWrapping="Wrap" Margin="0,0,0,14"/><Expander Header="Advanced settings (only if the website needs them)" Foreground="#D9F1FC" Background="#18283C" Padding="10" Margin="0,0,0,12" IsExpanded="True">
                   <StackPanel Margin="4,10,4,4">

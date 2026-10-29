@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="New website" Width="560" Height="570" MinWidth="480" MinHeight="480"
         ResizeMode="CanResize" WindowStartupLocation="CenterScreen" ShowInTaskbar="True"
-        Background="#0D1725" Foreground="#EEF6FA" FontFamily="Segoe UI" FontSize="13"
+        Background="#111A2A" Foreground="#EEF6FA" FontFamily="Segoe UI" FontSize="13"
         Icon="pack://application:,,,/Assets/LaunchFlow.ico">
   <Grid Margin="24,20">
     <Grid.RowDefinitions>
@@ -53,12 +53,9 @@
         <TextBlock Text="HTTP isn't encrypted. Use HTTPS for sensitive logins whenever possible."
                    FontSize="11" Foreground="#E6B96F" TextWrapping="Wrap" Margin="0,0,0,12"/>
         <TextBlock Text="Browser" FontWeight="SemiBold"/>
-        <ComboBox x:Name="BrowserCombo" Margin="0,6,0,12" SelectedIndex="0">
-          <ComboBoxItem Content="Edge"/>
-          <ComboBoxItem Content="Chrome"/>
-          <ComboBoxItem Content="Firefox"/>
-          <ComboBoxItem Content="Default browser (open only)"/>
-        </ComboBox>
+        <ComboBox x:Name="BrowserCombo" Margin="0,6,0,12"
+                  DropDownOpened="BrowserCombo_DropDownOpened"
+                  ToolTip="Shows installed browsers. The default browser opens without automatic login."/>
         <TextBlock Text="Screen to open on" FontWeight="SemiBold"/>
         <ComboBox x:Name="MonitorCombo" Margin="0,6,0,12"/>
         <TextBlock Text="Does this website require sign-in?" FontWeight="SemiBold" Margin="0,0,0,6"/>
