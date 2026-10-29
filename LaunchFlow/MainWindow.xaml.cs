@@ -1342,12 +1342,11 @@ public partial class MainWindow : Window
         UpdateRunButtons();
         try
         {
-            MessageBox.Show(this,
-                "1. Complete sign-in in your browser.\n" +
-                "2. Click buttons you want LaunchFlow to remember.\n" +
-                "3. Return to Teach and click Save clicks.\n\n" +
-                "Use Passwords to save a login; Teach does not record passwords.",
-                "Repair login", MessageBoxButton.OK, MessageBoxImage.Information);
+            // Instructions already live in the modeless Teach recorder.
+            // A blocking notice here prevented users from clicking their browser
+            // to sign in, which is precisely what Repair asks them to do.
+            AppendLog($"Repair login for '{workflow.Name}': sign in in the browser, teach safe clicks, then Save actions.");
+            WorkflowStatusLabel.Text = "Repair login · Use the browser and modeless Teach window";
             if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow)) return;
             _activeTeachTask = _runner.GetPageForRecorderAsync(workflow);
             var page = await _activeTeachTask;
@@ -1576,9 +1575,13 @@ public partial class MainWindow : Window
             ShowFromTray();
             MainTabs.SelectedIndex = 0;
             WorkflowList.SelectedItem = workflow;
-            MessageBox.Show(this, $"“{item.WorkflowName}” stopped at a {item.StepType} step.\n\n" +
-                "Review this workflow's steps or use Teach clicks to repair it. No later steps or destination navigation ran after the failure. Nothing will rerun automatically.",
-                "Workflow steps need repair", MessageBoxButton.OK, MessageBoxImage.Warning);
+            // Step failures are informational; never disable the workspace
+            // behind a modal alert after the automation has already stopped.
+            AppendLog($"Action {item.StepType} needs review for '{item.WorkflowName}'. Later steps were not run.");
+            WorkflowStatusLabel.Text = "Workflow step needs review · Choose Edit or Teach";
+            NotifyTray("Workflow steps need review",
+                $"Review the {item.StepType} action for '{item.WorkflowName}' using Edit or Teach.",
+                Forms.ToolTipIcon.Warning);
         }
     }
 
