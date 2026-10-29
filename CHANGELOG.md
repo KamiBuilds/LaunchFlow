@@ -1,3 +1,13 @@
+# v0.7.29 — Explicit session sign-in confirmation and cross-site Teach recording
+
+- A clear **I'm signed in** option appears alongside **Repair login** and **Not now**. Explicit confirmation applies only to the exact current HTTPS browser page and origin, not future launches or other sites.
+- A visible password/MFA challenge and changed browser session cannot be manually marked as authenticated. After confirming, click Run this site again to continue recorded steps without attempting password entry a second time.
+- Teach retains browser click capture across normal same-tab navigation and automatically adds a safe **Navigate** action for a change of website origin before the next click. URLs containing query parameters, fragments, user info or policy-blocked sites are never automatically stored.
+- New popup tabs remain unsupported for automatic click replay; explicitly add the page only when safe. Existing secret, keyboard and iframe recording safeguards remain active.
+- Chromium tests cover manual confirmation, challenge rejection, same-tab cross-site capture and OAuth query protection. Installer/data formats unchanged.
+
+**Developer preview:** Manual acceptance needed for live NPM and Windows multi-window browser behavior. Never merge before independent testing.
+
 # v0.7.28 — installer safe-exit and authenticated-dashboard verification
 
 - Installer shutdown now distinguishes actual unsaved work from browser/profile cleanup failures and retries a transient browser-close failure without killing browser processes or discarding encrypted profile data.

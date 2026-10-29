@@ -117,6 +117,11 @@ check('ObserveLoginCompletionAsync' in (root / "LaunchFlow/Services/AutomationEn
       'var wasLoading = _loadingEditor;' in source and
       'CloseSessionsRetry' in source,
       "sign-in verification and safe installer cleanup recovery remain wired")
+check('SignInDecisionWindow.Decision.Confirmed' in source and
+      (root / "LaunchFlow/SignInDecisionWindow.xaml").is_file() and
+      'ConfirmSignedInAsync' in (root / "LaunchFlow/Services/AutomationEngine.cs").read_text(encoding="utf-8") and
+      'session._pendingActions.Enqueue(("Navigate", safeUrl))' in (root / "LaunchFlow/Services/TeachRecorder.cs").read_text(encoding="utf-8"),
+      "human sign-in confirmation and automatic cross-site Teach navigation are connected")
 check('HeaderVersionLabel.Text = "v" + AppInfo.VersionString' in source
       and 'CurrentVersionLabel.Text = "Installed version " + AppInfo.VersionString' in source,
       "UI version labels use assembly version instead of hardcoded display text")
@@ -124,9 +129,9 @@ csproj = ET.parse(root / "LaunchFlow/LaunchFlow.csproj")
 version = csproj.findtext("./PropertyGroup/Version")
 iss = (root / "installer/LaunchFlow.iss").read_text(encoding="utf-8")
 info = (root / "LaunchFlow/Services/AppInfo.cs").read_text(encoding="utf-8")
-check(version == "0.7.28" and f'#define AppVersion "{version}"' in iss
+check(version == "0.7.29" and f'#define AppVersion "{version}"' in iss
       and f'return v is null ? "{version}"' in info,
-      "assembly, installer and fallback version match 0.7.28")
+      "assembly, installer and fallback version match 0.7.29")
 guide = ET.parse(root / "LaunchFlow/TutorialWindow.xaml").getroot()
 guide_source = (root / "LaunchFlow/TutorialWindow.xaml.cs").read_text(encoding="utf-8")
 check('new TutorialWindow { Owner = this }.ShowDialog()' not in source and

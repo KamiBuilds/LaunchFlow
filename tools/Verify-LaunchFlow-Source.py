@@ -119,6 +119,14 @@ check('VerifiedRedirectAsync' in auto and
       'ObserveLoginCompletionAsync' in auto and
       'LoginHealth.VerifiedRedirectAsync' in auto,
       'automatic login requires validated dashboard transitions rather than one outdated selector')
+check((root/'LaunchFlow/SignInDecisionWindow.xaml').is_file() and
+      'ConfirmSignedInAsync' in auto and
+      'SignInDecisionWindow.Decision.Confirmed' in main_code and
+      'ManuallyConfirmedAsync' in auto,
+      'explicit sign-in acknowledgment is scoped to a verified open browser session')
+check('session._pendingActions.Enqueue(("Navigate", safeUrl))' in teach_service and
+      'string.IsNullOrEmpty(next.Query)' in teach_service,
+      'Teach automatically records allowed same-tab cross-site navigation without URL secrets')
 check('Value="#6EE7D7"' in styles and 'Value="#6EE7D7"' in main_xaml,
       'switches use the restored LaunchFlow navy/mint palette')
 check('BrowserChoices.Refresh(BrowserCombo, w.Browser)' in main_code and
