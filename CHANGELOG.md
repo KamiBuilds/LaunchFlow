@@ -1,3 +1,13 @@
+# v0.7.31 — Windows Application Control preflight and signed-dependency support
+
+- Detect App Control / WDAC block `0x800711C7` on `Microsoft.Data.Sqlite.dll` and other required SQLite dependencies before the first-run master-password wizard or any vault read/write.
+- Run only an in-memory SQLite runtime check. A rejected or missing dependency produces actionable guidance for the machine owner/administrator without printing credentials or modifying the vault.
+- When an authentic publisher certificate is configured, the Windows installer builder signs unsigned top-level managed/native DLLs and EXEs, preserves valid existing vendor signatures, checks resulting signatures and fails closed if signing is incomplete. Unsigned local test builds remain explicitly unsupported on restrictive managed computers.
+- Add source-linked tests for policy failures, wrapped exceptions, missing dependencies and credential-safe errors; validate old encrypted data and login workflows unchanged.
+- No vault schema, encryption, installed browser policy, app identity or stable update channel changes.
+
+**Test status:** Developer-only preview. A signature still does not authorize a build under an organization’s App Control rules. Native Windows/WDAC acceptance and trusted publisher approval are required before use on a policy-enforced computer.
+
 # v0.7.30 — Nonblocking windows by default
 
 - Changed **Sign-in needs attention** from a modal dialog to a modeless window, keeping the main LaunchFlow interface and browser clickable while the user reviews the problem.

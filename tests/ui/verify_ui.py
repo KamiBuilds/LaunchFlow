@@ -137,6 +137,9 @@ check('CredentialDeleteGuard.IsCurrent(' in source and
       'SealProfilesCheck.IsChecked = _configuration.SealBrowserProfilesOnLock;' in source and
       'KeePassDbBox.Text = _configuration.KeePassDatabasePath ?? "";' in source,
       "safe deletion and full imported configuration projection remain wired to storage and UI")
+check('WindowsApplicationControl.CheckRequiredComponents()' in (root / "LaunchFlow/App.xaml.cs").read_text(encoding="utf-8") and
+      'Microsoft.Data.Sqlite' in (root / "LaunchFlow/Services/WindowsApplicationControl.cs").read_text(encoding="utf-8"),
+      "startup checks blocked DLLs before new vault setup")
 check('HeaderVersionLabel.Text = "v" + AppInfo.VersionString' in source
       and 'CurrentVersionLabel.Text = "Installed version " + AppInfo.VersionString' in source,
       "UI version labels use assembly version instead of hardcoded display text")
@@ -144,9 +147,9 @@ csproj = ET.parse(root / "LaunchFlow/LaunchFlow.csproj")
 version = csproj.findtext("./PropertyGroup/Version")
 iss = (root / "installer/LaunchFlow.iss").read_text(encoding="utf-8")
 info = (root / "LaunchFlow/Services/AppInfo.cs").read_text(encoding="utf-8")
-check(version == "0.7.30" and f'#define AppVersion "{version}"' in iss
+check(version == "0.7.31" and f'#define AppVersion "{version}"' in iss
       and f'return v is null ? "{version}"' in info,
-      "assembly, installer and fallback version match 0.7.30")
+      "assembly, installer and fallback version match 0.7.31")
 guide = ET.parse(root / "LaunchFlow/TutorialWindow.xaml").getroot()
 guide_source = (root / "LaunchFlow/TutorialWindow.xaml.cs").read_text(encoding="utf-8")
 check('new TutorialWindow { Owner = this }.ShowDialog()' not in source and
