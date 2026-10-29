@@ -1,3 +1,14 @@
+# v0.7.32 — Verified signed Windows distribution guard (developer review)
+
+- Publisher-signed distribution builds now require a configured signing identity and SignTool **before** touching build output. Unsigned installer smoke tests can no longer be described as ready for App Control enforcement.
+- Sign and verify unsigned published EXE/DLL dependencies **recursively**, including native SQLite and nested browser-runtime binaries, while preserving existing valid signatures.
+- Verify Setup's Authenticode signature before marking a signed distribution build complete; add a negative installer builder test that verifies refusal preserves existing build artifacts.
+- Keep v0.7.31's SQLite preflight before vault/master-password initialization, with safe error messages for Windows policy blocks.
+- Explicitly require target-machine acceptance under its actual App Control/Smart App Control policy, separate from CI success. A signed binary may still be denied by an explicit policy. Windows 10/11 x64 supported platform; other operating systems and CPU targets not claimed.
+- No vault schema, stored credential, login flow, installer AppId or current stable release changes.
+
+**Preview only:** A real approved publisher certificate is not available for GitHub's unsigned smoke builds. Do not hand an unsigned CI ZIP to a user as a fix for 0x800711C7.
+
 # v0.7.31 — Windows Application Control preflight and signed-dependency support
 
 - Detect App Control / WDAC block `0x800711C7` on `Microsoft.Data.Sqlite.dll` and other required SQLite dependencies before the first-run master-password wizard or any vault read/write.
