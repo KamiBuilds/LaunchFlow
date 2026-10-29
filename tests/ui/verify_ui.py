@@ -122,9 +122,9 @@ check('SignInDecisionWindow.Decision.Confirmed' in source and
       'ConfirmSignedInAsync' in (root / "LaunchFlow/Services/AutomationEngine.cs").read_text(encoding="utf-8") and
       'session._pendingActions.Enqueue(("Navigate", safeUrl))' in (root / "LaunchFlow/Services/TeachRecorder.cs").read_text(encoding="utf-8"),
       "human sign-in confirmation and automatic cross-site Teach navigation are connected")
-check('decision.Show();' in source and
+check('dialog.Show();' in source and
       'ApplyModelessSignInDecisionAsync' in source and
-      'dialog.ShowDialog()' not in source and
+      'decision.ShowDialog();' not in source and
       'new AboutWindow { Owner = this }.Show();' in source and
       'new BrowserSetupWindow { Owner = this }.Show();' in source,
       "noncritical windows remain modeless while dedicated authorization prompts stay gated")
