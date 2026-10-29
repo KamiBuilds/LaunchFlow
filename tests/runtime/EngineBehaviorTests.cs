@@ -26,13 +26,13 @@ internal static class EngineBehaviorTests
             ContentType = "text/html",
             Body = route.Request.Url.EndsWith("/login", StringComparison.Ordinal)
                 ? "<input type='password'><button>Sign in</button>"
-                : "<h1>Signed-in dashboard</h1><button id='next' onclick=\\"document.body.dataset.followed='yes'\\">Continue</button>"
+                : "<h1>Signed-in dashboard</h1><button id='next' onclick='document.body.dataset.followed=String.fromCharCode(121,101,115)'>Continue</button>"
         }));
         var page = await context.NewPageAsync();
         await page.GotoAsync("https://confirmed.test/dashboard");
         var wf = new WebsiteWorkflow
         {
-            StartUrl = "https://confirmed.test/", AutoLogin = true,
+            StartUrl = "https://confirmed.test/dashboard", AutoLogin = true,
             UsernameSelector = "#user", PasswordSelector = "#password",
             LoginSuccessSelector = "#old-missing-success"
         };
