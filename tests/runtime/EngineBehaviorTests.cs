@@ -43,6 +43,10 @@ internal static class EngineBehaviorTests
             page.Url == "https://npm-fixture.test/" &&
             await page.Locator("#signed-in").CountAsync() == 1,
             "NPM-style /login -> dashboard succeeds even when saved completion selector is stale");
+        var repeat = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(repeat.FinishedCount == 1 && repeat.LoginNeedsAttention.Count == 0 &&
+            await page.Locator("#signed-in").CountAsync() == 1,
+            "rerunning a saved login website reuses the dashboard without demanding another password form");
     }
 
     private static async Task MfaRedirectNeverVerifiesAsync(IPlaywright playwright)
