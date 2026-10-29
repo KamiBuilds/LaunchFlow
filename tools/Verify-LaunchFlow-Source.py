@@ -110,6 +110,15 @@ check('VaultBackupService' not in main_code and 'VaultBackupService' not in db,
       'automatic database backup calls removed')
 check(not (root/'LaunchFlow/Services/VaultBackupService.cs').exists(),
       'unused database backup service removed')
+check('if (_installerShutdownInProgress)' in main_code and
+      'await _runner.CloseSessionsAsync();' in main_code and
+      'var wasLoading = _loadingEditor;' in main_code and
+      'A browser session could not be closed safely' in main_code,
+      'installer exit distinguishes dirty edits from cleanup failure and retries transient close errors')
+check('VerifiedRedirectAsync' in auto and
+      'ObserveLoginCompletionAsync' in auto and
+      'LoginHealth.VerifiedRedirectAsync' in auto,
+      'automatic login requires validated dashboard transitions rather than one outdated selector')
 check('Value="#6EE7D7"' in styles and 'Value="#6EE7D7"' in main_xaml,
       'switches use the restored LaunchFlow navy/mint palette')
 check('BrowserChoices.Refresh(BrowserCombo, w.Browser)' in main_code and

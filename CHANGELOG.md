@@ -1,3 +1,13 @@
+# v0.7.28 — installer safe-exit and authenticated-dashboard verification
+
+- Installer shutdown now distinguishes actual unsaved work from browser/profile cleanup failures and retries a transient browser-close failure without killing browser processes or discarding encrypted profile data.
+- Password Manager internal tab changes during installer shutdown do not create a spurious dirty flag after settings have been durably saved. Genuine edits or failed cleanup still block the installer safely.
+- Auto-login recognizes a completed **same-origin** HTTPS navigation from a login page to a non-login dashboard even if an old completion selector is stale, including when the Submit button detaches during navigation.
+- MFA challenges, error routes, wrong-origin navigation and visible password prompts are not considered successful authentication; the existing policy/origin checks still apply.
+- Synthetic Chromium regression fixtures cover a dashboard redirect and rejected MFA redirect. No vault/profile schema changes or forced installer task termination.
+
+**Preview only:** Test v0.7.28 on Windows with a backup of encrypted data. Older running LaunchFlow versions may still need a manual Exit from the system tray before Setup can proceed.
+
 # v0.7.27 — Installed-browser detection and restored navy theme (development preview)
 
 - Scan Windows App Paths (both registry views) and conventional installation folders to offer only installed Edge, Chrome and Firefox browsers in both the new-website wizard and existing website editor. Re-scan whenever the selector opens.
