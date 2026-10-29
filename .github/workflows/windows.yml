@@ -2,7 +2,7 @@ name: Windows installer — build and gated draft release
 
 on:
   push:
-    branches: [hermes, chatgpt, both, both-2, both-3, chatgpt-safety-hardening-20261028, chatgpt-selective-safety-review-20261029, chatgpt-appcontrol-startup-20261029, chatgpt-trusted-distribution-20261029]
+    branches: [hermes, chatgpt, both, both-2, both-3, chatgpt-safety-hardening-20261028, chatgpt-selective-safety-review-20261029, chatgpt-appcontrol-startup-20261029, chatgpt-trusted-distribution-20261029, chatgpt-ux-clarity-20261029]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -43,7 +43,7 @@ jobs:
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
-      - name: Validate WPF UI and v0.7.32 packaging contracts
+      - name: Validate WPF UI and v0.7.33 packaging contracts
         run: python3 tests/ui/verify_ui.py
       - name: Validate source invariants
         run: python3 tools/Verify-LaunchFlow-Source.py

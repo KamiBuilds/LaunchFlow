@@ -169,5 +169,12 @@ check('Get-AuthenticodeSignature' in builder and
       'if ($RequireSignedDistribution)' in builder and
       'Signed distribution requested but the Setup signature is not valid' in builder,
       'trusted distribution gate covers nested PE dependencies, preflight and setup signature')
+wizard_xaml=(root/'LaunchFlow/NewWorkflowWindow.xaml').read_text(encoding='utf-8')
+main_ui=(root/'LaunchFlow/MainWindow.xaml').read_text(encoding='utf-8')
+check('Advanced: connection type and port (optional)' in wizard_xaml and
+      'DataTrigger Binding="{Binding IsChecked, ElementName=AutoLoginCheck}" Value="True"' in wizard_xaml and
+      'More actions (advanced)' in main_ui and
+      'START HERE · 3 EASY STEPS' in main_ui,
+      'beginner setup presents clear next steps while optional controls stay available')
 print('\n'+ ('FAILED: '+', '.join(errors) if errors else 'Source/configuration checks PASS. Native Windows build remains required.'))
 sys.exit(bool(errors))
