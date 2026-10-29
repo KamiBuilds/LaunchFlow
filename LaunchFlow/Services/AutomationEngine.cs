@@ -12,7 +12,14 @@ public sealed partial class AutomationEngine : IAsyncDisposable
     private readonly Dictionary<Guid, TrackedSession> _sessions = new();
     // Explicit user acknowledgment applies only to this exact browser page and
     // URL, never to a new login, navigation, restored profile, or future launch.
-    private readonly Dictionary<Guid, (IPage Page, string Url)> _confirmedLogins = new();
+    private sealed class LoginAcknowledgment(IPage page, string url)
+    {
+        public IPage Page { get; } = page;
+        public string Url { get; } = url;
+        public bool Navigated { get; set; } // Read and written under _gate.
+    }
+
+    private readonly Dictionary<Guid, LoginAcknowledgment> _confirmedLogins = new();
     private readonly Dictionary<Guid, (IPage Page, EventHandler<IFrame> Handler)> _confirmationNavigationHooks = new();
     private readonly HashSet<IBrowserContext> _unclaimedContexts = new();
     private IPlaywright? _playwright;
@@ -193,36 +200,48 @@ public sealed partial class AutomationEngine : IAsyncDisposable
             page = session.Page;
         }
         RequireCredentialAccess();
-        if (!await SafeConfirmationPageAsync(workflow, page, ct).ConfigureAwait(false)) return false;
-        var url = page.Url;
-        lock (_gate)
+        var acknowledgment = new LoginAcknowledgment(page, page.Url);
+        var retained = false;
+        // Observe before the first inspection await, and retain the same observer
+        // after acceptance. Even a same-address reload owns a different document.
+        EventHandler<IFrame> invalidate = (_, frame) =>
         {
-            if (_running || _closing || _cleanupRequired || _disposed ||
-                !_sessions.TryGetValue(workflow.Id, out var current) ||
-                !ReferenceEquals(current.Page, page) || page.IsClosed ||
-                !string.Equals(page.Url, url, StringComparison.Ordinal))
-                return false;
-            if (_confirmationNavigationHooks.Remove(workflow.Id, out var prior))
-                prior.Page.FrameNavigated -= prior.Handler;
-            // A reload can reuse the *same URL* for a fresh login document.
-            // Invalidate the one-session acknowledgment on ANY main-frame
-            // navigation, even if the address does not visibly change.
-            EventHandler<IFrame> invalidate = (_, frame) =>
+            if (!ReferenceEquals(frame, page.MainFrame)) return;
+            lock (_gate)
             {
-                if (!ReferenceEquals(frame, page.MainFrame)) return;
-                lock (_gate)
-                {
-                    if (_confirmedLogins.TryGetValue(workflow.Id, out var current) &&
-                        ReferenceEquals(current.Page, page))
-                        _confirmedLogins.Remove(workflow.Id);
-                }
-            };
-            page.FrameNavigated += invalidate;
-            _confirmationNavigationHooks[workflow.Id] = (page, invalidate);
-            _confirmedLogins[workflow.Id] = (page, url);
+                acknowledgment.Navigated = true;
+                if (_confirmedLogins.TryGetValue(workflow.Id, out var current) &&
+                    ReferenceEquals(current, acknowledgment))
+                    _confirmedLogins.Remove(workflow.Id);
+            }
+        };
+        page.FrameNavigated += invalidate;
+        try
+        {
+            if (!await SafeConfirmationPageAsync(workflow, page, ct).ConfigureAwait(false)) return false;
+            lock (_gate)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (_running || _closing || _cleanupRequired || _disposed ||
+                    acknowledgment.Navigated ||
+                    !_sessions.TryGetValue(workflow.Id, out var current) ||
+                    !ReferenceEquals(current.Page, page) || page.IsClosed ||
+                    !string.Equals(page.Url, acknowledgment.Url, StringComparison.Ordinal) ||
+                    !ConfirmationPolicyAllows(page))
+                    return false;
+                if (_confirmationNavigationHooks.Remove(workflow.Id, out var prior))
+                    prior.Page.FrameNavigated -= prior.Handler;
+                _confirmationNavigationHooks[workflow.Id] = (page, invalidate);
+                _confirmedLogins[workflow.Id] = acknowledgment;
+                retained = true;
+            }
+            Log($"User confirmed the signed-in state for '{workflow.Name}' in this browser session.");
+            return true;
         }
-        Log($"User confirmed the signed-in state for '{workflow.Name}' in this browser session.");
-        return true;
+        finally
+        {
+            if (!retained) page.FrameNavigated -= invalidate;
+        }
     }
 
     private static async Task<bool> SafeConfirmationPageAsync(
@@ -259,19 +278,47 @@ public sealed partial class AutomationEngine : IAsyncDisposable
         catch (Exception) { return false; }
     }
 
+    private static bool ConfirmationPolicyAllows(IPage page)
+    {
+        try
+        {
+            RequireAutomationUrl(page.Url);
+            RequireCredentialAccess();
+            return true;
+        }
+        catch (InvalidOperationException) { return false; }
+    }
+
     private async Task<bool> ManuallyConfirmedAsync(WebsiteWorkflow workflow, IPage page, CancellationToken ct)
     {
-        (IPage Page, string Url) accepted;
+        LoginAcknowledgment accepted;
         lock (_gate)
         {
-            if (!_confirmedLogins.TryGetValue(workflow.Id, out accepted) ||
+            if (!_confirmedLogins.TryGetValue(workflow.Id, out accepted!) ||
                 !ReferenceEquals(accepted.Page, page) ||
                 !string.Equals(accepted.Url, page.Url, StringComparison.Ordinal))
                 return false;
         }
-        if (await SafeConfirmationPageAsync(workflow, page, ct).ConfigureAwait(false)) return true;
-        lock (_gate) _confirmedLogins.Remove(workflow.Id);
-        return false;
+        var inspected = await SafeConfirmationPageAsync(workflow, page, ct).ConfigureAwait(false);
+        lock (_gate)
+        {
+            ct.ThrowIfCancellationRequested();
+            // Inspection can pump navigation/cleanup callbacks. A local copy of
+            // an acknowledgment must not outlive its exact dictionary owner.
+            if (!_confirmedLogins.TryGetValue(workflow.Id, out var current) ||
+                !ReferenceEquals(current, accepted))
+                return false;
+            if (!inspected || accepted.Navigated || _closing || _cleanupRequired || _disposed ||
+                page.IsClosed || !_sessions.TryGetValue(workflow.Id, out var session) ||
+                !ReferenceEquals(session.Page, page) ||
+                !string.Equals(accepted.Url, page.Url, StringComparison.Ordinal) ||
+                !ConfirmationPolicyAllows(page))
+            {
+                _confirmedLogins.Remove(workflow.Id);
+                return false;
+            }
+            return true;
+        }
     }
 
     public async Task<IPage> GetPageForRecorderAsync(WebsiteWorkflow workflow)

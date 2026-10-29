@@ -149,5 +149,9 @@ check('element.value' not in teach_script and 'event.target' in teach_script and
       'Teach records form-control clicks without text values')
 check('ImportLaunchFlowFile' in main_code and 'SecureTransferService.Export' in main_code,
       'protected import and export remain available')
+check('CredentialDeleteGuard.IsCurrent(' in main_code and
+      'ImportConfigurationProjection.ForThisDevice(' in main_code and
+      'VaultDatabase.Current.ReplaceSnapshot(projected, imported.Credentials)' in main_code,
+      'import and destructive credential deletion use identity and one authoritative configuration projection')
 print('\n'+ ('FAILED: '+', '.join(errors) if errors else 'Source/configuration checks PASS. Native Windows build remains required.'))
 sys.exit(bool(errors))

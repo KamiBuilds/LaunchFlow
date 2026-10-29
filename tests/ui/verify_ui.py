@@ -67,7 +67,9 @@ check('WorkspaceCatalog.Save(_configuration, name' in source and
       "workspace save, preview and run share rollback-safe validated selection")
 check('WorkspaceCatalog.ConfirmationStillValid(' in source and
       '_workspaceRevision++' in source and
-      'VaultDatabase.Current.ReplaceSnapshot(imported.Config, imported.Credentials);\n            _workspaceRevision++;' in source,
+      'VaultDatabase.Current.ReplaceSnapshot(projected, imported.Credentials);' in source and
+      'ImportConfigurationProjection.ForThisDevice(' in source and
+      '_workspaceRevision++;' in source,
       "encrypted import invalidates modal workspace overwrite approval")
 check('WorkspaceCatalog.PendingRunIsCurrent(' in source and
       'launchRevision = _workspaceRevision' in source and
@@ -128,6 +130,13 @@ check('dialog.Show();' in source and
       'new AboutWindow { Owner = this }.Show();' in source and
       'new BrowserSetupWindow { Owner = this }.Show();' in source,
       "noncritical windows remain modeless while dedicated authorization prompts stay gated")
+check('CredentialDeleteGuard.IsCurrent(' in source and
+      'ImportConfigurationProjection.ForThisDevice(' in source and
+      'VaultDatabase.Current.ReplaceSnapshot(projected, imported.Credentials)' in source and
+      '_configuration = projected;' in source and
+      'SealProfilesCheck.IsChecked = _configuration.SealBrowserProfilesOnLock;' in source and
+      'KeePassDbBox.Text = _configuration.KeePassDatabasePath ?? "";' in source,
+      "safe deletion and full imported configuration projection remain wired to storage and UI")
 check('HeaderVersionLabel.Text = "v" + AppInfo.VersionString' in source
       and 'CurrentVersionLabel.Text = "Installed version " + AppInfo.VersionString' in source,
       "UI version labels use assembly version instead of hardcoded display text")
