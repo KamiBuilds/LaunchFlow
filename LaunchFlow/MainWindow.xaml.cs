@@ -896,14 +896,41 @@ public partial class MainWindow : Window
 
     private void ClearCredential_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is null) return;
-        if (MessageBox.Show(this, "Remove this workflow's saved encrypted login password?", "Remove credential",
-            MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
-        _vault.Delete(_selected.Id);
-        PasswordInput.Clear();
-        UsernameBox.Clear();
-        CredentialStatus.Text = "No password saved";
-        AppendLog("Encrypted credential removed from LaunchFlow vault.");
+        // A modal confirmation pumps WPF events: import or a selection change
+        // can replace _selected while the Yes/No prompt is open.
+        if (_selected is not { } workflow || _windowsLocked || _vaultLockInProgress ||
+            _exiting || !VaultDatabase.Current.IsUnlocked || !CredentialReadAllowed()) return;
+        var revision = _workspaceRevision;
+        if (MessageBox.Show(this,
+                $"Remove the encrypted login password saved for '{workflow.Name}'?",
+                "Remove credential", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+
+        if (!CredentialDeleteGuard.IsCurrent(_configuration, _selected, workflow,
+                revision, _workspaceRevision,
+                VaultDatabase.Current.IsUnlocked && !_windowsLocked &&
+                !_vaultLockInProgress && !_exiting && CredentialReadAllowed()))
+        {
+            AppendLog("Credential deletion canceled: the website, configuration or vault authorization changed during confirmation.");
+            return;
+        }
+
+        try
+        {
+            // Only the captured identity can be deleted from cold encrypted storage.
+            _vault.Delete(workflow.Id);
+            PasswordInput.Clear();
+            UsernameBox.Clear();
+            CredentialStatus.Text = "No password saved";
+            AppendLog($"Encrypted credential removed for '{workflow.Name}'.");
+        }
+        catch (Exception ex)
+        {
+            AppendLog("Credential deletion failed: " + ex.GetType().Name);
+            MessageBox.Show(this,
+                "Could not delete the credential. The saved login may still be present.",
+                "Remove credential", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private void SaveCredentials_Click(object sender, RoutedEventArgs e)
