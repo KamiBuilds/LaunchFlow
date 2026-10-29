@@ -495,9 +495,9 @@ public partial class MainWindow : Window
         bool noWorkflows = _configuration.Workflows.Count == 0;
         EmptyStateHeading.Text = noWorkflows ? "No workflows yet" : "Select a workflow";
         EmptyStateDescription.Text = noWorkflows
-            ? "Create your first workflow to choose a website, add your login, and pick a monitor. The editor will appear after you create it."
-            : "Choose a workflow from the list to view and edit its settings, or create another one.";
-        CreateFirstWorkflowButton.Content = noWorkflows ? "+ Create your first workflow" : "+ New workflow";
+            ? "Start by adding one website and choosing a browser and screen. Login and recorded actions are optional."
+            : "Choose one of your saved websites on the left to view its settings, or add another website.";
+        CreateFirstWorkflowButton.Content = noWorkflows ? "+ Add your first website" : "+ Add another website";
         DuplicateWorkflowButton.IsEnabled = false;
         DeleteWorkflowButton.IsEnabled = false;
         NameBox.Text = "";
