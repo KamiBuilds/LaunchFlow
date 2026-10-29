@@ -11,7 +11,66 @@ internal static class EngineBehaviorTests
         await PrivacyAsync(playwright);
         await ExactOriginAsync(playwright);
         await SsoAsync(playwright);
+        await NpmDashboardAfterStaleSelectorAsync(playwright);
+        await MfaRedirectNeverVerifiesAsync(playwright);
         await CredentialContinuationCancellationAsync(playwright);
+    }
+
+    private static async Task NpmDashboardAfterStaleSelectorAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(3000);
+        await context.RouteAsync("https://npm-fixture.test/**", route => route.FulfillAsync(new()
+        {
+            ContentType = "text/html",
+            Body = route.Request.Url.EndsWith("/login", StringComparison.OrdinalIgnoreCase)
+                ? "<form onsubmit=\\"event.preventDefault();location.href='/';\\"><input id='user'><input id='password' type='password'><button type='submit'>Sign in</button></form>"
+                : "<nav><a href='/'>Dashboard</a><a href='/hosts'>Proxy Hosts</a></nav><main id='signed-in'>Proxy Hosts</main>"
+        }));
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://npm-fixture.test/login");
+        var workflow = new WebsiteWorkflow
+        {
+            StartUrl = page.Url, UsernameSelector = "#user", PasswordSelector = "#password",
+            SubmitSelector = "button[type=submit]", LoginSuccessSelector = "#old-dashboard-selector",
+            LoginWaitSeconds = 5
+        };
+        await using var engine = new AutomationEngine(new CredentialVault());
+        Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
+            page.Url == "https://npm-fixture.test/" &&
+            await page.Locator("#signed-in").CountAsync() == 1,
+            "NPM-style /login -> dashboard succeeds even when saved completion selector is stale");
+    }
+
+    private static async Task MfaRedirectNeverVerifiesAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(3000);
+        await context.RouteAsync("https://mfa-fixture.test/**", route => route.FulfillAsync(new()
+        {
+            ContentType = "text/html",
+            Body = route.Request.Url.EndsWith("/login", StringComparison.OrdinalIgnoreCase)
+                ? "<form onsubmit=\\"event.preventDefault();location.href='/auth';\\"><input id='user'><input id='password' type='password'><button type='submit'>Sign in</button></form>"
+                : "<h1>Verification required</h1><input autocomplete='one-time-code'>"
+        }));
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://mfa-fixture.test/login");
+        var workflow = new WebsiteWorkflow
+        {
+            StartUrl = page.Url, UsernameSelector = "#user", PasswordSelector = "#password",
+            SubmitSelector = "button[type=submit]", LoginSuccessSelector = "#signed-in",
+            LoginWaitSeconds = 5
+        };
+        await using var engine = new AutomationEngine(new CredentialVault());
+        Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(result.FinishedCount == 0 && result.LoginNeedsAttention.Count == 1 &&
+            page.Url.EndsWith("/auth", StringComparison.OrdinalIgnoreCase),
+            "MFA redirect must not be mistaken for a completed dashboard sign-in");
     }
 
     private static async Task CredentialContinuationCancellationAsync(IPlaywright playwright)
