@@ -13,6 +13,7 @@ public sealed partial class AutomationEngine : IAsyncDisposable
     // Explicit user acknowledgment applies only to this exact browser page and
     // URL, never to a new login, navigation, restored profile, or future launch.
     private readonly Dictionary<Guid, (IPage Page, string Url)> _confirmedLogins = new();
+    private readonly Dictionary<Guid, (IPage Page, EventHandler<IFrame> Handler)> _confirmationNavigationHooks = new();
     private readonly HashSet<IBrowserContext> _unclaimedContexts = new();
     private IPlaywright? _playwright;
     private bool _running;
@@ -201,6 +202,23 @@ public sealed partial class AutomationEngine : IAsyncDisposable
                 !ReferenceEquals(current.Page, page) || page.IsClosed ||
                 !string.Equals(page.Url, url, StringComparison.Ordinal))
                 return false;
+            if (_confirmationNavigationHooks.Remove(workflow.Id, out var prior))
+                prior.Page.FrameNavigated -= prior.Handler;
+            // A reload can reuse the *same URL* for a fresh login document.
+            // Invalidate the one-session acknowledgment on ANY main-frame
+            // navigation, even if the address does not visibly change.
+            EventHandler<IFrame> invalidate = (_, frame) =>
+            {
+                if (!ReferenceEquals(frame, page.MainFrame)) return;
+                lock (_gate)
+                {
+                    if (_confirmedLogins.TryGetValue(workflow.Id, out var current) &&
+                        ReferenceEquals(current.Page, page))
+                        _confirmedLogins.Remove(workflow.Id);
+                }
+            };
+            page.FrameNavigated += invalidate;
+            _confirmationNavigationHooks[workflow.Id] = (page, invalidate);
             _confirmedLogins[workflow.Id] = (page, url);
         }
         Log($"User confirmed the signed-in state for '{workflow.Name}' in this browser session.");
@@ -312,7 +330,13 @@ public sealed partial class AutomationEngine : IAsyncDisposable
         var failed = false;
         try
         {
-            lock (_gate) _confirmedLogins.Clear();
+            lock (_gate)
+            {
+                _confirmedLogins.Clear();
+                foreach (var hook in _confirmationNavigationHooks.Values)
+                    hook.Page.FrameNavigated -= hook.Handler;
+                _confirmationNavigationHooks.Clear();
+            }
             Task cancellation = Task.CompletedTask;
             try { if (active is not null) cancellation = active.CancelAsync(); }
             catch (ObjectDisposedException) { /* The run has already finished. */ }
