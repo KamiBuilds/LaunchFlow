@@ -165,10 +165,11 @@ check('ExitSafety.TryPersistForExit(' in source and
       '_store.SaveDurable(_configuration);\n            ClearCredentialEditor();' in source,
       "explicit tray/window exits refuse dirty locked saves, credential preference writes are durable and duplicates become dirty")
 check('if (_hasUnsavedChanges && !VaultDatabase.Current.IsUnlocked)' in source and
-      'if (_hasUnsavedChanges || _vaultCleanupFailed' in source and
+      'if (_vaultCleanupFailed || _vaultLockInProgress)' in source and
+      'if (_installerProfileSealFailed)' in source and
       'Unlock LaunchFlow and click Save before updating.' in source and
       'if (VaultDatabase.Current.IsUnlocked && !SaveAll())' in source,
-      "installer refuses automatic shutdown with unsaved locked-vault edits")
+      "installer refuses dirty locked-vault edits and distinguishes browser/profile cleanup failures")
 check('IsCurrentStepEditorOwner(WebsiteWorkflow workflow, long revision)' in source and
       'WorkflowEditGuard.IsCurrent(_configuration, _selected, workflow, current,' in source and
       'index >= 0 && index < original.Steps.Count' in
