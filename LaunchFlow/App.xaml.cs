@@ -102,6 +102,17 @@ public partial class App : Application
         if (_pendingOpenPath is not null) startInTray = false;
         try
         {
+            // Verify external managed/native dependencies before showing the
+            // master-password wizard or opening/creating the encrypted vault.
+            // This probe uses only a transient in-memory SQLite connection.
+            var compatibility = WindowsApplicationControl.CheckRequiredComponents();
+            if (!compatibility.Ready)
+            {
+                MessageBox.Show(compatibility.Message, "LaunchFlow cannot start on this PC",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                Shutdown();
+                return;
+            }
             if (!InitializeVault()) { Shutdown(); return; }
             var window = new MainWindow();
             MainWindow = window;
