@@ -435,9 +435,18 @@ public partial class MainWindow : Window
             if (_hasUnsavedChanges)
                 throw new InvalidOperationException("Unsaved changes remain. Save them before updating.");
             await SecureVaultLockAsync("Installer requested shutdown; vault locked before replacing application files.");
-            if (_hasUnsavedChanges || _vaultCleanupFailed || _vaultLockInProgress || _installerProfileSealFailed)
+            // Do not collapse unrelated conditions into one message: this used
+            // to tell users to Save even after a successful durable save when
+            // only browser/profile cleanup failed.
+            if (_hasUnsavedChanges)
                 throw new InvalidOperationException(
-                    "Unsaved changes or encrypted-profile cleanup are incomplete. LaunchFlow remains open; save your work before updating.");
+                    "New unsaved changes appeared during shutdown. LaunchFlow remains open; unlock and save before retrying.");
+            if (_vaultCleanupFailed || _vaultLockInProgress)
+                throw new InvalidOperationException(
+                    "A browser session could not be closed safely. LaunchFlow is still open. Close the affected browser windows, then use Lock vault and retry Setup. Profiles were retained.");
+            if (_installerProfileSealFailed)
+                throw new InvalidOperationException(
+                    "Encrypted browser-profile sealing failed. LaunchFlow remains open and the original profile files are retained. Retry Lock vault before updating.");
             _exiting = true;
             UpdateRunButtons();
             Close();
@@ -582,21 +591,31 @@ public partial class MainWindow : Window
     private void LockPasswordManager(string reason)
     {
         if (!_passwordsUnlocked) return;
-        // Safely discard sensitive UI state when the session expires or Windows locks.
-        // Edits must be explicitly saved before expiration if authorization has elapsed.
-        try { ApplyCurrentEditor(); }
-        catch (Exception ex) { AppendLog("Cannot save credential changes before lock: " + ex.GetType().Name); }
-        _passwordsUnlocked = false;
-        _passwordSessionExpiresUtc = DateTimeOffset.MinValue;
-        ClearCredentialEditor();
-        PasswordSessionLabel.Text = "Locked · unlock to manage saved credentials.";
-        if (MainTabs.SelectedIndex == 1)
+        // Locking switches tabs and clears credential controls. Those internal UI
+        // transitions must not create a fresh unsaved website edit after the
+        // installer has already durably saved the configuration.
+        var wasLoading = _loadingEditor;
+        _loadingEditor = true;
+        try
         {
-            _revertingTab = true;
-            MainTabs.SelectedIndex = 0;
-            _revertingTab = false;
+            if (!_installerShutdownInProgress)
+            {
+                try { ApplyCurrentEditor(); }
+                catch (Exception ex) { AppendLog("Cannot save credential changes before lock: " + ex.GetType().Name); }
+            }
+            _passwordsUnlocked = false;
+            _passwordSessionExpiresUtc = DateTimeOffset.MinValue;
+            ClearCredentialEditor();
+            PasswordSessionLabel.Text = "Locked · unlock to manage saved credentials.";
+            if (MainTabs.SelectedIndex == 1)
+            {
+                _revertingTab = true;
+                try { MainTabs.SelectedIndex = 0; }
+                finally { _revertingTab = false; }
+            }
+            AppendLog(reason);
         }
-        AppendLog(reason);
+        finally { _loadingEditor = wasLoading; }
     }
 
     private void ApplyCurrentEditor()
@@ -1629,10 +1648,31 @@ public partial class MainWindow : Window
             try { await _runner.CloseSessionsAsync(); }
             catch (Exception ex)
             {
-                AppendLog("Browser cleanup did not complete; profiles retained and automation blocked. Retry Lock vault.");
-                NotifyTray("Vault locked", "Browser cleanup did not complete; profiles retained and automation blocked. Retry Lock vault.", Forms.ToolTipIcon.Warning);
-                if (_configuration.DiagnosticsLogEnabled) CrashLog.Write("CloseSessions", ex);
-                return; // Never wrap/delete a profile while its browser may still be live.
+                // A browser can close at the same moment as installer shutdown,
+                // leaving a transient Playwright close error. Retry the remaining
+                // tracked contexts once, never kill a browser or discard profiles.
+                var recovered = false;
+                if (_installerShutdownInProgress)
+                {
+                    await Task.Delay(350);
+                    try
+                    {
+                        await _runner.CloseSessionsAsync();
+                        recovered = true;
+                    }
+                    catch (Exception retryError)
+                    {
+                        if (_configuration.DiagnosticsLogEnabled)
+                            CrashLog.Write("CloseSessionsRetry", retryError);
+                    }
+                }
+                if (!recovered)
+                {
+                    AppendLog("Browser cleanup did not complete; profiles retained and automation blocked. Close browser windows and retry Lock vault.");
+                    NotifyTray("Vault locked", "Browser cleanup did not complete; profiles retained and automation blocked. Close browser windows and retry Lock vault.", Forms.ToolTipIcon.Warning);
+                    if (_configuration.DiagnosticsLogEnabled) CrashLog.Write("CloseSessions", ex);
+                    return; // Never wrap/delete a profile while its browser may still be live.
+                }
             }
             try { if (pendingRun is not null) await pendingRun; }
             catch (Exception ex) { AppendLog("Automation ended during lock: " + ex.GetType().Name); }
