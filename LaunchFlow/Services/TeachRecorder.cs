@@ -23,6 +23,7 @@ public sealed class TeachRecorder : IDisposable
     private bool _disposed;
     private bool _unsupportedTargetObserved;
     private bool _policyDenied;
+    private string _lastCapturedPageUrl;
 
     public TeachRecorder(IPage page)
     {
@@ -30,6 +31,7 @@ public sealed class TeachRecorder : IDisposable
         if (policy.DisableTeachMode || policy.DisableAutomation || !policy.IsUrlAllowed(page.Url))
             throw new InvalidOperationException("Teach recording is disabled by your organization.");
         _page = page;
+        _lastCapturedPageUrl = page.Url;
         _bridge = Bridges.GetValue(page.Context, context => new Bridge(context));
         lock (_bridge.Gate)
         {
@@ -196,6 +198,38 @@ public sealed class TeachRecorder : IDisposable
                         if (!session.CheckPolicy(source.Page.Url, source.Frame.Url)) return "null";
                         if (source.Page == session._page && source.Frame == session._page.MainFrame)
                         {
+                            if (type is "Click" or "Press" &&
+                                !string.Equals(session._lastCapturedPageUrl, source.Frame.Url, StringComparison.Ordinal))
+                            {
+                                // The init script survives same-tab navigation. If the
+                                // user crosses to another website, automatically teach
+                                // the new location before recording clicks there.
+                                // Never serialize query strings, fragments or embedded
+                                // credentials: OAuth callbacks often contain secrets.
+                                if (!Uri.TryCreate(session._lastCapturedPageUrl, UriKind.Absolute, out var previous) ||
+                                    !Uri.TryCreate(source.Frame.Url, UriKind.Absolute, out var next) ||
+                                    next.Scheme is not ("https" or "http") ||
+                                    !string.IsNullOrEmpty(next.Query) ||
+                                    !string.IsNullOrEmpty(next.Fragment) ||
+                                    !string.IsNullOrEmpty(next.UserInfo))
+                                {
+                                    session._unsupportedTargetObserved = true;
+                                    return "null";
+                                }
+                                if (!string.Equals(previous.Authority, next.Authority, StringComparison.OrdinalIgnoreCase) ||
+                                    !string.Equals(previous.Scheme, next.Scheme, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    var safeUrl = next.GetLeftPart(UriPartial.Path);
+                                    if (safeUrl.Length > 2048 || !session.CheckPolicy(source.Frame.Url, safeUrl))
+                                    {
+                                        session._unsupportedTargetObserved = true;
+                                        return "null";
+                                    }
+                                    session._acceptedUrls.Add(source.Frame.Url);
+                                    session._pendingActions.Enqueue(("Navigate", safeUrl));
+                                }
+                                session._lastCapturedPageUrl = source.Frame.Url;
+                            }
                             if (type == "Click")
                             {
                                 session._acceptedUrls.Add(source.Frame.Url);
