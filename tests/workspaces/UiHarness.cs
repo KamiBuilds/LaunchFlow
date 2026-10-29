@@ -554,6 +554,14 @@ sealed class UnlockWindow
     public string Password => "synthetic-fixture-only";
     public bool? ShowDialog() { Owner.Prompts++; Owner.PromptHook?.Invoke(); Owner.UnlockHook?.Invoke(); return true; }
 }
+sealed class SignInDecisionWindow
+{
+    public enum Decision { Later, Repair, Confirmed }
+    public Decision Choice { get; set; } = Decision.Later;
+    public object? Owner { get; set; }
+    public SignInDecisionWindow(string website, string reason) { }
+    public bool? ShowDialog() => true;
+}
 sealed class VisualRecorderWindow
 {
     public object? Owner { get; init; }
@@ -690,6 +698,8 @@ namespace LaunchFlow.Services
     sealed class AutomationEngine
     {
         public sealed record LoginAttention(Guid WorkflowId, string WorkflowName, string Reason);
+        public Task<bool> ConfirmSignedInAsync(WebsiteWorkflow workflow, CancellationToken ct = default) =>
+            Task.FromResult(true);
         public sealed record StepAttention(Guid WorkflowId, string WorkflowName, string StepType);
         public enum WorkflowRunState { Running, WaitingForSignIn, Completed, Failed, Cancelled }
         public Task<Microsoft.Playwright.IPage> GetPageForRecorderAsync(WebsiteWorkflow workflow) { LastTeachId = workflow.Id; TeachCalls++; return StallTeach ? PendingTeach.Task : Task.FromResult<Microsoft.Playwright.IPage>(new Microsoft.Playwright.FakePage()); }
