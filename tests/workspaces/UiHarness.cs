@@ -382,7 +382,7 @@ var tests = new List<(string Name, Func<Task> Body)>
             ui.RunAllButton.IsEnabled && ui._runner.RunCalls == 1,
             "modeless assistance kept the launch UI blocked");
         var active = ui._openSignInDecisions[workflow.Id];
-        await ui.OfferRepairForLoginAttentionAsync(result.LoginNeedsAttention);
+        await ui.ShowSignInAttention(result.LoginNeedsAttention);
         Check(ui._openSignInDecisions.Count == 1 &&
             ReferenceEquals(active, ui._openSignInDecisions[workflow.Id]),
             "repeated notification stacked duplicate windows");
@@ -517,6 +517,8 @@ static void Check(bool condition, string message) { if (!condition) throw new Ex
 partial class UiFixture
 {
     public readonly AutomationEngine _runner = new();
+    public Task ShowSignInAttention(IReadOnlyList<AutomationEngine.LoginAttention> items) =>
+        OfferRepairForLoginAttentionAsync(items);
     public readonly Dictionary<Guid, SignInDecisionWindow> _openSignInDecisions = new();
     public readonly Configuration _configuration = new() { Workflows = new() { new WebsiteWorkflow() } };
     public WebsiteWorkflow? _selected = new();
