@@ -38,7 +38,7 @@ check(legacy is not None and legacy.get("Visibility") == "Collapsed" and
       "workspace profile controls are inaccessible and hidden while legacy profile data remains usable")
 markup = ET.tostring(ui, encoding="unicode")
 check('Text="YOUR WEBSITES"' in markup and
-      'Content="+ New website"' in markup and
+      'Content="+ Add website"' in markup and
       'Content="▶ Run all"' in markup and
       'Text="New / existing name"' not in markup and
       'Text="Saved workspace"' not in markup and
@@ -140,6 +140,25 @@ check('CredentialDeleteGuard.IsCurrent(' in source and
 check('WindowsApplicationControl.CheckRequiredComponents()' in (root / "LaunchFlow/App.xaml.cs").read_text(encoding="utf-8") and
       'Microsoft.Data.Sqlite' in (root / "LaunchFlow/Services/WindowsApplicationControl.cs").read_text(encoding="utf-8"),
       "startup checks blocked DLLs before new vault setup")
+wizard_xml = (root / "LaunchFlow/NewWorkflowWindow.xaml").read_text(encoding="utf-8")
+main_xml = (root / "LaunchFlow/MainWindow.xaml").read_text(encoding="utf-8")
+tutorial_code = (root / "LaunchFlow/TutorialWindow.xaml.cs").read_text(encoding="utf-8")
+check('START HERE · 3 EASY STEPS' in main_xml and
+      'Show the step-by-step guide' in main_xml and
+      '2. Recorded actions (optional)' in main_xml and
+      'More actions (advanced)' in main_xml and
+      'x:Name="TeachButton"' in main_xml and 'x:Name="RepairButton"' in main_xml,
+      "Websites screen provides beginner steps and retains optional advanced actions")
+check('1. Which website?' in wizard_xml and
+      '2. Where should it open?' in wizard_xml and
+      '3. Automatic login (optional)' in wizard_xml and
+      'Advanced: connection type and port (optional)' in wizard_xml and
+      'DataTrigger Binding="{Binding IsChecked, ElementName=AutoLoginCheck}" Value="True"' in wizard_xml and
+      all(f'x:Name="{n}"' in wizard_xml for n in
+          ('ProtocolCombo','PortBox','UrlBox','NameBox','AutoLoginCheck','UsernameBox','PasswordBox','BrowserCombo','MonitorCombo')),
+      "wizard keeps required data fields and hides optional login controls")
+check('Click Add website.' in tutorial_code and 'Run all opens every enabled website.' in tutorial_code,
+      "getting-started tutorial reflects the revised workflow")
 check('HeaderVersionLabel.Text = "v" + AppInfo.VersionString' in source
       and 'CurrentVersionLabel.Text = "Installed version " + AppInfo.VersionString' in source,
       "UI version labels use assembly version instead of hardcoded display text")
@@ -147,9 +166,9 @@ csproj = ET.parse(root / "LaunchFlow/LaunchFlow.csproj")
 version = csproj.findtext("./PropertyGroup/Version")
 iss = (root / "installer/LaunchFlow.iss").read_text(encoding="utf-8")
 info = (root / "LaunchFlow/Services/AppInfo.cs").read_text(encoding="utf-8")
-check(version == "0.7.32" and f'#define AppVersion "{version}"' in iss
+check(version == "0.7.33" and f'#define AppVersion "{version}"' in iss
       and f'return v is null ? "{version}"' in info,
-      "assembly, installer and fallback version match 0.7.32")
+      "assembly, installer and fallback version match 0.7.33")
 guide = ET.parse(root / "LaunchFlow/TutorialWindow.xaml").getroot()
 guide_source = (root / "LaunchFlow/TutorialWindow.xaml.cs").read_text(encoding="utf-8")
 check('new TutorialWindow { Owner = this }.ShowDialog()' not in source and

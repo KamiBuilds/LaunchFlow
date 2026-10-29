@@ -9,13 +9,13 @@ public partial class TutorialWindow : Window
     private static readonly (string Title, string Detail)[] Pages =
     {
         ("1. Add a website",
-         "In LaunchFlow, click + New website. Enter the start URL, choose your browser and monitor, then select Create. You can click in LaunchFlow while this guide stays open."),
-        ("2. Save your login (optional)",
-         "For a site requiring a login, open Passwords and save your credentials in the encrypted vault. Leave No login required selected for local dashboards. Never record, screenshot, or store a password as a step."),
-        ("3. Show it what to click",
-         "Select the website, then Record clicks. Click permitted buttons or press Enter/Tab/arrow keys in the browser. Text and passwords are not recorded. Add Wait +1s for slow pages, then Save actions. You can edit or select multiple actions afterward."),
-        ("4. Test it",
-         "Click Test this site to run one website, or Run all for your enabled sites. Changes awaiting Save are marked above the editor. If login needs approval, complete it personally in the browser.")
+         "Click Add website. Give it a name, paste a URL, and choose an installed browser and screen. Most users can leave the advanced connection settings closed. Click Create website."),
+        ("2. Login is optional",
+         "If the website needs automatic sign-in, tick the login box and enter the details when creating it; they are stored encrypted. You can also select the website and manage its login later in Passwords. For sites without a login, leave this unchecked."),
+        ("3. Recorded clicks are optional",
+         "If you want LaunchFlow to press buttons after opening the page, select the website and click Record clicks. Click normally in the SAME browser tab, then Save actions. Passwords, typed text and codes are never recorded. Advanced controls stay under More actions."),
+        ("4. Test a site, then run all",
+         "Click Test this site to save changes and run just the selected website. If sign-in needs attention, use the nonblocking sign-in notice. Once it works, Run all opens every enabled website.")
     };
 
     public TutorialWindow()
@@ -46,7 +46,7 @@ public partial class TutorialWindow : Window
         };
         ExampleAction.Text = _current switch
         {
-            0 => "+ New website",
+            0 => "+ Add website",
             1 => "Save credentials",
             2 => "● Record clicks",
             _ => "▶ Test this site / Run all"

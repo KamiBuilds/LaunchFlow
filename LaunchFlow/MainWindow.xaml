@@ -157,10 +157,10 @@
         <Grid Grid.Row="1" Margin="0,2,0,5">
           <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
           <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-            <Button Content="+ New website" Click="AddWorkflow_Click" Padding="13,6"/>
-            <Button x:Name="SaveChangesButton" Content="Save changes" Click="Save_Click" Padding="13,6"/>
+            <Button Content="+ Add website" Click="AddWorkflow_Click" ToolTip="Step 1: choose a website, browser and screen" Padding="13,6"/>
+            <Button x:Name="SaveChangesButton" Content="Save changes" Click="Save_Click" ToolTip="Save edits to the encrypted vault" Padding="13,6"/>
             <TextBlock x:Name="SaveStatusLabel" Text="All changes saved" Foreground="#85C9B9" FontSize="11" Margin="2,0,9,0" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite"/>
-            <Button x:Name="RunAllButton" Content="▶ Run all" Click="Run_Click" Style="{StaticResource PrimaryButton}"
+            <Button x:Name="RunAllButton" Content="▶ Run all" ToolTip="Open all enabled websites" Click="Run_Click" Style="{StaticResource PrimaryButton}"
                     AutomationProperties.Name="Run all enabled websites" Padding="14,6"/>
             <Button x:Name="StopButton" Content="■ Stop" Click="Stop_Click" IsEnabled="False"
                     Padding="13,6"/>
@@ -168,7 +168,7 @@
                     Visibility="Collapsed" AutomationProperties.Name="Retry browser cleanup and vault lock" Padding="12,6"/>
           </StackPanel>
           <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-            <Button Content="Help" Click="Help_Click" ToolTip="How to set up your first website" Padding="12,6"/>
+            <Button Content="Getting started" Click="Help_Click" ToolTip="A step-by-step guide you can leave open while using LaunchFlow" Padding="12,6"/>
             <Button Content="About" Click="About_Click" Padding="12,6" Margin="0"/>
           </StackPanel>
         </Grid>
@@ -229,7 +229,7 @@
           <StackPanel x:Name="EditorPanel">
             <Grid Height="40" Margin="0,0,0,10">
               <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-              <TextBlock Text="Website configuration" FontWeight="Bold" FontSize="20" VerticalAlignment="Center"/>
+              <TextBlock Text="1. Website details" FontWeight="Bold" FontSize="20" VerticalAlignment="Center"/>
               <CheckBox Grid.Column="1" x:Name="EnabledCheck" Style="{StaticResource WorkflowEnabledToggle}"
                         AutomationProperties.Name="Enable or disable this workflow"
                         ToolTip="Choose whether this website runs with Run all" VerticalAlignment="Center" Margin="0,0,2,0"/>
@@ -251,36 +251,45 @@
                 <TextBlock Text="Screen" Style="{StaticResource FieldLabel}"/>
                 <ComboBox x:Name="MonitorCombo" SelectionChanged="MonitorCombo_SelectionChanged" AutomationProperties.Name="Screen"/>
               </StackPanel>
-              <Button x:Name="RunSelectedButton" Grid.Column="2" Content="▶ Test this site" Click="RunSelected_Click" VerticalAlignment="Bottom" Margin="0"/>
+              <Button x:Name="RunSelectedButton" Grid.Column="2" Content="▶ Test this site" Click="RunSelected_Click" ToolTip="Save changes and run only this website" VerticalAlignment="Bottom" Margin="0"/>
             </Grid>
             <!-- Legacy control retained for settings compatibility. Old destinations migrate to steps. -->
             <TextBox x:Name="DestinationUrlBox" Visibility="Collapsed"/>
             <Border Background="#18283C" CornerRadius="8" Padding="12,9" Margin="0,2,0,16">
-              <TextBlock Text="Configure the website above, then add any steps you want to run after sign-in."
+              <TextBlock Text="A website opens without extra actions. Want it to click buttons automatically? Use Record clicks below, then test the site."
                          Foreground="#C3DEDF" TextWrapping="Wrap" FontSize="12"/>
             </Border>
-            <DockPanel Margin="0,0,0,8">
-              <TextBlock Text="AUTOMATION STEPS" Style="{StaticResource SectionHeader}" DockPanel.Dock="Left" VerticalAlignment="Center"/>
-              <WrapPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button x:Name="TeachButton" Content="● Record clicks" Click="RecordSteps_Click" Style="{StaticResource PrimaryButton}"
-                        AutomationProperties.Name="Teach by clicking" ToolTip="Show LaunchFlow which buttons to click on your website" Margin="0,0,6,6"/>
-                <Button x:Name="RepairButton" Content="Repair login" Click="RepairLogin_Click" Margin="0,0,6,6"
-                        ToolTip="Open the site and teach steps when auto-login or MFA breaks"/>
-                <Button Content="+ Page" Click="AddPage_Click" ToolTip="Open another website/page after sign-in" Margin="0,0,6,6"/>
-                <Button Content="+ Action" Click="AddStep_Click" Margin="0,0,6,6"/>
-                <Button Content="Edit selected" Click="EditStep_Click" Margin="0,0,6,6" ToolTip="Edit one selected action; double-click also opens the editor"/>
-                <Button Content="Wait +1s" Click="QuickWaitStep_Click" Margin="0,0,6,6" ToolTip="Insert a one-second pause; edit a Wait step to wait longer or for a page element"/>
-                <Button Content="Select all" Click="SelectAllSteps_Click" Margin="0,0,6,6"/>
-                <Button Content="Delete selected" Click="RemoveStep_Click" Margin="0,0,0,6"/>
-              </WrapPanel>
-            </DockPanel>
+            <StackPanel Margin="0,0,0,11">
+               <TextBlock Text="2. Recorded actions (optional)" FontSize="16" FontWeight="SemiBold"
+                          Foreground="#D9E7F4" Margin="0,0,0,5"/>
+               <TextBlock Text="Only needed when a website should click buttons or links for you. Recorded actions do not include typed passwords."
+                          Foreground="#9FB9CB" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,9"/>
+               <WrapPanel Margin="0,0,0,4">
+                 <Button x:Name="TeachButton" Content="● Record clicks" Click="RecordSteps_Click"
+                         Style="{StaticResource PrimaryButton}" AutomationProperties.Name="Teach by clicking"
+                         ToolTip="Record safe browser clicks for the selected website" Margin="0,0,8,6"/>
+                 <Button x:Name="RepairButton" Content="Fix sign-in" Click="RepairLogin_Click" Margin="0,0,8,6"
+                         ToolTip="Review and repair a website's sign-in sequence"/>
+               </WrapPanel>
+               <Expander Header="More actions (advanced): pages, waits and editing"
+                         Foreground="#BBD3E4" Background="#192B3E" Padding="9">
+                 <WrapPanel Margin="4,8,3,0">
+                   <Button Content="+ Page" Click="AddPage_Click" ToolTip="Open another website/page after sign-in" Margin="0,0,6,6"/>
+                   <Button Content="+ Action" Click="AddStep_Click" Margin="0,0,6,6"/>
+                   <Button Content="Edit selected" Click="EditStep_Click" Margin="0,0,6,6" ToolTip="Edit one selected action; double-click also opens the editor"/>
+                   <Button Content="Wait +1s" Click="QuickWaitStep_Click" Margin="0,0,6,6" ToolTip="Insert a one-second pause after a slow page load"/>
+                   <Button Content="Select all" Click="SelectAllSteps_Click" Margin="0,0,6,6"/>
+                   <Button Content="Delete selected" Click="RemoveStep_Click" Margin="0,0,0,6"/>
+                 </WrapPanel>
+               </Expander>
+             </StackPanel>
             <ListBox x:Name="StepList" MinHeight="128" Height="180" FontSize="13" SelectionMode="Extended" MouseDoubleClick="EditStep_Click"
                      AutomationProperties.Name="Workflow steps after sign-in"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,6,0,0">
               <Button Content="↑ Up" Click="MoveStepUp_Click"/>
               <Button Content="↓ Down" Click="MoveStepDown_Click" Margin="0"/>
             </StackPanel>
-            <TextBlock Text="Select multiple actions with Ctrl/Shift or Select all. Use Wait +1s for slow pages. Record never stores typed passwords." TextWrapping="Wrap" Foreground="#96AFC3" FontSize="11" Margin="0,8,0,0"/>
+            <TextBlock Text="3. Test: click Test this site above (it saves changes first). Run all opens every enabled website. Actions run in the order listed." TextWrapping="Wrap" Foreground="#96AFC3" FontSize="11" Margin="0,8,0,0"/>
           </StackPanel>
         </ScrollViewer>
         <Grid x:Name="WorkflowEmptyState" Visibility="Visible" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="520" Margin="16">
@@ -289,8 +298,21 @@
               <TextBlock Text="+" FontSize="48" FontWeight="Light" Foreground="#6EE7D7" HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <TextBlock x:Name="EmptyStateHeading" Text="No workflows yet" FontSize="26" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,10"/>
-            <TextBlock x:Name="EmptyStateDescription" Text="Create your first workflow to choose a website, add your login, and pick a monitor. The editor will appear after you create it." Foreground="#A9BDD4" FontSize="14" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="460" Margin="0,0,0,22"/>
-            <Button x:Name="CreateFirstWorkflowButton" Content="+ Create your first workflow" Click="AddWorkflow_Click" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Center" MinWidth="230" Padding="20,12"/>
+            <TextBlock x:Name="EmptyStateDescription" Text="LaunchFlow opens websites on your chosen screen and can perform recorded actions. Start with one website. Login and automation are optional." Foreground="#A9BDD4" FontSize="14" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="460" Margin="0,0,0,22"/>
+            <Border Background="#192B3E" BorderBrush="#2D4B60" BorderThickness="1"
+                     CornerRadius="10" Padding="15,12" Margin="0,0,0,18" MaxWidth="470">
+               <StackPanel>
+                 <TextBlock Text="START HERE · 3 EASY STEPS" FontSize="11" FontWeight="SemiBold"
+                            Foreground="#6EE7D7" Margin="0,0,0,8"/>
+                 <TextBlock Text="1. Add a website, browser and screen." Foreground="#D1E1F0" Margin="0,0,0,5"/>
+                 <TextBlock Text="2. Optionally save a login or record clicks." Foreground="#D1E1F0" Margin="0,0,0,5"/>
+                 <TextBlock Text="3. Test this site. Later, use Run all for multiple sites." Foreground="#D1E1F0" TextWrapping="Wrap"/>
+               </StackPanel>
+             </Border>
+             <Button x:Name="CreateFirstWorkflowButton" Content="+ Add your first website"
+                     Click="AddWorkflow_Click" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Center"
+                     MinWidth="230" Padding="20,12" Margin="0,0,0,8"/>
+             <Button Content="Show the step-by-step guide" Click="Help_Click" HorizontalAlignment="Center" Padding="14,7"/>
           </StackPanel>
         </Grid>
         </Grid>

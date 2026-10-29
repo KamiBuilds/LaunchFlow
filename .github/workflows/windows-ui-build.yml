@@ -2,7 +2,7 @@ name: LaunchFlow Windows UI and installer smoke
 
 on:
   push:
-    branches: [both-2, both-3, chatgpt-next, chatgpt-safety-hardening-20261028, chatgpt-selective-safety-review-20261029, chatgpt-appcontrol-startup-20261029, chatgpt-trusted-distribution-20261029]
+    branches: [both-2, both-3, chatgpt-next, chatgpt-safety-hardening-20261028, chatgpt-selective-safety-review-20261029, chatgpt-appcontrol-startup-20261029, chatgpt-trusted-distribution-20261029, chatgpt-ux-clarity-20261029]
   pull_request:
     branches: [both]
 
@@ -62,9 +62,9 @@ jobs:
       - name: Upload unsigned UI test installer
         uses: actions/upload-artifact@v6
         with:
-          name: LaunchFlow-v0.7.32-UI-${{ github.sha }}
+          name: LaunchFlow-v0.7.33-UI-${{ github.sha }}
           path: |
-            dist/LaunchFlow-Setup-v0.7.32-x64.exe
+            dist/LaunchFlow-Setup-v0.7.33-x64.exe
             dist/UI-SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 7

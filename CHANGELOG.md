@@ -1,3 +1,12 @@
+# v0.7.33 — Clear first-time website setup
+
+- Start page displays **3 easy steps** and an interactive getting-started guide.
+- Add website wizard uses numbered sections for URL, browser/screen and optional automatic login. Connection protocol/port and credential fields are hidden until needed.
+- Website editor highlights **Record clicks** and **Fix sign-in**, with advanced steps inside a collapsed More actions section; existing commands still work.
+- Clearer explanations for Test this site, Run all and Save changes. Tutorial matches the new flow.
+- No change to vault format, passwords, existing workflows, record/replay, startup or original navy/mint theme.
+- Windows UI and installer/browser regression checks required. Preview only; do not publish or merge without acceptance.
+
 # v0.7.32 — Verified signed Windows distribution guard (developer review)
 
 - Publisher-signed distribution builds now require a configured signing identity and SignTool **before** touching build output. Unsigned installer smoke tests can no longer be described as ready for App Control enforcement.
