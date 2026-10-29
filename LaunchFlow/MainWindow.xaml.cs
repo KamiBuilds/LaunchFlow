@@ -1578,7 +1578,7 @@ public partial class MainWindow : Window
             // Step failures are informational; never disable the workspace
             // behind a modal alert after the automation has already stopped.
             AppendLog($"Action {item.StepType} needs review for '{item.WorkflowName}'. Later steps were not run.");
-            WorkflowStatusLabel.Text = "Workflow step needs review · Choose Edit or Teach";
+            // Preserve the final run's failed/sign-in/step counts in the status bar.
             NotifyTray("Workflow steps need review",
                 $"Review the {item.StepType} action for '{item.WorkflowName}' using Edit or Teach.",
                 Forms.ToolTipIcon.Warning);
