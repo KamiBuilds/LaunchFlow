@@ -19,6 +19,8 @@ public sealed class Configuration
     public int VaultLockMinutes { get; set; } = 10;
     public string GlobalShortcut { get; set; } = "Ctrl+M";
     public bool ShortcutTipShown { get; set; }
+    // Encrypted, persistent one-time guidance for the first website.
+    public bool FirstWebsiteGuidanceShown { get; set; }
     public bool TrayNotificationsEnabled { get; set; } = true;
     public bool WelcomeChecklistShown { get; set; }
     public bool DiagnosticsLogEnabled { get; set; }
