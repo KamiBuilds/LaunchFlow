@@ -62,7 +62,7 @@ Root: HKCU; Subkey: "Software\Classes\LaunchFlow.Backup\DefaultIcon"; ValueType:
 Root: HKCU; Subkey: "Software\Classes\LaunchFlow.Backup\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\LaunchFlow.exe"" ""%1"""
 
 [Run]
-Filename: "{app}\LaunchFlow.exe"; Description: "Open LaunchFlow"; Flags: nowait postinstall skipifsilent unchecked
+Filename: "{app}\LaunchFlow.exe"; Description: "Open LaunchFlow"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 ; Vault wipe is optional — see InitializeUninstall / CurUninstallStepChanged.
