@@ -2212,12 +2212,15 @@ public partial class MainWindow : Window
     {
         // Vault creation, migration and unlock happen in App.OnStartup,
         // before this window exists and before any startup automation.
-        DarkWindowChrome.Apply(this);
+        RunOptionalStartupUiStep(() => DarkWindowChrome.Apply(this));
         var handle = new WindowInteropHelper(this).Handle;
         _windowSource = HwndSource.FromHwnd(handle);
         _windowSource?.AddHook(HotkeyHook);
-        TrySetShortcut(string.IsNullOrWhiteSpace(_configuration.GlobalShortcut) ? "Ctrl+M" : _configuration.GlobalShortcut);
-        EnsureStartupWorkflowVisible();
+        RunOptionalStartupUiStep(() => TrySetShortcut(
+            string.IsNullOrWhiteSpace(_configuration.GlobalShortcut) ? "Ctrl+M" : _configuration.GlobalShortcut));
+        // A malformed legacy workflow or editor selection must not prevent the
+        // user from getting the main window open to inspect and fix it.
+        RunOptionalStartupUiStep(EnsureStartupWorkflowVisible);
         if (_configuration.RunOnAppStart) Dispatcher.BeginInvoke(new Action(() => _ = RunEnabledAsync()));
         // --tray is handled in App.OnStartup to avoid a window flash; keep this
         // as a fallback if the window was shown before the flag was applied.
@@ -2228,11 +2231,32 @@ public partial class MainWindow : Window
             Hide();
             ShowInTaskbar = true;
         }
-        AppendLog(BrowserEnvironment.Probe().Summary);
+        RunOptionalStartupUiStep(() => AppendLog(BrowserEnvironment.Probe().Summary));
         // A second launch might have arrived during the first-run setup wizard.
         ((App)System.Windows.Application.Current).NotifyMainWindowReady(this);
-        Dispatcher.BeginInvoke(new Action(MaybeShowWelcomeChecklist));
-        Dispatcher.BeginInvoke(new Action(() => _ = MaybeCheckUpdatesAsync()));
+        Dispatcher.BeginInvoke(new Action(() => RunOptionalStartupUiStep(MaybeShowWelcomeChecklist)));
+        Dispatcher.BeginInvoke(new Action(() => _ = SafeStartupUpdateCheckAsync()));
+    }
+
+    private static void RunOptionalStartupUiStep(Action action)
+    {
+        try { action(); }
+        catch (Exception ex)
+        {
+            // A failed shortcut, tutorial, browser probe or initial editor render
+            // must not revoke the vault or strand the process behind a fatal popup.
+            // Never persist the exception message or browser/profile paths.
+            StartupDiagnostics.Record(StartupDiagnostics.Stage.OptionalUiInitializationFailed, ex);
+        }
+    }
+
+    private async Task SafeStartupUpdateCheckAsync()
+    {
+        try { await MaybeCheckUpdatesAsync(); }
+        catch (Exception ex)
+        {
+            StartupDiagnostics.Record(StartupDiagnostics.Stage.OptionalUiInitializationFailed, ex);
+        }
     }
 
     private void OpenTutorial()
@@ -2423,6 +2447,12 @@ public partial class MainWindow : Window
 
     private void MainTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        // During InitializeComponent, WPF can select the first TabItem before
+        // its password editor and the rest of the named controls exist. Never
+        // execute credential or navigation logic against half-built XAML.
+        if (_configuration is null || MainTabs is null ||
+            WorkflowsNav is null || PasswordsNav is null || SettingsNav is null ||
+            UsernameBox is null || PasswordInput is null) return;
         if (!ReferenceEquals(e.OriginalSource, MainTabs)) return;
         if (_revertingTab) { SyncTopNavigation(); return; }
         if (MainTabs.SelectedIndex == 1)
