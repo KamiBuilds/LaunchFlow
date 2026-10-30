@@ -44,7 +44,7 @@ public partial class MainWindow
         _autoSaveSchedule.Attempted();
         _autoSaving = true;
         SaveStatusLabel.Text = "Saving…";
-        SaveStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(174, 197, 221));
+        SaveStatusLabel.Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(174, 197, 221));
         try
         {
             if (!SaveAll())
@@ -63,7 +63,7 @@ public partial class MainWindow
     {
         _hasUnsavedChanges = true;
         SaveStatusLabel.Text = "Save failed";
-        SaveStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(255, 155, 134));
+        SaveStatusLabel.Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 155, 134));
         SaveChangesButton.FontWeight = FontWeights.Bold;
         SaveChangesButton.Content = "Retry save";
         SaveChangesButton.ToolTip =
