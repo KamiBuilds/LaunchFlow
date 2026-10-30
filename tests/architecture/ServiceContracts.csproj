@@ -13,5 +13,6 @@
     <Compile Include="../../LaunchFlow/Services/WorkflowConfigurationService.cs" Link="Services/WorkflowConfigurationService.cs" />
     <Compile Include="../../LaunchFlow/Services/StartupRegistrationService.cs" Link="Services/StartupRegistrationService.cs" />
     <Compile Include="../../LaunchFlow/Services/SessionLockPolicy.cs" Link="Services/SessionLockPolicy.cs" />
+    <Compile Include="../../LaunchFlow/Services/AutoSaveSchedule.cs" Link="Services/AutoSaveSchedule.cs" />
   </ItemGroup>
 </Project>
