@@ -22,6 +22,18 @@ namespace LaunchFlow;
 /// <summary>Keyboard shortcuts, navigation state and authorized Settings selection.</summary>
 public partial class MainWindow
 {
+    /// <summary>
+    /// Keep the primary Run / Stop group centered at compact window widths.
+    /// The Save button still indicates unsaved changes through its weight and
+    /// tooltip, even when the longer status caption has to be hidden.
+    /// </summary>
+    private void ActionToolbar_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (SaveStatusLabel is null) return; // Resize can fire during XAML construction.
+        SaveStatusLabel.Visibility =
+            e.NewSize.Width < 940 ? Visibility.Collapsed : Visibility.Visible;
+    }
+
     private static bool ParseShortcut(string shortcut, out uint flags, out uint key)
     {
         flags = 0x4000; // MOD_NOREPEAT
