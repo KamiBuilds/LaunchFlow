@@ -23,7 +23,7 @@ ui = ET.parse(root / "LaunchFlow/MainWindow.xaml").getroot()
 app = ET.parse(root / "LaunchFlow/App.xaml").getroot()
 named = {element.get(xns + "Name"): element for element in ui.iter()
          if element.get(xns + "Name")}
-required = {"MainTabs", "WorkflowsNav", "PasswordsNav", "SettingsNav",
+required = {"MainTabs", "WorkflowsNav", "SettingsNav", "SettingsTabs",
             "WorkflowList", "WorkflowEditorScroll", "WorkspaceCombo",
             "WorkspaceNameBox", "SaveWorkspaceButton", "RunWorkspaceButton",
             "WorkflowStatusLabel", "HeaderVersionLabel", "CurrentVersionLabel"}
@@ -163,12 +163,28 @@ check('Text="No websites yet"' in main_xml and
       'Currently selected website:' in main_xml and
       'How should LaunchFlow sign in?' in main_xml and
       'Click="OpenWebsiteAdvancedSignIn_Click"' in main_xml and
-      'Click="OpenSettingsStartup_Click"' in main_xml and
+      'SelectionChanged="SettingsTabs_SelectionChanged"' in main_xml and
       'Older workspace groups' in main_xml and
       'WebsiteLoginMode.UsesSavedPassword' in source and
       'WebsiteNextStepGuidance.ForCreatedWebsite' in source and
       named['AutoLoginCheck'].get('Visibility') == 'Collapsed',
       "website-focused UI, one sign-in mode and Settings category navigation are present")
+# Settings owns the password editor; the main header must not duplicate it.
+main_tab_headers = [item.get("Header") for item in named["MainTabs"] if item.tag == xns + "TabItem"]
+settings_tab_headers = [item.get("Header") for item in named["SettingsTabs"] if item.tag == xns + "TabItem"]
+check(main_tab_headers == ["Websites", "Settings"] and
+      settings_tab_headers[:3] == ["General", "Passwords", "Startup"] and
+      "PasswordsNav" not in named and
+      'Content="Startup &amp; background"' not in main_xml and
+      'Content="Security &amp; KeePassXC"' not in main_xml and
+      'SettingsTabs.SelectedIndex == 1' in source and
+      'UpdatePasswordSettingsAccess()' in source,
+      "Settings has one category list with a gated Passwords editor, no shortcut tile duplication")
+check('FirstWebsiteGuidanceShown' in source and
+      '_configuration.Workflows.Count == 0' in source and
+      'if (firstWebsite)' in source and
+      'FirstWebsiteGuidanceShown' in (root / "LaunchFlow/Models/Configuration.cs").read_text(encoding="utf-8"),
+      "post-create guidance is shown once for first website and persisted in vault configuration")
 check('HeaderVersionLabel.Text = "v" + AppInfo.VersionString' in source
       and 'CurrentVersionLabel.Text = "Installed version " + AppInfo.VersionString' in source,
       "UI version labels use assembly version instead of hardcoded display text")
