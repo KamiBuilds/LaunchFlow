@@ -753,49 +753,6 @@ public partial class MainWindow : Window
 
     private void Save_Click(object sender, RoutedEventArgs e) => SaveAll(showNotification: true);
 
-    private void RefreshSteps()
-    {
-        if (_selected is null) return;
-        StepList.ItemsSource = null;
-        StepList.ItemsSource = _selected.Steps;
-    }
-
-    private void SelectAllSteps_Click(object sender, RoutedEventArgs e)
-    {
-        if (_selected is not null) StepList.SelectAll();
-    }
-
-    private void QuickWaitStep_Click(object sender, RoutedEventArgs e)
-    {
-        if (_selected is null) return;
-        _selected.Steps.Add(new WorkflowStep
-        {
-            Type = "Wait", Target = "1000", Description = "Wait 1 second for the page"
-        });
-        RefreshSteps();
-        StepList.SelectedIndex = _selected.Steps.Count - 1;
-        MarkUnsavedChanges();
-    }
-
-    private bool IsCurrentStepEditorOwner(WebsiteWorkflow workflow, long revision) =>
-        revision == _workspaceRevision &&
-        ReferenceEquals(_selected, workflow) &&
-        _configuration.Workflows.Any(item => ReferenceEquals(item, workflow)) &&
-        !_windowsLocked && !_vaultLockInProgress && !_exiting &&
-        VaultDatabase.Current.IsUnlocked;
-
-    private void AddPage_Click(object sender, RoutedEventArgs e)
-    {
-        if (_selected is not { } workflow) return;
-        var revision = _workspaceRevision;
-        var editor = new StepEditorWindow(new WorkflowStep { Type = "Navigate", Target = "https://" }) { Owner = this };
-        if (!ShowTrackedStepEditor(editor)) return;
-        if (!IsCurrentStepEditorOwner(workflow, revision)) return;
-        workflow.Steps.Add(editor.Result);
-        RefreshSteps();
-        MarkUnsavedChanges();
-    }
-
     private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 
     // Custom caption buttons preserve the original close/save/tray prompt.
@@ -873,71 +830,6 @@ public partial class MainWindow : Window
             AppendLog($"Approved a sign-in provider for '{workflow.Name}'.");
             return true;
         });
-    }
-
-    private void AddStep_Click(object sender, RoutedEventArgs e)
-    {
-        if (_selected is not { } workflow) return;
-        var revision = _workspaceRevision;
-        var editor = new StepEditorWindow { Owner = this };
-        if (!ShowTrackedStepEditor(editor) || !IsCurrentStepEditorOwner(workflow, revision)) return;
-        workflow.Steps.Add(editor.Result);
-        RefreshSteps();
-        MarkUnsavedChanges();
-    }
-
-    private void EditStep_Click(object sender, RoutedEventArgs e)
-    {
-        if (_selected is null || StepList.SelectedItems.Count != 1 ||
-            StepList.SelectedItem is not WorkflowStep current) return;
-        var workflow = _selected;
-        var revision = _workspaceRevision;
-        int index = workflow.Steps.IndexOf(current);
-        if (index < 0) return;
-        var editor = new StepEditorWindow(current) { Owner = this };
-        if (!ShowTrackedStepEditor(editor)) return;
-        // ShowDialog pumps WPF messages. Import can replace the entire workflow
-        // with an object having the same GUID and step count while it is open.
-        if (!IsCurrentStepEditorOwner(workflow, revision) ||
-            !WorkflowEditGuard.IsCurrent(_configuration, _selected, workflow, current,
-                index, revision, _workspaceRevision) ||
-            !ReferenceEquals(StepList.SelectedItem, current))
-        {
-            AppendLog("Step edit canceled because the website changed while its editor was open.");
-            return;
-        }
-        workflow.Steps[index] = editor.Result;
-        RefreshSteps();
-        StepList.SelectedIndex = index;
-        MarkUnsavedChanges();
-    }
-
-    private void RemoveStep_Click(object sender, RoutedEventArgs e)
-    {
-        if (_selected is null || StepList.SelectedItems.Count == 0) return;
-        var selected = StepList.SelectedItems.Cast<WorkflowStep>().ToArray();
-        if (selected.Length > 1 && MessageBox.Show(this,
-            $"Delete {selected.Length} selected actions? This takes effect when you save.",
-            "Delete actions", MessageBoxButton.YesNo, MessageBoxImage.Question,
-            MessageBoxResult.No) != MessageBoxResult.Yes) return;
-        foreach (var step in selected) _selected.Steps.Remove(step);
-        RefreshSteps();
-        MarkUnsavedChanges();
-    }
-
-    private void MoveStepUp_Click(object sender, RoutedEventArgs e) => MoveStep(-1);
-    private void MoveStepDown_Click(object sender, RoutedEventArgs e) => MoveStep(1);
-    private void MoveStep(int offset)
-    {
-        if (_selected is null || StepList.SelectedItems.Count != 1 ||
-            StepList.SelectedItem is not WorkflowStep current) return;
-        int index = _selected.Steps.IndexOf(current);
-        int dest = index + offset;
-        if (dest < 0 || dest >= _selected.Steps.Count) return;
-        _selected.Steps.RemoveAt(index);
-        _selected.Steps.Insert(dest, current);
-        RefreshSteps(); StepList.SelectedIndex = dest;
-        MarkUnsavedChanges();
     }
 
     private void Run_Click(object sender, RoutedEventArgs e) => _ = RunEnabledAsync();
@@ -1324,46 +1216,6 @@ public partial class MainWindow : Window
 
     private TimeSpan LockTimeout => TimeSpan.FromMinutes(Math.Clamp(_configuration.VaultLockMinutes, 1, 120));
 
-    private void HandleSessionSwitch(object sender, SessionSwitchEventArgs e)
-    {
-        if (e.Reason == SessionSwitchReason.SessionLock)
-            Dispatcher.BeginInvoke(new Action(OnWindowsLocked));
-        else if (e.Reason == SessionSwitchReason.SessionUnlock)
-            Dispatcher.BeginInvoke(new Action(() => _ = OnWindowsUnlockedAsync()));
-    }
-
-    private void OnWindowsLocked()
-    {
-        if (_windowsLocked) return; // Duplicate Windows events must not create timers.
-        _windowsLocked = true;
-        UpdateRunButtons();
-        _lockedSinceUtc = DateTimeOffset.UtcNow;
-        _unlockCancellation?.Cancel();
-        _runCancellation?.Cancel(); // Don't start new steps while the device is locked.
-        _lockTimeoutCancellation?.Cancel();
-        _lockTimeoutCancellation?.Dispose();
-        _lockTimeoutCancellation = new CancellationTokenSource();
-        _ = LockAfterThresholdAsync(_lockedSinceUtc.Value, _lockTimeoutCancellation.Token);
-        AppendLog($"Windows locked. Vault locks after {_configuration.VaultLockMinutes} minutes unless Windows unlocks first.");
-    }
-
-    private async Task LockAfterThresholdAsync(DateTimeOffset lockTime, CancellationToken token)
-    {
-        try
-        {
-            await Task.Delay(LockTimeout, token);
-            await Dispatcher.InvokeAsync(new Func<Task>(async () =>
-            {
-                // Check the actual elapsed lock interval; timers may be late
-                // after laptop sleep/resume and events may arrive out of order.
-                if (_windowsLocked && _lockedSinceUtc == lockTime &&
-                    DateTimeOffset.UtcNow - lockTime >= LockTimeout)
-                    await SecureVaultLockAsync("Windows has been locked for the configured timeout: encrypted vault locked.");
-            })).Task.Unwrap();
-        }
-        catch (OperationCanceledException) { }
-    }
-
     private Task SecureVaultLockAsync(string message)
     {
         if (!_vaultLockTask.IsCompleted) return _vaultLockTask;
@@ -1492,89 +1344,6 @@ public partial class MainWindow : Window
         return "No password saved";
     }
 
-    private void RefreshKeePassStatus()
-    {
-        var database = KeePassDbBox.Text.Trim();
-        if (!KeePassXcService.IsCliAvailable())
-        {
-            KeePassStatusLabel.Text = "KeePassXC was not found. Install KeePassXC, then click Find my database.";
-            return;
-        }
-        if (string.IsNullOrWhiteSpace(database))
-        {
-            KeePassStatusLabel.Text = "KeePassXC found. Choose a password database to continue.";
-            return;
-        }
-        if (!File.Exists(database))
-        {
-            KeePassStatusLabel.Text = "The selected database is missing. Choose it again.";
-            return;
-        }
-        KeePassStatusLabel.Text = $"KeePassXC found · {Path.GetFileName(database)} selected.";
-    }
-
-    private void SuggestKeePassDatabase()
-    {
-        if (!string.IsNullOrWhiteSpace(KeePassDbBox.Text)) return;
-        var found = KeePassXcService.FindDatabases();
-        if (found.Count == 1) KeePassDbBox.Text = found[0].Path;
-    }
-
-    private void FindKeePassDb_Click(object sender, RoutedEventArgs e)
-    {
-        var found = KeePassXcService.FindDatabases();
-        if (found.Count == 0)
-        {
-            KeePassDbSuggestions.Visibility = Visibility.Collapsed;
-            MessageBox.Show(this,
-                "No KeePassXC database was found in the usual folders. Click Choose a file and select the .kdbx database you open in KeePassXC.",
-                "Find KeePassXC database", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-        if (found.Count == 1)
-        {
-            SetKeePassDatabase(found[0].Path);
-            KeePassDbSuggestions.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        KeePassDbSuggestions.ItemsSource = found;
-        KeePassDbSuggestions.SelectedIndex = -1;
-        KeePassDbSuggestions.Visibility = Visibility.Visible;
-        KeePassStatusLabel.Text = $"Found {found.Count} databases. Choose the one you normally use.";
-        KeePassDbSuggestions.Focus();
-        KeePassDbSuggestions.IsDropDownOpen = true;
-    }
-
-    private void KeePassDbSuggestion_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_configuration is null || KeePassDbSuggestions is null || KeePassDbBox is null) return;
-        if (KeePassDbSuggestions.SelectedItem is KeePassXcService.DatabaseChoice selected)
-        {
-            SetKeePassDatabase(selected.Path);
-            KeePassDbSuggestions.Visibility = Visibility.Collapsed;
-        }
-    }
-
-    private void SetKeePassDatabase(string path)
-    {
-        KeePassDbBox.Text = path;
-        _keepassMasterPassword = null;
-        RefreshKeePassStatus();
-    }
-
-    private void UpdateKeePassEntryLabel()
-    {
-        var path = KeepassEntryBox.Text.Trim();
-        SelectedKeePassEntryLabel.Text = string.IsNullOrWhiteSpace(path)
-            ? "No KeePassXC login selected" : path;
-    }
-
-    private void KeePassEntryTextChanged(object sender, TextChangedEventArgs e)
-    {
-        if (SelectedKeePassEntryLabel is not null) UpdateKeePassEntryLabel();
-    }
-
     private async void ChooseKeePassEntry_Click(object sender, RoutedEventArgs e)
     {
         bool Authorized()
@@ -1665,47 +1434,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void BrowseKeePassDb_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OpenFileDialog
-        {
-            Title = "Select KeePassXC database",
-            Filter = "KeePass database (*.kdbx)|*.kdbx|All files (*.*)|*.*"
-        };
-        if (!string.IsNullOrWhiteSpace(KeePassDbBox.Text))
-        {
-            try
-            {
-                var dir = Path.GetDirectoryName(KeePassDbBox.Text.Trim());
-                if (!string.IsNullOrWhiteSpace(dir) && Directory.Exists(dir))
-                    dialog.InitialDirectory = dir;
-            }
-            catch { /* ignore bad path */ }
-        }
-        if (dialog.ShowDialog(this) == true)
-        {
-            SetKeePassDatabase(dialog.FileName);
-        }
-    }
-
-    private void BrowseKeePassKey_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OpenFileDialog
-        {
-            Title = "Select KeePass key file",
-            Filter = "Key file (*.keyx;*.key)|*.keyx;*.key|All files (*.*)|*.*"
-        };
-        if (dialog.ShowDialog(this) == true)
-        {
-            KeePassKeyBox.Text = dialog.FileName;
-            _keepassMasterPassword = null;
-            RefreshKeePassStatus();
-        }
-    }
-
-    /// <summary>
-    /// Prompt once per vault session when a run needs KeePass and has no local vault password.
-    /// </summary>
     private bool EnsureKeePassPasswordForRun(IReadOnlyList<WebsiteWorkflow> workflows)
     {
         if (!CredentialReadAllowed())
@@ -1755,49 +1483,6 @@ public partial class MainWindow : Window
         // A policy race must abort the prompt decision, never become a vault miss.
         if (_vault.Has(w.Id)) return false;
         return true;
-    }
-
-    private async Task OnWindowsUnlockedAsync()
-    {
-        if (!_windowsLocked) return; // Ignore duplicate unlock events.
-        var interval = _lockedSinceUtc.HasValue ? DateTimeOffset.UtcNow - _lockedSinceUtc.Value : TimeSpan.MaxValue;
-        _windowsLocked = false;
-        _lockedSinceUtc = null;
-        _lockTimeoutCancellation?.Cancel();
-        _lockTimeoutCancellation?.Dispose();
-        _lockTimeoutCancellation = null;
-        if (interval >= LockTimeout)
-            await SecureVaultLockAsync($"Windows was locked for {interval.TotalMinutes:F1} minutes; master password required.");
-        else await _vaultLockTask;
-        UpdateRunButtons();
-        if (_windowsLocked || _exiting) return;
-        if (!VaultDatabase.Current.IsUnlocked)
-        {
-            ShowFromTray();
-            if (!RequireMasterPassword(forcePrompt: true))
-            {
-                AppendLog("Vault remains locked. No credential automation will run.");
-                return;
-            }
-            AppendLog("Encrypted vault unlocked after Windows unlock.");
-        }
-        else AppendLog($"Windows unlocked after {interval.TotalSeconds:F0} seconds; continuing existing vault session.");
-        if (_configuration.RunOnUnlock) await RunAfterUnlockAsync();
-    }
-
-    private async Task RunAfterUnlockAsync()
-    {
-        _unlockCancellation?.Cancel();
-        _unlockCancellation?.Dispose();
-        _unlockCancellation = new CancellationTokenSource();
-        try
-        {
-            int seconds = Math.Clamp(_configuration.UnlockDelaySeconds, 0, 300);
-            AppendLog($"Windows session unlocked: starting in {seconds} seconds.");
-            await Task.Delay(TimeSpan.FromSeconds(seconds), _unlockCancellation.Token);
-            await RunEnabledAsync();
-        }
-        catch (OperationCanceledException) { /* superseded by another session event */ }
     }
 
     private bool RequireMasterPassword(bool forcePrompt = false)
