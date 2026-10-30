@@ -14,6 +14,8 @@ public partial class VisualRecorderWindow : Window
     private readonly DispatcherTimer _drainTimer = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private bool _started;
     private bool _stopping;
+    private bool _healthPending;
+    private int _healthTicks;
 
     public bool Saved { get; private set; }
     public List<WorkflowStep> RecordedSteps { get; } = new();
@@ -28,7 +30,12 @@ public partial class VisualRecorderWindow : Window
             DarkWindowChrome.Apply(this);
             await StartRecordingAsync();
         };
-        _drainTimer.Tick += (_, _) => DrainActions();
+        _drainTimer.Tick += async (_, _) =>
+        {
+            DrainActions();
+            if (++_healthTicks % 7 == 0) await UpdateCaptureConnectionAsync();
+        };
+        RefreshList();
     }
 
     private async Task StartRecordingAsync()
@@ -43,6 +50,7 @@ public partial class VisualRecorderWindow : Window
             if (_stopping || !CheckPolicy()) return;
             _drainTimer.Start();
             ShowCaptureState();
+            await UpdateCaptureConnectionAsync();
         }
         catch (Exception)
         {
@@ -77,6 +85,7 @@ public partial class VisualRecorderWindow : Window
             if (_stopping || !CheckPolicy()) return;
             _drainTimer.Start();
             ShowCaptureState();
+            await UpdateCaptureConnectionAsync();
         }
         catch (Exception)
         {
@@ -91,6 +100,47 @@ public partial class VisualRecorderWindow : Window
         }
     }
 
+    private async Task UpdateCaptureConnectionAsync()
+    {
+        if (_stopping || _healthPending || !CheckPolicy()) return;
+        _healthPending = true;
+        try
+        {
+            var state = await _recorder.InspectConnectionAsync();
+            if (_stopping || !CheckPolicy()) return;
+            var hostname = "the selected website";
+            if (Uri.TryCreate(_page.Url, UriKind.Absolute, out var uri))
+                hostname = uri.Host; // Never display query, fragment or credentials.
+            var anotherTab = _page.Context.Pages.Any(page => !ReferenceEquals(page, _page) && !page.IsClosed);
+            TargetStatus.Text = state switch
+            {
+                "ready" when anotherTab =>
+                    $"Watching {hostname} in the original LaunchFlow tab. New tabs are not recorded; return to the original tab.",
+                "ready" =>
+                    $"Connected to {hostname}. Click inside that browser window, not this recorder dialog.",
+                "missing" or "waiting" =>
+                    "Connecting recorder to the browser… If the site is loading, finish navigation and try a button.",
+                "navigating" =>
+                    "The page is navigating; recording will reconnect when it finishes loading.",
+                "closed" =>
+                    "The recorded tab was closed. Save any captured steps or start again.",
+                _ => "Checking recorder connection…"
+            };
+            if (state is "missing" or "waiting" && _recorder.IsCapturing)
+            {
+                // A navigation can race first listener install. Retry the
+                // idempotent bridge rather than leaving a silent empty list.
+                await _recorder.SynchronizeAsync();
+            }
+        }
+        catch (Exception)
+        {
+            if (!_stopping)
+                TargetStatus.Text = "Recorder connection couldn't be checked. Try Pause, then Resume recording.";
+        }
+        finally { _healthPending = false; }
+    }
+
     private void ShowCaptureState()
     {
         if (!CheckPolicy()) return;
@@ -101,11 +151,9 @@ public partial class VisualRecorderWindow : Window
             return;
         }
         CaptureToggle.Content = _recorder.IsCapturing ? "Pause recording" : "Resume recording";
-        CaptureStatus.Text = _recorder.IsCapturing
-            ? "Recording safe actions — " + RecordedSteps.Count + " step(s) captured."
-            : "Paused — " + RecordedSteps.Count + " step(s) captured.";
-        if (_recorder.UnsupportedTargetObserved)
-            CaptureStatus.Text += " Some actions were not recorded (sensitive form, popup/new tab, frame, or URL containing private query data). Add safe actions manually.";
+        CaptureStatus.Text = _recorder.IsCapturing ? "Recording is on" : "Recording paused";
+        if (_recorder.UnsupportedTargetObserved && RecordedSteps.Count == 0)
+            TargetStatus.Text = "Some actions were skipped for privacy or were outside the original tab. Try a regular button there.";
     }
 
     private void DrainActions()
@@ -291,6 +339,8 @@ public partial class VisualRecorderWindow : Window
     {
         StepList.ItemsSource = null;
         StepList.ItemsSource = RecordedSteps;
+        RecordedCountLabel.Text = $"{RecordedSteps.Count} action{(RecordedSteps.Count == 1 ? "" : "s")}";
+        EmptyStepsHint.Visibility = RecordedSteps.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         if (RecordedSteps.Count > 0) StepList.ScrollIntoView(RecordedSteps[^1]);
     }
 }
