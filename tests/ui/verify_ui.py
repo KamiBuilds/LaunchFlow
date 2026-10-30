@@ -85,6 +85,23 @@ check('WorkspaceCombo.Text.Trim()' not in source,
 check('private void ActionToolbar_SizeChanged' in source and
       'e.NewSize.Width < 940' in source,
       "responsive toolbar keeps compact views free of overlapping status text")
+autosave_code = (root / "LaunchFlow/MainWindow.AutoSave.cs").read_text(encoding="utf-8")
+autosave_schedule = (root / "LaunchFlow/Services/AutoSaveSchedule.cs").read_text(encoding="utf-8")
+check('StartAutoSave();' in source and
+      '_autoSaveSchedule.Changed(DateTimeOffset.UtcNow)' in source and
+      'private void AutoSaveTimer_Tick' in autosave_code and
+      'SaveAll()' in autosave_code and
+      'SaveStatusLabel.Text = "Saving…"' in autosave_code and
+      'SaveStatusLabel.Text = "Save failed"' in autosave_code and
+      'ShowAutoSaveFailed();' in source and
+      '_store.SaveDurable(_configuration);' in source and
+      'private bool _autoSaving' in autosave_code,
+      "auto-save schedules edits and confirms encrypted durable writes")
+check('UsernameBox.TextChanged += (_, _) => MarkUnsavedChanges()' not in source and
+      'PasswordInput.PasswordChanged += (_, _) => MarkUnsavedChanges()' not in source and
+      'public void Attempted()' in autosave_schedule and
+      'public void Saved()' in autosave_schedule,
+      "auto-save excludes raw credentials and prevents failed-write retry storms")
 check('WorkspaceCatalog.Save(_configuration, name' in source and
       'WorkspaceCatalog.IsCurrentSelection' in source and
       'PreviewWorkspaceButton.IsEnabled = available && savedWorkspaceSelected' in source,
