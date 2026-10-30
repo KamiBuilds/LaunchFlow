@@ -1,3 +1,14 @@
+# v0.7.39 — Balanced main toolbar
+
+- Rebuild the custom-window action toolbar as a symmetrical three-column WPF Grid, with equal-width left and right columns and an auto-sized true-center column.
+- Keep website creation/saving on the left and optional help actions on the right, while Run all and Stop remain centered regardless of available window width.
+- Give the toolbar more vertical space, matched control heights and a subtle action-group surface.
+- Use a compact-width breakpoint to hide only the verbose Save status caption when it would crowd the primary controls; unsaved state remains visible via the Save button's weight and tooltip.
+- Add a source-level regression assertion for true centering, control identity and responsive behavior.
+- Bump application/installer/fallback metadata and source-line inventory to v0.7.39. No encrypted vault schema, profile or workflow changes.
+
+**Status:** Windows development test build, unsigned. Native interactive visual acceptance at multiple DPI settings remains necessary.
+
 # v0.7.38 — Testable service boundaries
 
 - Move workflow URL and HTTPS credential-origin validation and durable-save admission into **WorkflowConfigurationService**; inject the actual encrypted persistence operation and URL policy instead of referencing WPF controls or singleton state in this service.
