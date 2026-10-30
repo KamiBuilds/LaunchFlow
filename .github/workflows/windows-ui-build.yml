@@ -2,7 +2,7 @@ name: LaunchFlow Windows UI and installer smoke
 
 on:
   push:
-    branches: [both-2, both-3, chatgpt-next, chatgpt-safety-hardening-20261028, chatgpt-selective-safety-review-20261029, chatgpt-appcontrol-startup-20261029, chatgpt-trusted-distribution-20261029, chatgpt-ux-clarity-20261029, chatgpt-ux-clarity-v0.7.34-upload-20261029, fix/v0.7.34-startup-diagnostics-20261030, fix/v0.7.34-ui-startup-crash-20261030, feat/v0.7.34-settings-navigation-cleanup-20261030, feat/v0.7.35-settings-navigation-cleanup-20261030]
+    branches: [both-2, both-3, chatgpt-next, chatgpt-safety-hardening-20261028, chatgpt-selective-safety-review-20261029, chatgpt-appcontrol-startup-20261029, chatgpt-trusted-distribution-20261029, chatgpt-ux-clarity-20261029, chatgpt-ux-clarity-v0.7.34-upload-20261029, fix/v0.7.34-startup-diagnostics-20261030, fix/v0.7.34-ui-startup-crash-20261030, feat/v0.7.34-settings-navigation-cleanup-20261030, feat/v0.7.35-settings-navigation-cleanup-20261030, feat/v0.7.36-recorder-reliability-ux-20261030]
   pull_request:
     branches: [both]
 
@@ -40,6 +40,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'UI orchestration tests failed' }
       - name: Compile production-linked encrypted-vault and policy test harness
         run: dotnet build tests/policy/PolicyTests.csproj --configuration Release -warnaserror
+      - name: Build browser recorder regression harness
+        run: dotnet build tests/recorder/RecorderTests.csproj --configuration Release -warnaserror
+      - name: Install isolated Chromium for recorder regression
+        shell: pwsh
+        run: |
+          ./tests/recorder/bin/Release/net8.0/playwright.ps1 install chromium
+          if ($LASTEXITCODE -ne 0) { throw 'Test Chromium installation failed' }
+      - name: Exercise real recorder clicks and protected keyboard behavior
+        run: dotnet run --project tests/recorder/RecorderTests.csproj -c Release --no-build
       - name: Compile LaunchFlow WPF application
         run: dotnet build LaunchFlow/LaunchFlow.csproj --configuration Release -warnaserror
       - name: Install Inno Setup on builder
