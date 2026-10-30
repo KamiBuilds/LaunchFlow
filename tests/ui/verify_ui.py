@@ -170,8 +170,9 @@ check('Text="No websites yet"' in main_xml and
       named['AutoLoginCheck'].get('Visibility') == 'Collapsed',
       "website-focused UI, one sign-in mode and Settings category navigation are present")
 # Settings owns the password editor; the main header must not duplicate it.
-main_tab_headers = [item.get("Header") for item in named["MainTabs"] if item.tag == xns + "TabItem"]
-settings_tab_headers = [item.get("Header") for item in named["SettingsTabs"] if item.tag == xns + "TabItem"]
+presentation_ns = "{http://schemas.microsoft.com/winfx/2006/xaml/presentation}"
+main_tab_headers = [item.get("Header") for item in named["MainTabs"] if item.tag == presentation_ns + "TabItem"]
+settings_tab_headers = [item.get("Header") for item in named["SettingsTabs"] if item.tag == presentation_ns + "TabItem"]
 check(main_tab_headers == ["Websites", "Settings"] and
       settings_tab_headers[:3] == ["General", "Passwords", "Startup"] and
       "PasswordsNav" not in named and
