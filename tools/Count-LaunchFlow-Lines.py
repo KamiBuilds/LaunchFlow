@@ -73,7 +73,7 @@ summary = [
     "|---|---|---:|---:|",
 ]
 for filename, type_, lines, code, _ in items:
-    summary.append(f"| \`{filename}\` | {type_} | {lines if isinstance(lines, int) else 'N/A'} | {code if isinstance(code, int) else 'N/A'} |")
+    summary.append(f"| `{filename}` | {type_} | {lines if isinstance(lines, int) else 'N/A'} | {code if isinstance(code, int) else 'N/A'} |")
 md_path = OUTPUT / f"LaunchFlow-v{VERSION}-file-lines.md"
 md_path.write_text("\n".join(summary) + "\n", encoding="utf-8")
 print(f"INVENTORY total={len(items)} source={by_type['source']} document={by_type['document']} binary={by_type['binary']} physical={total_lines} source_physical={source_lines} estimated_code={source_code_lines}")
