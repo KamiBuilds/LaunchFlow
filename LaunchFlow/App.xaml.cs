@@ -367,9 +367,29 @@ public partial class App : Application
     private void RestoreRunningWindow()
     {
         if (MainWindow is LaunchFlow.MainWindow window && window.IsLoaded)
+        {
             window.RestoreFromExternalLaunch();
-        else
-            _restorePending = true;
+            return;
+        }
+
+        // A second launch can arrive while the first instance is displaying
+        // first-run setup or the master-password unlock dialog. Those dialogs
+        // precede MainWindow, so SHOW must restore the active startup window
+        // instead of silently waiting for a MainWindow that does not exist yet.
+        var dialog = Windows.OfType<Window>().LastOrDefault(w => w.IsVisible);
+        if (dialog is not null)
+        {
+            if (dialog.WindowState == WindowState.Minimized)
+                dialog.WindowState = WindowState.Normal;
+            dialog.Show();
+            dialog.Activate();
+            var previousTopmost = dialog.Topmost;
+            dialog.Topmost = true;
+            dialog.Topmost = previousTopmost;
+            return;
+        }
+
+        _restorePending = true;
     }
 
     internal void NotifyMainWindowReady(LaunchFlow.MainWindow window)
