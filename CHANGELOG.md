@@ -1,3 +1,16 @@
+# v0.7.35 — Cleaner Settings and first-website onboarding
+
+- Remove duplicate Settings category tiles; the left-hand category list remains the single way to navigate Settings.
+- Move encrypted website credentials from the top navigation into **Settings → Passwords**, retaining explicit master-password authorization and clearing credential inputs when leaving the category.
+- Show post-creation guidance only for the first saved website, rather than after every website addition; store that decision durably and independently of the shortcut hint.
+- Update the new-website wizard, tutorial and KeePassXC messages to use the new Settings path.
+- Carry forward the v0.7.34 UI startup-crash guard and safe startup diagnostics.
+- Increment assembly, installer, fallback display, CI artifact, and UI source test versions consistently to v0.7.35.
+
+**Versioning policy:** Each user-facing build with new fixes or features gets a new version, never a reused installer filename. Development commits within one build may share a version until that version's deliverable is produced.
+
+**Development preview only.** Windows CI compilation and package checks are not the same as native interactive acceptance or Authenticode signing. No stable release is authorized.
+
 # v0.7.34 — Websites-first clarity and sign-in mode
 
 - More consistent website-focused language across the editor, Passwords and Settings.
