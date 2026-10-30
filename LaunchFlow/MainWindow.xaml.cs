@@ -2227,7 +2227,11 @@ public partial class MainWindow : Window
             string.IsNullOrWhiteSpace(_configuration.GlobalShortcut) ? "Ctrl+M" : _configuration.GlobalShortcut));
         // A malformed legacy workflow or editor selection must not prevent the
         // user from getting the main window open to inspect and fix it.
-        RunOptionalStartupUiStep(EnsureStartupWorkflowVisible);
+        try { EnsureStartupWorkflowVisible(); }
+        catch (Exception ex)
+        {
+            StartupDiagnostics.Record(StartupDiagnostics.Stage.OptionalUiInitializationFailed, ex);
+        }
         if (_configuration.RunOnAppStart) Dispatcher.BeginInvoke(new Action(() => _ = RunEnabledAsync()));
         // --tray is handled in App.OnStartup to avoid a window flash; keep this
         // as a fallback if the window was shown before the flag was applied.
