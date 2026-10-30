@@ -54,7 +54,9 @@ check(selector is not None and named["WorkspaceNameBox"] is not selector,
 check(named["WorkspaceNameBox"].get("TextChanged") == "WorkspaceNameBox_TextChanged" and
       "PreviewWorkspaceButton" in named,
       "typing another workspace name revokes the previous selection")
-source = (root / "LaunchFlow/MainWindow.xaml.cs").read_text(encoding="utf-8")
+# Inspect all production MainWindow partials, not a single oversized code-behind file.
+source = "\n".join(file.read_text(encoding="utf-8")
+                   for file in sorted((root / "LaunchFlow").glob("MainWindow*.cs")))
 check(all(handler in source for handler in
           ("WorkspaceCombo_SelectionChanged", "SaveWorkspace_Click",
            "PreviewWorkspace_Click", "RunWorkspace_Click")),
@@ -114,14 +116,14 @@ check('BrowserChoices.Refresh(BrowserCombo, w.Browser)' in source and
       'BrowserCombo_DropDownOpened' in ET.tostring(ui, encoding="unicode") and
       'BrowserInstallations.IsInstalled(browser)' in (root / "LaunchFlow/NewWorkflowWindow.xaml.cs").read_text(encoding="utf-8"),
       "both browser selectors use installation detection and retain configured browser identity")
-check('ObserveLoginCompletionAsync' in (root / "LaunchFlow/Services/AutomationEngine.cs").read_text(encoding="utf-8") and
+check('ObserveLoginCompletionAsync' in "\n".join(p.read_text(encoding="utf-8") for p in sorted((root / "LaunchFlow/Services").glob("AutomationEngine*.cs"))) and
       'VerifiedRedirectAsync' in (root / "LaunchFlow/Services/LoginHealth.cs").read_text(encoding="utf-8") and
       'var wasLoading = _loadingEditor;' in source and
       'CloseSessionsRetry' in source,
       "sign-in verification and safe installer cleanup recovery remain wired")
 check('SignInDecisionWindow.Decision.Confirmed' in source and
       (root / "LaunchFlow/SignInDecisionWindow.xaml").is_file() and
-      'ConfirmSignedInAsync' in (root / "LaunchFlow/Services/AutomationEngine.cs").read_text(encoding="utf-8") and
+      'ConfirmSignedInAsync' in "\n".join(p.read_text(encoding="utf-8") for p in sorted((root / "LaunchFlow/Services").glob("AutomationEngine*.cs"))) and
       'session._pendingActions.Enqueue(("Navigate", safeUrl))' in (root / "LaunchFlow/Services/TeachRecorder.cs").read_text(encoding="utf-8"),
       "human sign-in confirmation and automatic cross-site Teach navigation are connected")
 check('dialog.Show();' in source and
