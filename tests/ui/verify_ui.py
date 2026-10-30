@@ -47,7 +47,7 @@ check('Text="YOUR WEBSITES"' in markup and
 # Keep the primary Run / Stop group truly centered at every window width.
 toolbar = named.get("ActionToolbar")
 presentation = "{http://schemas.microsoft.com/winfx/2006/xaml/presentation}"
-grid_column = presentation + "Grid.Column"
+grid_column = "Grid.Column"  # XAML attached property is an unprefixed XML attribute
 columns = toolbar.find(presentation + "Grid.ColumnDefinitions") if toolbar is not None else None
 direct_children = list(toolbar) if toolbar is not None else []
 centred_group = [child for child in direct_children if child.get(grid_column) == "1"]
