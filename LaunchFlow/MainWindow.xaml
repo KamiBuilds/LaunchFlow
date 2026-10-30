@@ -169,7 +169,7 @@
                     ToolTip="Choose a website, browser and screen"
                     Height="34" Padding="14,7" Margin="0,0,10,0"/>
             <Button x:Name="SaveChangesButton" Content="Save changes" Click="Save_Click"
-                    ToolTip="Save website and application settings in the encrypted vault"
+                    ToolTip="Save immediately; website and app settings are also saved automatically"
                     Height="34" Padding="14,7" Margin="0,0,12,0"/>
             <TextBlock x:Name="SaveStatusLabel" Text="All changes saved"
                        Foreground="#85C9B9" FontSize="11" VerticalAlignment="Center"
@@ -284,7 +284,7 @@
                 <TextBlock Text="Screen" Style="{StaticResource FieldLabel}"/>
                 <ComboBox x:Name="MonitorCombo" SelectionChanged="MonitorCombo_SelectionChanged" AutomationProperties.Name="Screen"/>
               </StackPanel>
-              <Button x:Name="RunSelectedButton" Grid.Column="2" Content="▶ Test this site" Click="RunSelected_Click" ToolTip="Save changes and run only this website" VerticalAlignment="Bottom" Margin="0"/>
+              <Button x:Name="RunSelectedButton" Grid.Column="2" Content="▶ Test this site" Click="RunSelected_Click" ToolTip="Save settings and test only this website" VerticalAlignment="Bottom" Margin="0"/>
             </Grid>
             <!-- Legacy control retained for settings compatibility. Old destinations migrate to steps. -->
             <TextBox x:Name="DestinationUrlBox" Visibility="Collapsed"/>
@@ -387,7 +387,7 @@
         <TabItem Header="General"><ScrollViewer VerticalScrollBarVisibility="Auto">
           <StackPanel Margin="28" MaxWidth="760" HorizontalAlignment="Left">
             <TextBlock Text="Settings" FontSize="25" FontWeight="SemiBold" Margin="0,0,0,12"/>
-            <TextBlock Text="Choose a category from the list on the left. Save website and app settings with Save changes in the title bar."
+            <TextBlock Text="Choose a category from the left. Website and app settings save automatically after editing. Save changes forces an immediate save; passwords still require Save credentials."
                        Foreground="#AEC5DD" FontSize="14" TextWrapping="Wrap" Margin="0,0,0,22"/>
             <TextBlock Text="Language / Taal" FontWeight="SemiBold" FontSize="18" Margin="0,0,0,7"/>
             <ComboBox x:Name="LanguageCombo" Width="200" HorizontalAlignment="Left"
