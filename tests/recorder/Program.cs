@@ -369,7 +369,7 @@ await page.ClickAsync("button");
 await Flush(page);
 pausedWindow.TestPauseWithoutDrain();
 pausedWindow.TestTick();
-Assert(pausedWindow.RecordedSteps.Count == 1 && pausedWindow.TestStatus?.StartsWith("Paused") == true,
+Assert(pausedWindow.RecordedSteps.Count == 1 && pausedWindow.TestStatus?.StartsWith("Recording paused") == true,
     "draining an admitted action preserves paused UI state");
 pausedWindow.TestCancel();
 await pausedWindow.TestWaitForUpdatesAsync();
