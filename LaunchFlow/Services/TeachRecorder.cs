@@ -73,6 +73,30 @@ public sealed class TeachRecorder : IDisposable
         return _bridge.SynchronizeAsync();
     }
 
+    /// <summary>
+    /// Privacy-safe recorder readiness: never returns DOM contents, typed text,
+    /// input attributes, full URLs or selectors to the diagnostics UI.
+    /// </summary>
+    public async Task<string> InspectConnectionAsync()
+    {
+        if (_page.IsClosed) return "closed";
+        try
+        {
+            return await _page.EvaluateAsync<string>(
+                "() => { const bridge = window.__launchFlowTeachRecorderV1;" +
+                " if (!bridge || typeof bridge.status !== 'function') return 'missing';" +
+                " const status = bridge.status();" +
+                " return status.ready ? 'ready' : 'waiting'; }"
+            ).ConfigureAwait(false) ?? "waiting";
+        }
+        catch (PlaywrightException)
+        {
+            // A navigation can destroy the execution context; the next page
+            // receives an init script and a fresh handshake.
+            return "navigating";
+        }
+    }
+
     public void Pause() => SetActive(false);
     public void Resume() => SetActive(true);
 
