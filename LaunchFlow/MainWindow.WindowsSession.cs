@@ -72,7 +72,7 @@ public partial class MainWindow
         _lockTimeoutCancellation?.Cancel();
         _lockTimeoutCancellation?.Dispose();
         _lockTimeoutCancellation = null;
-        if (interval >= LockTimeout)
+        if (SessionLockPolicy.RequiresVaultLock(interval, LockTimeout))
             await SecureVaultLockAsync($"Windows was locked for {interval.TotalMinutes:F1} minutes; master password required.");
         else await _vaultLockTask;
         UpdateRunButtons();
