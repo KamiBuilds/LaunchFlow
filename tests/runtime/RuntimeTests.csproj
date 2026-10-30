@@ -9,7 +9,9 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Playwright" Version="1.63.0" />
     <Compile Include="$(AutomationEngineSource)" Link="AutomationEngine.cs" />
-    <Compile Include="../../LaunchFlow/Services/AutomationEngine.Browser.cs" Link="AutomationEngine.Browser.cs" Condition="'$(AutomationEngineSource)' == '../../LaunchFlow/Services/AutomationEngine.cs'" />
+    <!-- When testing the current engine, include every production partial.
+         Compatibility baselines supplied by AutomationEngineSource remain isolated. -->
+    <Compile Include="../../LaunchFlow/Services/AutomationEngine.*.cs" Link="Services/%(Filename)%(Extension)" Condition="'$(AutomationEngineSource)' == '../../LaunchFlow/Services/AutomationEngine.cs'" />
     <Compile Include="../../LaunchFlow/Services/BrowserInstallations.cs" Link="Services/BrowserInstallations.cs" />
     <Compile Include="../../LaunchFlow/Services/EnterprisePolicy.cs" Link="EnterprisePolicy.cs" />
     <Compile Include="../../LaunchFlow/Services/MonitorService.cs" Link="MonitorService.cs" />
