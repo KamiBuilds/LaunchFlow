@@ -15,7 +15,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "dist"
-VERSION = "0.7.39"
+VERSION = "0.7.40"
 SOURCE_EXTS = {".cs", ".xaml", ".py", ".ps1", ".cmd", ".sh", ".iss", ".csproj", ".props", ".yml", ".yaml"}
 COMMENT_PREFIXES = ("//", "#", "<!--", "/*", "*", "--")
 TRACKED = subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT).split(b"\0")
