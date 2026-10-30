@@ -47,7 +47,7 @@ public partial class MainWindow
         SaveStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(174, 197, 221));
         try
         {
-            if (!SaveAll(silentFailures: true))
+            if (!SaveAll())
                 ShowAutoSaveFailed();
         }
         finally
