@@ -2502,6 +2502,10 @@ public partial class MainWindow : Window
             UsernameBox is null || PasswordInput is null) return;
         if (!ReferenceEquals(e.OriginalSource, MainTabs)) return;
         if (_revertingTab) { SyncTopNavigation(); return; }
+        // Preserve pending website edits before navigating away, including
+        // navigation into Settings. Password inputs are still explicit-save only.
+        try { ApplyCurrentEditor(); }
+        catch (Exception ex) { AppendLog("Could not preserve website edits during navigation: " + ex.GetType().Name); }
         if (MainTabs.SelectedIndex == 1)
             UpdatePasswordSettingsAccess();
         else
