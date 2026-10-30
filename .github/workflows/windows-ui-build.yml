@@ -71,6 +71,11 @@ jobs:
           "$($hash.Hash.ToLowerInvariant())  $(Split-Path $setup -Leaf)" |
             Set-Content -LiteralPath dist/UI-SHA256SUMS.txt -Encoding ascii
           "LF_VERSION=$version" >> $env:GITHUB_ENV
+      - name: Count all tracked files and source lines
+        shell: pwsh
+        run: |
+          python tools/Count-LaunchFlow-Lines.py
+          if ($LASTEXITCODE -ne 0) { throw 'Source inventory failed' }
       - name: Upload unsigned UI test installer
         uses: actions/upload-artifact@v6
         with:
@@ -78,5 +83,7 @@ jobs:
           path: |
             dist/LaunchFlow-Setup-v${{ env.LF_VERSION }}-x64.exe
             dist/UI-SHA256SUMS.txt
+            dist/LaunchFlow-v0.7.37-file-lines.csv
+            dist/LaunchFlow-v0.7.37-file-lines.md
           if-no-files-found: error
           retention-days: 7
