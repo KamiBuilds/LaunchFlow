@@ -645,14 +645,14 @@ sealed class AsyncVoidTracker : SynchronizationContext
         return tracker._done.Task;
     }
 }
-partial class CrashFixture { public object? MainWindow { get; set; } = null; }
+partial class CrashFixture { public object? MainWindow { get; set; } = null; public bool ShutdownCalled { get; private set; } public void Shutdown() => ShutdownCalled = true; }
 sealed class FailureArgs
 {
     public Exception Exception { get; } = new Exception("synthetic-private-error");
     public object ExceptionObject => Exception;
     public bool Handled { get; set; }
 }
-namespace LaunchFlow { sealed class MainWindow(UiFixture ui) { public void RequestCrashCleanup() => ui.RequestCrashCleanup(); } }
+namespace LaunchFlow { sealed class MainWindow(UiFixture ui) { public bool IsLoaded { get; set; } = true; public void RequestCrashCleanup() => ui.RequestCrashCleanup(); } }
 sealed class RoutedEventArgs : EventArgs { }
 enum MessageBoxButton { OK, YesNo }
 enum MessageBoxImage { Warning, Information, Error, Question }
@@ -734,6 +734,7 @@ namespace LaunchFlow.Services
     }
     static class LoginHealth { public sealed record Health(bool NeedsAttention, string Reason); public static Task<Health> InspectAsync(Microsoft.Playwright.IPage page) => Task.FromResult(new Health(false, "")); }
     static class CrashLog { public static void Write(string label, Exception ex) { } }
+    static class StartupDiagnostics { public enum Stage { UiUnhandledException, FatalException } public static void Record(Stage stage, Exception? ex = null) { } }
     sealed class AutomationEngine
     {
         public sealed record LoginAttention(Guid WorkflowId, string WorkflowName, string Reason);
