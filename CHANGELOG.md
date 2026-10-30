@@ -1,3 +1,15 @@
+# v0.7.38 — Testable service boundaries
+
+- Move workflow URL and HTTPS credential-origin validation and durable-save admission into **WorkflowConfigurationService**; inject the actual encrypted persistence operation and URL policy instead of referencing WPF controls or singleton state in this service.
+- Extract **StartupRegistrationService** with injected Task Scheduler and Run-key adapters, centralizing the mutually-exclusive Windows startup policy.
+- Extract **SessionLockPolicy** to make the configurable lock threshold a pure, deterministic rule. Preserve the 10-minute-by-default threshold and fail closed on backwards time intervals.
+- Wire all three services into the existing MainWindow and keep encrypted vault layout, application installer AppId, and workflow serialization untouched.
+- Introduce a separate net8.0 service-contract test target that runs without WPF, user files, external browsers, or Windows registry modification.
+- Continue the v0.7.37 partial-file decomposition while beginning the more important class-level separation of responsibility.
+- Increase the application, installer, UI test and file inventory version to **v0.7.38**.
+
+**Scope:** incremental architecture hardening, not a completed MVVM migration or a claim of independently verified production security. Hands-on Windows acceptance and signed distribution remain outstanding.
+
 # v0.7.37 — Architecture refactor without data migration
 
 - Split the original monolithic WPF MainWindow code-behind into cohesive partial modules for UI shell, websites, workflow persistence, execution, recorder workflow, settings navigation, credentials, password sessions, KeePassXC, import/export, workspaces, Windows lock events and startup experience.
