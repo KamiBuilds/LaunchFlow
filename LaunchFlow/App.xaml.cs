@@ -43,10 +43,20 @@ public partial class App : Application
                 if (MainWindow is LaunchFlow.MainWindow window) window.RequestCrashCleanup();
             }
             catch { /* best effort: coordinated cleanup may be unavailable */ }
-            MessageBox.Show(
-                "LaunchFlow hit an unexpected problem. Vault access was revoked. Browser cleanup is best effort; profiles are retained unless coordinated cleanup completes. Retry Lock vault before continuing.",
-                "LaunchFlow", MessageBoxButton.OK, MessageBoxImage.Error);
             args.Handled = true;
+            var error = StartupDiagnostics.RootCause(args.Exception) ?? args.Exception;
+            try
+            {
+                MessageBox.Show(
+                    "LaunchFlow encountered a UI error and locked the credential vault. " +
+                    "Browser sessions are retained until coordinated cleanup completes.\\n\\n" +
+                    $"Diagnostic: {error.GetType().Name} (0x{unchecked((uint)error.HResult):X8})\\n" +
+                    "Log: %LOCALAPPDATA%\\\\LaunchFlow\\\\startup-diagnostics.log\\n\\n" +
+                    "Restart LaunchFlow. If this error returns, send the last log entries so " +
+                    "the failing component can be fixed without deleting your passwords.",
+                    "LaunchFlow startup error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            catch { /* An error dialog failure must not trigger another UI crash. */ }
             // A failed startup must not leave an invisible process holding the
             // single-instance mutex and preventing all subsequent launches.
             if (MainWindow is not LaunchFlow.MainWindow { IsLoaded: true }) Shutdown();
