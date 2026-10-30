@@ -302,9 +302,9 @@ public partial class MainWindow : Window
 
     private void OpenSettingsCategory(int index)
     {
-        MainTabs.SelectedIndex = 1;
         if (index >= 0 && index < SettingsTabs.Items.Count)
             SettingsTabs.SelectedIndex = index;
+        MainTabs.SelectedIndex = 1;
     }
 
     private void UpdateRunButtons()
@@ -1985,8 +1985,8 @@ public partial class MainWindow : Window
             }
             else
             {
-                MainTabs.SelectedIndex = 1;
                 SettingsTabs.SelectedIndex = 3;
+                MainTabs.SelectedIndex = 1;
                 MessageBox.Show(this,
                     "First choose your KeePassXC database in Settings → Security. Then open Settings → Passwords and click Choose KeePassXC login.",
                     "Connect KeePassXC", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -2629,8 +2629,8 @@ public partial class MainWindow : Window
         }
         if (!RequireMasterPassword(forcePrompt: true)) return;
 
-        MainTabs.SelectedIndex = 1; // Settings
         try { SettingsTabs.SelectedIndex = 7; } catch { /* optional */ }
+        MainTabs.SelectedIndex = 1; // Settings
         var prompt = new SecretPromptWindow("Open your export",
             "Enter the password used to export this file.")
         { Owner = this };
