@@ -1,6 +1,6 @@
 # LaunchFlow
 
-> **v0.7.38 — independently testable workflow and lifecycle services preview (not release-approved).** Local Windows desktop automation with an encrypted credential vault. Native Windows verification and Hermes lifecycle integration remain required before a stable publish.
+> **v0.7.39 — balanced responsive toolbar and centered primary actions preview (not release-approved).** Local Windows desktop automation with an encrypted credential vault. Native Windows verification and Hermes lifecycle integration remain required before a stable publish.
 
 LaunchFlow opens your websites on the chosen screen, optionally signs in using local encrypted credentials, and replays recorded safe clicks.
 
