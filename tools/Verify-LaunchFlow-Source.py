@@ -26,7 +26,7 @@ cs=(root/'LaunchFlow/Services/DarkWindowChrome.cs').read_text(encoding='utf-8')
 check('System.Windows.Media.Color.FromRgb' in cs,'WPF Color disambiguation')
 app=(root/'LaunchFlow/App.xaml.cs').read_text(encoding='utf-8')
 check(app.count('_ = Dispatcher.BeginInvoke(')>=3,'dispatcher callbacks handle file opening, activation and build shutdown')
-auto=(root/'LaunchFlow/Services/AutomationEngine.cs').read_text(encoding='utf-8')
+auto='\n'.join(p.read_text(encoding='utf-8') for p in sorted((root/'LaunchFlow/Services').glob('AutomationEngine*.cs')))
 browser_engine=(root/'LaunchFlow/Services/AutomationEngine.Browser.cs').read_text(encoding='utf-8')
 check(browser_engine.count('new Dictionary<string, object>')>=2 and
       'Browser.setWindowBounds' in browser_engine,
@@ -42,7 +42,7 @@ check(len(list((root/'LaunchFlow').glob('*.xaml')))>=5,'XAML files parsed')
 check('IsEditable="False"' in (root/'LaunchFlow/MainWindow.xaml').read_text(encoding='utf-8') and
       'x:Name="WorkspaceNameBox"' in (root/'LaunchFlow/MainWindow.xaml').read_text(encoding='utf-8'),
       'workspace selection remains separate from workspace naming')
-main_code=(root/'LaunchFlow/MainWindow.xaml.cs').read_text(encoding='utf-8')
+main_code='\n'.join(p.read_text(encoding='utf-8') for p in sorted((root/'LaunchFlow').glob('MainWindow*.cs')))
 recorder_code=(root/'LaunchFlow/VisualRecorderWindow.xaml.cs').read_text(encoding='utf-8')
 check('ShowRecorderAsync(recorder)' in main_code and 'recorder.ShowDialog()' not in main_code,
       'Teach runs modeless so windows can move')
@@ -52,10 +52,10 @@ check('ExposeBindingAsync' in teach_service and 'AddInitScriptAsync' in teach_se
       'Teach records clicks through page navigation')
 check((root/'LaunchFlow/TutorialWindow.xaml').is_file() and 'new TutorialWindow' in main_code,
       'beginner tutorial is available')
-main_code=(root/'LaunchFlow/MainWindow.xaml.cs').read_text(encoding='utf-8')
+main_code='\n'.join(p.read_text(encoding='utf-8') for p in sorted((root/'LaunchFlow').glob('MainWindow*.cs')))
 check('EnsureStartupWorkflowVisible();' in main_code and 'MainTabs.SelectedIndex = -1;' in main_code,
       'initial Workflows content is forced to render after Loaded')
-main_code=(root/'LaunchFlow/MainWindow.xaml.cs').read_text(encoding='utf-8')
+main_code='\n'.join(p.read_text(encoding='utf-8') for p in sorted((root/'LaunchFlow').glob('MainWindow*.cs')))
 recorder_code=(root/'LaunchFlow/VisualRecorderWindow.xaml.cs').read_text(encoding='utf-8')
 build_script=(root/'BUILD-INSTALLER.ps1').read_text(encoding='utf-8')
 check('FirstOrDefault(w => w.Id == workflow.Id)' in main_code,
