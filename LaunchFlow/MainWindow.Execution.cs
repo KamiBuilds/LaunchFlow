@@ -57,7 +57,9 @@ public partial class MainWindow
 
         int previousCount = original.Steps.Count;
         original.Steps.AddRange(recorder.RecordedSteps);
-        try { _store.Save(_configuration); }
+        // Recorder actions are committed immediately to the encrypted vault.
+        // Never report success for ConfigStore's locked-vault temp fallback.
+        try { _store.SaveDurable(_configuration); }
         catch
         {
             original.Steps.RemoveRange(previousCount, original.Steps.Count - previousCount);
