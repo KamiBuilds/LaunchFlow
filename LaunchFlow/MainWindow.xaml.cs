@@ -677,7 +677,7 @@ public partial class MainWindow : Window
         w.LoginWaitSeconds = int.TryParse(LoginWaitBox.Text, out int seconds) ? Math.Clamp(seconds, 5, 180) : 60;
 
         // Credentials are NOT implicitly saved by Save All, tab navigation, or shutdown.
-        // The Passwords tab has an explicit Save credentials button. This avoids
+        // The Settings → Passwords category has an explicit Save credentials button. This avoids
         // accidentally overwriting a working login when switching workflows.
     }
 
@@ -1988,7 +1988,7 @@ public partial class MainWindow : Window
                 MainTabs.SelectedIndex = 1;
                 SettingsTabs.SelectedIndex = 3;
                 MessageBox.Show(this,
-                    "First choose your KeePassXC database in Settings → Security. Then return to Passwords and click Choose KeePassXC login.",
+                    "First choose your KeePassXC database in Settings → Security. Then open Settings → Passwords and click Choose KeePassXC login.",
                     "Connect KeePassXC", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
@@ -2034,7 +2034,7 @@ public partial class MainWindow : Window
             CredentialStatus.Text = DescribeCredentialStatus(workflow);
             if (hasLocalCredential)
                 MessageBox.Show(this,
-                    "Login selected. This website already has a password saved in LaunchFlow, which takes priority. To use KeePassXC, click Remove saved credentials in Passwords.",
+                    "Login selected. This website already has a password saved in LaunchFlow, which takes priority. To use KeePassXC, click Remove saved credentials in Settings → Passwords.",
                     "KeePassXC login selected", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
