@@ -1,3 +1,15 @@
+# v0.7.36 — Recorder reliability and cleaner action layouts
+
+- Recorder accepts legitimate pointer clicks that retarget from a nested icon or child element to the same button; canceled drags remain excluded.
+- Show a privacy-safe connection status for the original LaunchFlow browser tab, with automatic retry of recording bridge initialization after navigation.
+- Redesign the recording window around a clear connection card, captured-action count, and expandable optional tools/safety guidance.
+- Separate the application's top toolbar into Add, Save/status, Run/Stop, and Help groups for clearer visual hierarchy.
+- Add an actual Chromium regression for retargeted clicks and bridge readiness to the Windows build gate.
+- Preserve safety boundaries: only approved keys; no typed text, passwords, emails, MFA codes, sensitive forms, private URL parameters, or arbitrary popup/iframe replay.
+- Bump application, installer, metadata and build artifacts to **v0.7.36**.
+
+**Development preview.** Automated compilation and synthetic browser tests do not replace interactive verification on target machines, nor do they sign the installer.
+
 # v0.7.35 — Cleaner Settings and first-website onboarding
 
 - Remove duplicate Settings category tiles; the left-hand category list remains the single way to navigate Settings.
