@@ -153,7 +153,7 @@ public partial class VisualRecorderWindow : Window
         CaptureToggle.Content = _recorder.IsCapturing ? "Pause recording" : "Resume recording";
         CaptureStatus.Text = _recorder.IsCapturing ? "Recording is on" : "Recording paused";
         if (_recorder.UnsupportedTargetObserved && RecordedSteps.Count == 0)
-            TargetStatus.Text = "Some actions were skipped for privacy or were outside the original tab. Try a regular button there.";
+            TargetStatus.Text = "Some actions were not recorded for privacy or were outside the original tab. Try a regular button there.";
     }
 
     private void DrainActions()
