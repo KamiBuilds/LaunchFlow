@@ -44,6 +44,25 @@ check('Text="YOUR WEBSITES"' in markup and
       'Text="Saved workspace"' not in markup and
       'Text="Everything ready for your next shift."' not in markup,
       "website list and Run all form the only visible workflow-management experience")
+# Keep the primary Run / Stop group truly centered at every window width.
+toolbar = named.get("ActionToolbar")
+presentation = "{http://schemas.microsoft.com/winfx/2006/xaml/presentation}"
+grid_column = presentation + "Grid.Column"
+columns = toolbar.find(presentation + "Grid.ColumnDefinitions") if toolbar is not None else None
+direct_children = list(toolbar) if toolbar is not None else []
+centred_group = [child for child in direct_children if child.get(grid_column) == "1"]
+right_group = [child for child in direct_children if child.get(grid_column) == "2"]
+check(toolbar is not None and
+      toolbar.get("SizeChanged") == "ActionToolbar_SizeChanged" and
+      columns is not None and
+      [child.get("Width") for child in columns] == ["*", "Auto", "*"] and
+      len(centred_group) == 1 and
+      any(node.get(xns + "Name") == "RunAllButton" for node in centred_group[0].iter()) and
+      any(node.get(xns + "Name") == "StopButton" for node in centred_group[0].iter()) and
+      len(right_group) == 1 and
+      any(node.get("Content") == "Getting started" for node in right_group[0].iter()) and
+      any(node.get("Content") == "About" for node in right_group[0].iter()),
+      "toolbar has symmetric sides, centered primary actions and right-aligned help")
 selector = named.get("WorkspaceCombo")
 check(selector is not None and selector.get("IsEditable") == "False"
       and selector.get("DisplayMemberPath") == "Name"
@@ -63,6 +82,9 @@ check(all(handler in source for handler in
       "workspace selection, save, preview and run handlers present")
 check('WorkspaceCombo.Text.Trim()' not in source,
       "workspace execution no longer relies on ComboBox text")
+check('private void ActionToolbar_SizeChanged' in source and
+      'e.NewSize.Width < 940' in source,
+      "responsive toolbar keeps compact views free of overlapping status text")
 check('WorkspaceCatalog.Save(_configuration, name' in source and
       'WorkspaceCatalog.IsCurrentSelection' in source and
       'PreviewWorkspaceButton.IsEnabled = available && savedWorkspaceSelected' in source,
