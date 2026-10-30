@@ -860,6 +860,7 @@ public partial class MainWindow : Window
             var firstWebsite = _configuration.Workflows.Count == 0 &&
                 !_configuration.FirstWebsiteGuidanceShown;
             var previousShortcutTip = _configuration.ShortcutTipShown;
+            var previousFirstGuidance = _configuration.FirstWebsiteGuidanceShown;
             try
             {
                 // The encrypted credentials and website settings must persist
@@ -877,7 +878,7 @@ public partial class MainWindow : Window
             catch (Exception ex)
             {
                 _configuration.Workflows.Remove(next);
-                _configuration.FirstWebsiteGuidanceShown = false;
+                _configuration.FirstWebsiteGuidanceShown = previousFirstGuidance;
                 _configuration.ShortcutTipShown = previousShortcutTip;
                 try { _vault.Delete(next.Id); } catch { /* preserve recovery on partial storage error */ }
                 MessageBox.Show(this, "The new website could not be saved: " + ex.Message,
