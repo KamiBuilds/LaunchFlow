@@ -2,7 +2,7 @@ name: LaunchFlow Windows UI and installer smoke
 
 on:
   push:
-    branches: [both-2, both-3, chatgpt-next, chatgpt-safety-hardening-20261028, chatgpt-selective-safety-review-20261029, chatgpt-appcontrol-startup-20261029, chatgpt-trusted-distribution-20261029, chatgpt-ux-clarity-20261029, chatgpt-ux-clarity-v0.7.34-upload-20261029, fix/v0.7.34-startup-diagnostics-20261030, fix/v0.7.34-ui-startup-crash-20261030, feat/v0.7.34-settings-navigation-cleanup-20261030, feat/v0.7.35-settings-navigation-cleanup-20261030, feat/v0.7.36-recorder-reliability-ux-20261030, refactor/v0.7.37-architecture-20261030, refactor/v0.7.38-services-and-testable-boundaries-20261030, fix/v0.7.39-balanced-toolbar-20261030]
+    branches: [both-2, both-3, chatgpt-next, chatgpt-safety-hardening-20261028, chatgpt-selective-safety-review-20261029, chatgpt-appcontrol-startup-20261029, chatgpt-trusted-distribution-20261029, chatgpt-ux-clarity-20261029, chatgpt-ux-clarity-v0.7.34-upload-20261029, fix/v0.7.34-startup-diagnostics-20261030, fix/v0.7.34-ui-startup-crash-20261030, feat/v0.7.34-settings-navigation-cleanup-20261030, feat/v0.7.35-settings-navigation-cleanup-20261030, feat/v0.7.36-recorder-reliability-ux-20261030, refactor/v0.7.37-architecture-20261030, refactor/v0.7.38-services-and-testable-boundaries-20261030, fix/v0.7.39-balanced-toolbar-20261030, feat/v0.7.40-encrypted-autosave-20261030]
   pull_request:
     branches: [both]
 
@@ -85,7 +85,7 @@ jobs:
           path: |
             dist/LaunchFlow-Setup-v${{ env.LF_VERSION }}-x64.exe
             dist/UI-SHA256SUMS.txt
-            dist/LaunchFlow-v0.7.39-file-lines.csv
-            dist/LaunchFlow-v0.7.39-file-lines.md
+            dist/LaunchFlow-v0.7.40-file-lines.csv
+            dist/LaunchFlow-v0.7.40-file-lines.md
           if-no-files-found: error
           retention-days: 7
