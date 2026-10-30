@@ -217,6 +217,8 @@ public partial class MainWindow : Window
         SystemEvents.SessionSwitch += HandleSessionSwitch;
         _passwordSessionTimer.Tick += PasswordSessionTimer_Tick;
         _passwordSessionTimer.Start();
+        // Auto-save uses a debounced WPF timer and never inspects password fields.
+        StartAutoSave();
         if (_configuration.Workflows.Count > 0) WorkflowList.SelectedIndex = 0;
         else ShowEmptyEditor();
         AppendLog("LaunchFlow is ready. Encrypted SQLite vault unlocked with Argon2id master key.");
