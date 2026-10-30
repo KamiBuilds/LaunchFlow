@@ -50,7 +50,7 @@ owners = {
 for owner, names in owners.items():
     collection = ui_sources if owner.startswith("MainWindow") else engine_sources
     for name in names:
-        pattern = re.compile(r"^\s{4}(?:private|public|internal|protected)\s+[^\n]*?\b" + re.escape(name) + r"\s*\(", re.M)
+        pattern = re.compile(r"^\s{4}(?:private|public|internal|protected)\s+[^()\n]*?\b" + re.escape(name) + r"\s*\(", re.M)
         found = [file for file, source in collection.items() if pattern.search(source)]
         assert found == [owner], f"{name} expected only in {owner}, found {found}"
 
