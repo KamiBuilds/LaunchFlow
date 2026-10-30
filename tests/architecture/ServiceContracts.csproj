@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ServiceContracts.cs" />
+    <Compile Include="../../LaunchFlow/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
+    <Compile Include="../../LaunchFlow/Services/WorkflowConfigurationService.cs" Link="Services/WorkflowConfigurationService.cs" />
+    <Compile Include="../../LaunchFlow/Services/StartupRegistrationService.cs" Link="Services/StartupRegistrationService.cs" />
+    <Compile Include="../../LaunchFlow/Services/SessionLockPolicy.cs" Link="Services/SessionLockPolicy.cs" />
+  </ItemGroup>
+</Project>
