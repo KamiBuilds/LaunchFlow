@@ -25,6 +25,7 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        StartupDiagnostics.Record(StartupDiagnostics.Stage.ProcessStarted);
         // Self-contained Windows Setup ships LaunchFlow, the .NET runtime and app
         // libraries. Browser automation uses installed Edge/Chrome channels;
         // never silently download or install a separate browser executable.
@@ -36,6 +37,7 @@ public partial class App : Application
             // diagnostics/UI, but never wrap or delete a potentially live profile here.
             try { VaultDatabase.Current.Lock(); } catch { /* best effort on a failing process */ }
             try { CrashLog.Write("UI", args.Exception); } catch { /* diagnostics must not prevent revocation */ }
+            StartupDiagnostics.Record(StartupDiagnostics.Stage.UiUnhandledException, args.Exception);
             try
             {
                 if (MainWindow is LaunchFlow.MainWindow window) window.RequestCrashCleanup();
@@ -45,6 +47,9 @@ public partial class App : Application
                 "LaunchFlow hit an unexpected problem. Vault access was revoked. Browser cleanup is best effort; profiles are retained unless coordinated cleanup completes. Retry Lock vault before continuing.",
                 "LaunchFlow", MessageBoxButton.OK, MessageBoxImage.Error);
             args.Handled = true;
+            // A failed startup must not leave an invisible process holding the
+            // single-instance mutex and preventing all subsequent launches.
+            if (MainWindow is not LaunchFlow.MainWindow { IsLoaded: true }) Shutdown();
         };
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
         {
@@ -52,7 +57,10 @@ public partial class App : Application
             // Leave profile sources untouched for recovery; cleanup is not guaranteed.
             try { VaultDatabase.Current.Lock(); } catch { /* best effort on a failing process */ }
             if (args.ExceptionObject is Exception ex)
+            {
                 try { CrashLog.Write("Fatal", ex); } catch { /* diagnostics are best effort */ }
+                StartupDiagnostics.Record(StartupDiagnostics.Stage.FatalException, ex);
+            }
             try
             {
                 MessageBox.Show(
@@ -69,16 +77,20 @@ public partial class App : Application
         _singleInstance = new System.Threading.Mutex(true, MutexName, out bool createdNew);
         if (!createdNew)
         {
+            StartupDiagnostics.Record(StartupDiagnostics.Stage.ExistingInstance);
             if (installerShutdown)
             {
                 // Setup observes the original process mutex; no second vault unlock or UI.
                 RequestExistingWindow(null, forInstaller: true);
             }
             else if (!RequestExistingWindow(_pendingOpenPath))
+            {
+                StartupDiagnostics.Record(StartupDiagnostics.Stage.ActivationFailed);
                 MessageBox.Show(
                     "LaunchFlow is already running, but its window could not be restored. " +
                     "Open it from the LaunchFlow icon beside the Windows clock, or exit it from that menu and try again.",
                     "LaunchFlow", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
             Shutdown();
             return;
         }
@@ -105,15 +117,25 @@ public partial class App : Application
             // Verify external managed/native dependencies before showing the
             // master-password wizard or opening/creating the encrypted vault.
             // This probe uses only a transient in-memory SQLite connection.
+            StartupDiagnostics.Record(StartupDiagnostics.Stage.DependencyProbeStarted);
             var compatibility = WindowsApplicationControl.CheckRequiredComponents();
             if (!compatibility.Ready)
             {
+                StartupDiagnostics.Record(StartupDiagnostics.Stage.DependencyProbeRejected);
                 MessageBox.Show(compatibility.Message, "LaunchFlow cannot start on this PC",
                     MessageBoxButton.OK, MessageBoxImage.Error);
                 Shutdown();
                 return;
             }
-            if (!InitializeVault()) { Shutdown(); return; }
+            StartupDiagnostics.Record(StartupDiagnostics.Stage.VaultUnlockStarted);
+            if (!InitializeVault())
+            {
+                StartupDiagnostics.Record(StartupDiagnostics.Stage.VaultUnlockCancelled);
+                Shutdown();
+                return;
+            }
+            StartupDiagnostics.Record(StartupDiagnostics.Stage.VaultReady);
+            StartupDiagnostics.Record(StartupDiagnostics.Stage.WindowConstructionStarted);
             var window = new MainWindow();
             MainWindow = window;
             ShutdownMode = ShutdownMode.OnMainWindowClose;
@@ -131,6 +153,7 @@ public partial class App : Application
                 window.Show();
             }
 
+            StartupDiagnostics.Record(StartupDiagnostics.Stage.WindowShown);
             if (_pendingOpenPath is not null)
             {
                 var path = _pendingOpenPath;
@@ -140,8 +163,13 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            MessageBox.Show("LaunchFlow could not safely open its vault. Existing files are unchanged.\n\n" + ex.Message,
-                "LaunchFlow vault", MessageBoxButton.OK, MessageBoxImage.Error);
+            StartupDiagnostics.Record(StartupDiagnostics.Stage.StartupException, ex);
+            // Avoid displaying exception.Message: paths or credential material
+            // from third-party exceptions must not be copied into dialogs.
+            MessageBox.Show("LaunchFlow failed during startup. Your encrypted vault has not been reset.\n\n" +
+                $"Error: {ex.GetType().Name} (0x{unchecked((uint)ex.HResult):X8})\n" +
+                "Diagnostic log: %LOCALAPPDATA%\\LaunchFlow\\startup-diagnostics.log",
+                "LaunchFlow startup error", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown();
             return;
         }
@@ -362,6 +390,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        StartupDiagnostics.Record(StartupDiagnostics.Stage.ProcessExited);
         _listenerCancellation?.Cancel();
         VaultDatabase.Current.Lock();
         // The listener observes cancellation and disposes its pipe. No blocking
