@@ -13,7 +13,16 @@ internal static class TeachRecorderScript
             revision = state.revision;
             sessions = state.sessions;
           };
-          window.__launchFlowTeachRecorderV1 = { update };
+          let acceptedEvents = 0;
+          let skippedEvents = 0;
+          window.__launchFlowTeachRecorderV1 = {
+            update,
+            status: () => ({
+              ready: sessions.length > 0,
+              acceptedEvents,
+              skippedEvents
+            })
+          };
           const cssPath = element => {
             const parts = [];
             for (let el = element; el; el = el.parentElement) {
@@ -33,8 +42,7 @@ internal static class TeachRecorderScript
             const target = event.target;
             if (!(target instanceof Element)) return;
             if (event.composedPath().some(node => node instanceof ShadowRoot)) {
-              for (const session of sessions)
-                void window.__launchFlowTeachDispatchV1(JSON.stringify({type:'Unsupported',id:session.id,epoch:session.epoch})).catch(() => {});
+              unsupported();
               return;
             }
             const element = target.closest('a,button,[role="button"],[role="link"],label') || target;
@@ -46,6 +54,7 @@ internal static class TeachRecorderScript
               return;
             }
             const selector = cssPath(element);
+            acceptedEvents++;
             for (const session of sessions) {
               void window.__launchFlowTeachDispatchV1(JSON.stringify({type:'Click',id:session.id,epoch:session.epoch,target:selector})).catch(() => {});
             }
@@ -68,6 +77,7 @@ internal static class TeachRecorderScript
               field instanceof Element && (sensitive(field) ||
                 field.matches('input[type="password"],input[type="email"],[autocomplete*="password"],[autocomplete="one-time-code"]')));
           const unsupported = () => {
+            skippedEvents++;
             for (const session of sessions)
               void window.__launchFlowTeachDispatchV1(JSON.stringify({
                 type:'Unsupported',id:session.id,epoch:session.epoch
@@ -112,6 +122,7 @@ internal static class TeachRecorderScript
               unsupported();
               return;
             }
+            acceptedEvents++;
             for (const session of sessions)
               void window.__launchFlowTeachDispatchV1(JSON.stringify({
                 type:'Press',id:session.id,epoch:session.epoch,target:event.key
@@ -120,12 +131,22 @@ internal static class TeachRecorderScript
 
           // A press is not a completed click: dragging away or replacing the target must not teach a phantom action.
           let pointerTarget = null;
+          const actionable = element =>
+            element instanceof Element ? element.closest('a,button,[role="button"],[role="link"],label') : null;
           document.addEventListener('pointerdown', event => {
             pointerTarget = event.isTrusted && event.button === 0 && event.isPrimary ? event.target : null;
           }, true);
           document.addEventListener('pointercancel', () => { pointerTarget = null; }, true);
           document.addEventListener('click', event => {
-            const completed = event.detail === 0 || event.target === pointerTarget;
+            // A click on a nested icon/span often retargets to its parent button.
+            // Exact event.target equality used to discard these legitimate clicks.
+            // Only accept retargeting within the SAME interactive control; never
+            // reinterpret a drag away from its original target as a completed click.
+            const downAction = actionable(pointerTarget);
+            const clickAction = actionable(event.target);
+            const completed = event.detail === 0 ||
+              (pointerTarget !== null && (event.target === pointerTarget ||
+                (downAction !== null && downAction === clickAction)));
             pointerTarget = null;
             if (completed) record(event);
           }, true);
