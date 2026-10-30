@@ -109,37 +109,14 @@ public partial class MainWindow
             _configuration.KeePassDatabasePath = KeePassDbBox.Text.Trim();
             _configuration.KeePassKeyFilePath = KeePassKeyBox.Text.Trim();
             RefreshKeePassStatus();
-            foreach (var w in _configuration.Workflows)
-            {
-                AutomationEngine.ValidateUrl(w.StartUrl);
-                if (!string.IsNullOrWhiteSpace(w.DestinationUrl)) AutomationEngine.ValidateUrl(w.DestinationUrl);
-                if (!string.IsNullOrWhiteSpace(w.CredentialOrigin))
-                {
-                    AutomationEngine.ValidateUrl(w.CredentialOrigin);
-                    if (!new Uri(w.CredentialOrigin).Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
-                        throw new ArgumentException($"{w.Name}: Trusted login origin must use HTTPS.");
-                }
-                if (!string.IsNullOrWhiteSpace(w.PasswordCredentialOrigin))
-                {
-                    AutomationEngine.ValidateUrl(w.PasswordCredentialOrigin);
-                    if (!new Uri(w.PasswordCredentialOrigin).Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
-                        throw new ArgumentException($"{w.Name}: Trusted password page must use HTTPS.");
-                }
-            }
-            _store.SaveDurable(_configuration);
+            // The service validates every website before durable persistence.
+            // UI never signals a completed save unless that boundary succeeds.
+            _workflowConfiguration.Save(_configuration);
             MarkSaved();
             try
             {
-                if (_configuration.PreferTaskSchedulerAutostart)
-                {
-                    TaskSchedulerService.Apply(_configuration.StartWithWindows);
-                    StartupService.Apply(false); // avoid double-start via Run key
-                }
-                else
-                {
-                    TaskSchedulerService.Apply(false);
-                    StartupService.Apply(_configuration.StartWithWindows);
-                }
+                _startupRegistration.Apply(_configuration.StartWithWindows,
+                    _configuration.PreferTaskSchedulerAutostart);
             }
             catch (Exception ex)
             {
