@@ -59,6 +59,26 @@ using (var gesture = new TeachRecorder(page))
     Assert(gesture.Drain().Count == 0, "canceled pointer gestures never become saved button clicks");
 }
 
+// A pointer may go down on an icon inside a button and come up over
+// the button's own label/background. The browser's click target is then
+// the common parent, not the original child: still one valid click.
+using (var nested = new TeachRecorder(page))
+{
+    await Fixture(page, "<button id='nested' style='width:260px;height:70px'><span id='inner' style='display:inline-block;width:40px;height:28px'>Icon</span> Continue</button>");
+    await nested.SynchronizeAsync();
+    await Flush(page);
+    var childBox = (await page.Locator("#inner").BoundingBoxAsync())!;
+    var parentBox = (await page.Locator("#nested").BoundingBoxAsync())!;
+    await page.Mouse.MoveAsync(childBox.X + childBox.Width / 2, childBox.Y + childBox.Height / 2);
+    await page.Mouse.DownAsync();
+    await page.Mouse.MoveAsync(parentBox.X + parentBox.Width - 15, parentBox.Y + parentBox.Height / 2);
+    await page.Mouse.UpAsync();
+    await Flush(page);
+    Assert(nested.Drain().Count == 1, "click inside same nested button is captured once despite pointer retarget");
+    var health = await nested.InspectConnectionAsync();
+    Assert(health == "ready", "recorder reports active page binding without exposing page content");
+}
+
 using var first = new TeachRecorder(page);
 await first.SynchronizeAsync();
 await Fixture(page, "<button id='go'>Go</button>");
