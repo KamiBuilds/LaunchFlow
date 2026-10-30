@@ -2,6 +2,7 @@
 namespace System.Windows
 {
     public class RoutedEventArgs : EventArgs { }
+    public enum Visibility { Visible, Collapsed }
     public enum MessageBoxButton { OK, YesNo }
     public enum MessageBoxImage { Warning, Information, Question }
     public enum MessageBoxResult { Yes, No }
@@ -54,6 +55,7 @@ namespace LaunchFlow
         public object? Content { get; set; }
         public string? Text { get; set; }
         public bool IsEnabled { get; set; } = true;
+        public System.Windows.Visibility Visibility { get; set; } = System.Windows.Visibility.Visible;
         private object? _selectedItem;
         public List<object> SelectedItems { get; } = new();
         public object? SelectedItem
@@ -95,6 +97,9 @@ namespace LaunchFlow
     {
         private readonly TestControl CaptureToggle = new();
         private readonly TestControl CaptureStatus = new();
+        private readonly TestControl TargetStatus = new();
+        private readonly TestControl RecordedCountLabel = new();
+        private readonly TestControl EmptyStepsHint = new();
         private readonly TestControl StepList = new();
         private readonly TestControl SaveStepsButton = new();
         private void InitializeComponent() => Closed += Window_Closed;
