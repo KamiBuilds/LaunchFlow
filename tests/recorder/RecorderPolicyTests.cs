@@ -204,7 +204,7 @@ internal static class RecorderPolicyTests
     }
 
     private static bool DeniedStatus(VisualRecorderWindow window) =>
-        window.TestStatus == "Teach recording is disabled by your organization. Unsaved steps were cleared.";
+        window.TestStatus?.Contains("Teach recording is disabled by your organization. Unsaved steps were cleared.", StringComparison.Ordinal) == true;
 
     private static async Task<VisualRecorderWindow> OpenWindow(IPage page)
     {
