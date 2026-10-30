@@ -9,8 +9,8 @@
     <PackageReference Include="Microsoft.Playwright" Version="1.63.0" />
     <Compile Include="../../LaunchFlow/Services/TeachRecorder*.cs" Link="Services/%(Filename)%(Extension)" />
     <Compile Include="../../LaunchFlow/VisualRecorderWindow.xaml.cs" Link="VisualRecorderWindow.xaml.cs" />
-    <Compile Include="../../LaunchFlow/Services/AutomationEngine.cs" Link="Services/AutomationEngine.cs" />
-    <Compile Include="../../LaunchFlow/Services/AutomationEngine.Browser.cs" Link="Services/AutomationEngine.Browser.cs" />
+    <!-- Compile exactly the production engine partials, not a core-only approximation. -->
+    <Compile Include="../../LaunchFlow/Services/AutomationEngine*.cs" Link="Services/%(Filename)%(Extension)" />
     <Compile Include="../../LaunchFlow/Services/BrowserInstallations.cs" Link="Services/BrowserInstallations.cs" />
     <Compile Include="../../LaunchFlow/Services/LoginHealth.cs" Link="Services/LoginHealth.cs" />
     <Compile Include="../../LaunchFlow/Services/EnterprisePolicy.cs" Link="Services/EnterprisePolicy.cs" />
