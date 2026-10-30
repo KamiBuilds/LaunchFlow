@@ -1,3 +1,17 @@
+# v0.7.40 — Encrypted auto-save
+
+- Add a 900 ms debounced auto-save for website and application-setting edits. Validation and encrypted durable persistence complete before the UI reports that changes are saved.
+- Auto-save manually edited or added workflow steps, including waits and navigation actions. Recorder-captured actions are committed immediately with `ConfigStore.SaveDurable`, not a potentially volatile in-memory fallback.
+- Preserve the existing create-workflow immediate encrypted save and explicit pre-test save barrier.
+- Display **Unsaved changes**, **Saving…**, **All changes saved**, or **Save failed**. Failed writes keep changes dirty, show **Retry save** even when the toolbar is compact, and do not produce repeated modal prompts.
+- Never auto-save entered password/username secrets: these remain protected behind **Settings → Passwords → Save credentials**.
+- Pause auto-save while vault is locked, a recorder/editor is active, Windows is locked, or application shutdown is in progress; retain pending changes for existing exit/update gates.
+- Avoid repeatedly registering Windows autostart tasks on every unrelated edit by caching the last successfully applied registration preference.
+- Add pure scheduler unit tests for debounce, lock deferral, failure retention and retry, plus WPF source contract tests.
+- Carry forward the balanced centered toolbar fix from v0.7.39, and bump application, installer, UI tests and inventory to v0.7.40.
+
+**Development build only.** CI and synthetic browser tests do not substitute for interactive Windows testing or publisher signing. Existing encrypted vault format and profile paths remain unchanged.
+
 # v0.7.39 — Balanced main toolbar
 
 - Rebuild the custom-window action toolbar as a symmetrical three-column WPF Grid, with equal-width left and right columns and an auto-sized true-center column.
