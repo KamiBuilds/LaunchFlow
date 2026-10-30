@@ -155,7 +155,7 @@
              the exact horizontal center, regardless of the lengths of the left
              save/status and right help groups. No absolute pixel positioning. -->
         <Grid x:Name="ActionToolbar" Grid.Row="1" Margin="0,6,0,6"
-              VerticalAlignment="Center">
+              SizeChanged="ActionToolbar_SizeChanged" VerticalAlignment="Center">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="Auto"/>
