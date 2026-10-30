@@ -22,6 +22,8 @@ namespace LaunchFlow;
 public partial class MainWindow : Window
 {
     private readonly ConfigStore _store = new();
+    private readonly WorkflowConfigurationService _workflowConfiguration;
+    private readonly StartupRegistrationService _startupRegistration;
     private readonly MasterPasswordService _master = new();
     private TutorialWindow? _tutorial;
     private bool _hasUnsavedChanges;
@@ -127,6 +129,10 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
+        // Inject the persistence, URL policy and Windows registration adapters.
+        // The domain services themselves never depend on WPF or machine state.
+        _workflowConfiguration = new WorkflowConfigurationService(_store.SaveDurable, AutomationEngine.ValidateUrl);
+        _startupRegistration = new StartupRegistrationService(TaskSchedulerService.Apply, StartupService.Apply);
         InitializeComponent();
         HeaderVersionLabel.Text = "v" + AppInfo.VersionString;
         CurrentVersionLabel.Text = "Installed version " + AppInfo.VersionString;
@@ -588,7 +594,7 @@ public partial class MainWindow : Window
         });
     }
 
-    private TimeSpan LockTimeout => TimeSpan.FromMinutes(Math.Clamp(_configuration.VaultLockMinutes, 1, 120));
+    private TimeSpan LockTimeout => SessionLockPolicy.Timeout(_configuration.VaultLockMinutes);
 
     private bool AutomationAllowed(WebsiteWorkflow? workflow = null)
     {
