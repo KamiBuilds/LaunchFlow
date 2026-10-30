@@ -61,7 +61,9 @@ public partial class MainWindow
 
     private void MarkUnsavedChanges()
     {
-        if (_loadingEditor || _configuration is null || _exiting) return;
+        if (_loadingEditor || _configuration is null || _exiting || _autoSaving) return;
+        _autoSaveSchedule.Changed(DateTimeOffset.UtcNow);
+        _autoSaveTimer.Start();
         _hasUnsavedChanges = true;
         SaveStatusLabel.Text = "Unsaved changes";
         SaveStatusLabel.Foreground = new System.Windows.Media.SolidColorBrush(
@@ -72,6 +74,8 @@ public partial class MainWindow
 
     private void MarkSaved()
     {
+        _autoSaveSchedule.Saved();
+        _autoSaveTimer.Stop();
         _hasUnsavedChanges = false;
         SaveStatusLabel.Text = "All changes saved";
         SaveStatusLabel.Foreground = new System.Windows.Media.SolidColorBrush(
@@ -115,8 +119,13 @@ public partial class MainWindow
             MarkSaved();
             try
             {
-                _startupRegistration.Apply(_configuration.StartWithWindows,
+                var preference = (_configuration.StartWithWindows,
                     _configuration.PreferTaskSchedulerAutostart);
+                if (_lastAppliedStartupRegistration != preference)
+                {
+                    _startupRegistration.Apply(preference.StartWithWindows, preference.PreferTaskSchedulerAutostart);
+                    _lastAppliedStartupRegistration = preference;
+                }
             }
             catch (Exception ex)
             {
@@ -139,7 +148,18 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "Cannot save LaunchFlow", MessageBoxButton.OK, MessageBoxImage.Warning);
+            // Debounced saves must never pop up a modal dialog on every invalid
+            // keystroke. Preserve the dirty state and allow explicit retry.
+            if (!_autoSaving)
+            {
+                ShowAutoSaveFailed();
+                MessageBox.Show(this, ex.Message, "Cannot save LaunchFlow",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            else
+            {
+                AppendLog("Automatic save could not complete: " + ex.GetType().Name);
+            }
             return false;
         }
     }
