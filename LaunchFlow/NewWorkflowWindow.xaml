@@ -94,7 +94,7 @@
               <TextBlock Text="Password" FontWeight="SemiBold"/>
               <PasswordBox x:Name="PasswordBox" IsEnabled="{Binding IsChecked, ElementName=AutoLoginCheck}" Margin="0,6,0,0" Height="36" Background="#0D1522"
                            Foreground="White" BorderBrush="#354358" Padding="10,8"/>
-              <TextBlock Text="Using KeePassXC? After creating this website, open Passwords and choose your KeePassXC login. No paths to type."
+              <TextBlock Text="Using KeePassXC? After creating this website, open Settings → Passwords and choose your KeePassXC login. No paths to type."
                          Foreground="#B4CCDB" Margin="0,12,0,0" TextWrapping="Wrap"/>
       
             </StackPanel>
