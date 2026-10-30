@@ -49,9 +49,9 @@ public partial class App : Application
             {
                 MessageBox.Show(
                     "LaunchFlow encountered a UI error and locked the credential vault. " +
-                    "Browser sessions are retained until coordinated cleanup completes.\\n\\n" +
-                    $"Diagnostic: {error.GetType().Name} (0x{unchecked((uint)error.HResult):X8})\\n" +
-                    "Log: %LOCALAPPDATA%\\\\LaunchFlow\\\\startup-diagnostics.log\\n\\n" +
+                    "Browser sessions are retained until coordinated cleanup completes.\n\n" +
+                    $"Diagnostic: {error.GetType().Name} (0x{unchecked((uint)error.HResult):X8})\n" +
+                    "Log: %LOCALAPPDATA%\\LaunchFlow\\startup-diagnostics.log\n\n" +
                     "Restart LaunchFlow. If this error returns, send the last log entries so " +
                     "the failing component can be fixed without deleting your passwords.",
                     "LaunchFlow startup error", MessageBoxButton.OK, MessageBoxImage.Error);
