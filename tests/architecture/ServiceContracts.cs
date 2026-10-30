@@ -100,4 +100,28 @@ Check(SessionLockPolicy.Timeout(0) == TimeSpan.FromMinutes(1) &&
 Throws<ArgumentOutOfRangeException>(() => SessionLockPolicy.RequiresVaultLock(TimeSpan.Zero, TimeSpan.Zero),
     "nonpositive lock policy threshold is rejected");
 
+// Debounced edits only become eligible after the delay. No transient
+// validation error is allowed to produce a save/retry storm.
+var t0 = new DateTimeOffset(2026, 10, 30, 10, 0, 0, TimeSpan.Zero);
+var autosave = new AutoSaveSchedule();
+autosave.Changed(t0);
+Check(autosave.HasPendingChanges && !autosave.Ready(t0.AddMilliseconds(899), true),
+    "autosave waits for the debounce interval");
+Check(!autosave.Ready(t0.AddSeconds(5), false),
+    "locked or editing state defers autosave even after debounce");
+Check(autosave.Ready(t0.AddMilliseconds(900), true),
+    "autosave becomes eligible at the exact debounce threshold");
+autosave.Attempted();
+Check(!autosave.Ready(t0.AddSeconds(3), true) && autosave.HasPendingChanges,
+    "failed autosave retains dirty data without retry storms");
+autosave.Changed(t0.AddSeconds(3));
+Check(!autosave.Ready(t0.AddSeconds(3).AddMilliseconds(500), true) &&
+      autosave.Ready(t0.AddSeconds(3).AddMilliseconds(901), true),
+    "next user edit safely retries after a new debounce interval");
+autosave.Saved();
+Check(!autosave.HasPendingChanges && !autosave.Ready(t0.AddSeconds(10), true),
+    "confirmed durable save clears the pending state");
+Throws<ArgumentOutOfRangeException>(() => new AutoSaveSchedule(TimeSpan.Zero),
+    "invalid zero auto-save delay is rejected");
+
 Console.WriteLine("PASS all pure architecture contracts");
