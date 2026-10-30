@@ -69,7 +69,8 @@ public partial class MainWindow
         SaveStatusLabel.Foreground = new System.Windows.Media.SolidColorBrush(
             System.Windows.Media.Color.FromRgb(255, 202, 111));
         SaveChangesButton.FontWeight = FontWeights.Bold;
-        SaveChangesButton.ToolTip = _hasUnsavedChanges ? "Website changes have not been saved" : null;
+        SaveChangesButton.Content = "Save changes";
+        SaveChangesButton.ToolTip = "Changes are waiting for encrypted automatic save. Click to save immediately.";
     }
 
     private void MarkSaved()
@@ -81,6 +82,7 @@ public partial class MainWindow
         SaveStatusLabel.Foreground = new System.Windows.Media.SolidColorBrush(
             System.Windows.Media.Color.FromRgb(133, 201, 185));
         SaveChangesButton.FontWeight = FontWeights.Normal;
+        SaveChangesButton.Content = "Save changes";
         SaveChangesButton.ToolTip = "Latest changes saved to the encrypted vault";
     }
 
