@@ -65,7 +65,8 @@ public partial class MainWindow
         SaveStatusLabel.Text = "Save failed";
         SaveStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(255, 155, 134));
         SaveChangesButton.FontWeight = FontWeights.Bold;
+        SaveChangesButton.Content = "Retry save";
         SaveChangesButton.ToolTip =
-            "Changes are NOT saved. Fix invalid fields or storage access, then click Save changes.";
+            "Changes are NOT saved. Fix invalid fields or storage access, then click Retry save.";
     }
 }
