@@ -221,7 +221,6 @@ public partial class MainWindow : Window
         LocalizationService.ActiveLanguage = _configuration.UiLanguage;
         string Text(string english) => LocalizationService.Text(english, _configuration.UiLanguage);
         WorkflowsNav.Content = Text("Websites");
-        PasswordsNav.Content = Text("Passwords");
         SettingsNav.Content = Text("Settings");
         SaveWorkspaceButton.Content = Text("Save");
         PreviewWorkspaceButton.Content = Text("Preview");
@@ -232,7 +231,7 @@ public partial class MainWindow : Window
         Language = System.Windows.Markup.XmlLanguage.GetLanguage(LocalizationService.ResolveLanguage(_configuration.UiLanguage));
         foreach (var (control, name) in new (DependencyObject Control, string Name)[]
         {
-            (WorkflowsNav, "Workflows"), (PasswordsNav, "Passwords"), (SettingsNav, "Settings"),
+            (WorkflowsNav, "Workflows"), (SettingsNav, "Settings"),
             (SaveWorkspaceButton, "Save workspace"), (RunWorkspaceButton, "Run selected workspace"),
             (RunAllButton, "Run all enabled websites"), (StopButton, "Stop"),
             (WorkspaceCombo, "Saved workspace selector"), (WorkspaceNameBox, "Workspace name"),
@@ -292,22 +291,18 @@ public partial class MainWindow : Window
         MarkUnsavedChanges();
     }
 
-    private void OpenSettingsStartup_Click(object sender, RoutedEventArgs e) => OpenSettingsCategory(1);
-    private void OpenSettingsSecurity_Click(object sender, RoutedEventArgs e) => OpenSettingsCategory(2);
-    private void OpenSettingsUpdates_Click(object sender, RoutedEventArgs e) => OpenSettingsCategory(3);
-    private void OpenSettingsShortcuts_Click(object sender, RoutedEventArgs e) => OpenSettingsCategory(4);
-    private void OpenSettingsAdvanced_Click(object sender, RoutedEventArgs e) => OpenSettingsCategory(5);
-    private void OpenSettingsImportExport_Click(object sender, RoutedEventArgs e) => OpenSettingsCategory(6);
+    private void OpenSettingsStartup_Click(object sender, RoutedEventArgs e) => OpenSettingsCategory(2);
+    private void OpenSettingsSecurity_Click(object sender, RoutedEventArgs e) => OpenSettingsCategory(3);
+    private void OpenSettingsUpdates_Click(object sender, RoutedEventArgs e) => OpenSettingsCategory(4);
+    private void OpenSettingsShortcuts_Click(object sender, RoutedEventArgs e) => OpenSettingsCategory(5);
+    private void OpenSettingsAdvanced_Click(object sender, RoutedEventArgs e) => OpenSettingsCategory(6);
+    private void OpenSettingsImportExport_Click(object sender, RoutedEventArgs e) => OpenSettingsCategory(7);
 
-    private void OpenWebsiteAdvancedSignIn_Click(object sender, RoutedEventArgs e)
-    {
-        MainTabs.SelectedIndex = 2;
-        OpenSettingsCategory(5);
-    }
+    private void OpenWebsiteAdvancedSignIn_Click(object sender, RoutedEventArgs e) => OpenSettingsCategory(6);
 
     private void OpenSettingsCategory(int index)
     {
-        MainTabs.SelectedIndex = 2;
+        MainTabs.SelectedIndex = 1;
         if (index >= 0 && index < SettingsTabs.Items.Count)
             SettingsTabs.SelectedIndex = index;
     }
@@ -573,7 +568,7 @@ public partial class MainWindow : Window
         ClearCredentialEditor();
         PasswordSiteName.Text = w.Name;
         CredentialStatus.Text = DescribeCredentialStatus(w);
-        if (MainTabs.SelectedIndex == 1 && PasswordSessionIsValid()) LoadCredentialEditor(w);
+        if (MainTabs.SelectedIndex == 1 && SettingsTabs.SelectedIndex == 1 && PasswordSessionIsValid()) LoadCredentialEditor(w);
         StepList.ItemsSource = w.Steps;
         StepList.Items.Refresh();
         _loadingEditor = false;
@@ -638,10 +633,10 @@ public partial class MainWindow : Window
             _passwordSessionExpiresUtc = DateTimeOffset.MinValue;
             ClearCredentialEditor();
             PasswordSessionLabel.Text = "Locked · unlock to manage saved credentials.";
-            if (MainTabs.SelectedIndex == 1)
+            if (MainTabs.SelectedIndex == 1 && SettingsTabs.SelectedIndex == 1)
             {
                 _revertingTab = true;
-                try { MainTabs.SelectedIndex = 0; }
+                try { SettingsTabs.SelectedIndex = 0; }
                 finally { _revertingTab = false; }
             }
             AppendLog(reason);
@@ -1978,8 +1973,8 @@ public partial class MainWindow : Window
             }
             else
             {
-                MainTabs.SelectedIndex = 2;
-                SettingsTabs.SelectedIndex = 2;
+                MainTabs.SelectedIndex = 1;
+                SettingsTabs.SelectedIndex = 3;
                 MessageBox.Show(this,
                     "First choose your KeePassXC database in Settings → Security. Then return to Passwords and click Choose KeePassXC login.",
                     "Connect KeePassXC", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -2444,36 +2439,38 @@ public partial class MainWindow : Window
     private void TopNavigation_Click(object sender, RoutedEventArgs e)
     {
         if (ReferenceEquals(sender, WorkflowsNav)) MainTabs.SelectedIndex = 0;
-        else if (ReferenceEquals(sender, PasswordsNav)) MainTabs.SelectedIndex = 1;
-        else if (ReferenceEquals(sender, SettingsNav)) MainTabs.SelectedIndex = 2;
+        else if (ReferenceEquals(sender, SettingsNav)) MainTabs.SelectedIndex = 1;
         SyncTopNavigation();
     }
 
     private void SyncTopNavigation()
     {
         WorkflowsNav.IsChecked = MainTabs.SelectedIndex == 0;
-        PasswordsNav.IsChecked = MainTabs.SelectedIndex == 1;
-        SettingsNav.IsChecked = MainTabs.SelectedIndex == 2;
+        SettingsNav.IsChecked = MainTabs.SelectedIndex == 1;
     }
 
-    private void MainTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    // The password editor is a secured Settings category, not a separate
+    // top-level workspace. Authorization is required before showing it; leaving
+    // the category clears pending secret inputs but retains the one-hour session.
+    private void SettingsTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        // During InitializeComponent, WPF can select the first TabItem before
-        // its password editor and the rest of the named controls exist. Never
-        // execute credential or navigation logic against half-built XAML.
-        if (_configuration is null || MainTabs is null ||
-            WorkflowsNav is null || PasswordsNav is null || SettingsNav is null ||
-            UsernameBox is null || PasswordInput is null) return;
-        if (!ReferenceEquals(e.OriginalSource, MainTabs)) return;
-        if (_revertingTab) { SyncTopNavigation(); return; }
-        if (MainTabs.SelectedIndex == 1)
+        if (_configuration is null || SettingsTabs is null || MainTabs is null ||
+            UsernameBox is null || PasswordInput is null || _revertingTab ||
+            !ReferenceEquals(e.OriginalSource, SettingsTabs) || MainTabs.SelectedIndex != 1)
+            return;
+        UpdatePasswordSettingsAccess();
+    }
+
+    private void UpdatePasswordSettingsAccess()
+    {
+        if (SettingsTabs.SelectedIndex == 1)
         {
             if (!PasswordSessionIsValid() && !RequireMasterPassword())
             {
                 _revertingTab = true;
-                MainTabs.SelectedIndex = 0;
-                _revertingTab = false;
-                SyncTopNavigation();
+                try { SettingsTabs.SelectedIndex = 0; }
+                finally { _revertingTab = false; }
+                ClearCredentialEditor();
                 return;
             }
             if (_selected is not null) LoadCredentialEditor(_selected);
@@ -2481,12 +2478,22 @@ public partial class MainWindow : Window
         }
         else
         {
-            // Retain authorization for up to an hour, but don't leave credentials
-            // sitting in hidden text controls while browsing other tabs.
-            try { ApplyCurrentEditor(); }
-            catch (Exception ex) { AppendLog("Could not save credential edits: " + ex.GetType().Name); }
+            // Never leave unsaved credential input values in inactive tabs.
             ClearCredentialEditor();
         }
+    }
+
+    private void MainTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_configuration is null || MainTabs is null || SettingsTabs is null ||
+            WorkflowsNav is null || SettingsNav is null ||
+            UsernameBox is null || PasswordInput is null) return;
+        if (!ReferenceEquals(e.OriginalSource, MainTabs)) return;
+        if (_revertingTab) { SyncTopNavigation(); return; }
+        if (MainTabs.SelectedIndex == 1)
+            UpdatePasswordSettingsAccess();
+        else
+            ClearCredentialEditor();
         SyncTopNavigation();
     }
 
@@ -2606,8 +2613,8 @@ public partial class MainWindow : Window
         }
         if (!RequireMasterPassword(forcePrompt: true)) return;
 
-        MainTabs.SelectedIndex = 2; // Settings
-        try { SettingsTabs.SelectedIndex = SettingsTabs.Items.Count - 1; } catch { /* optional */ }
+        MainTabs.SelectedIndex = 1; // Settings
+        try { SettingsTabs.SelectedIndex = 7; } catch { /* optional */ }
         var prompt = new SecretPromptWindow("Open your export",
             "Enter the password used to export this file.")
         { Owner = this };
