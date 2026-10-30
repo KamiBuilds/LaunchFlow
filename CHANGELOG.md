@@ -1,3 +1,14 @@
+# v0.7.37 — Architecture refactor without data migration
+
+- Split the original monolithic WPF MainWindow code-behind into cohesive partial modules for UI shell, websites, workflow persistence, execution, recorder workflow, settings navigation, credentials, password sessions, KeePassXC, import/export, workspaces, Windows lock events and startup experience.
+- Separate AutomationEngine login flow, explicit sign-in confirmation and workflow step execution into documented partial modules. The core retains lifecycle, policy gating, ownership and cancellation.
+- Preserve method bodies and shared state in this controlled phase; this is an incremental maintainability refactor, not yet a full MVVM or dependency-injection conversion.
+- Update source-linked regression tests to read the current production partials; enforce one owner per key method and a smaller core size using `tests/architecture/check_partials.py`.
+- Add a versioned, complete Git-tracked file inventory (`tools/Count-LaunchFlow-Lines.py`) to the Windows installer artifact.
+- Version bump across assembly, installer and CI tests to **v0.7.37**. Retain vault schema, credentials, workflow identifiers, profile paths and installer AppId.
+
+**Development test build only.** A passing CI installer does not constitute hands-on Windows acceptance or approved Authenticode signing. Do not migrate or delete a user's vault during installation.
+
 # v0.7.36 — Recorder reliability and cleaner action layouts
 
 - Recorder accepts legitimate pointer clicks that retarget from a nested icon or child element to the same button; canceled drags remain excluded.
