@@ -2,7 +2,7 @@ name: LaunchFlow Windows UI and installer smoke
 
 on:
   push:
-    branches: [both-2, both-3, chatgpt-next, chatgpt-safety-hardening-20261028, chatgpt-selective-safety-review-20261029, chatgpt-appcontrol-startup-20261029, chatgpt-trusted-distribution-20261029, chatgpt-ux-clarity-20261029, chatgpt-ux-clarity-v0.7.34-upload-20261029]
+    branches: [both-2, both-3, chatgpt-next, chatgpt-safety-hardening-20261028, chatgpt-selective-safety-review-20261029, chatgpt-appcontrol-startup-20261029, chatgpt-trusted-distribution-20261029, chatgpt-ux-clarity-20261029, chatgpt-ux-clarity-v0.7.34-upload-20261029, fix/v0.7.34-startup-diagnostics-20261030]
   pull_request:
     branches: [both]
 
