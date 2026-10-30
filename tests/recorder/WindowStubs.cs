@@ -118,6 +118,6 @@ namespace LaunchFlow
         public void TestEditStep(string type, string target) => EditNew(new Models.WorkflowStep { Type = type, Target = target });
         public Task TestWaitForUpdatesAsync() => _recorder.SynchronizeAsync();
         public bool TestToggleEnabled => CaptureToggle.IsEnabled;
-        public string? TestStatus => CaptureStatus.Text;
+        public string? TestStatus => (CaptureStatus.Text ?? "") + " " + (TargetStatus.Text ?? "");
     }
 }
