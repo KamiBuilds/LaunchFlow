@@ -734,7 +734,7 @@ namespace LaunchFlow.Services
     }
     static class LoginHealth { public sealed record Health(bool NeedsAttention, string Reason); public static Task<Health> InspectAsync(Microsoft.Playwright.IPage page) => Task.FromResult(new Health(false, "")); }
     static class CrashLog { public static void Write(string label, Exception ex) { } }
-    static class StartupDiagnostics { public enum Stage { UiUnhandledException, FatalException } public static void Record(Stage stage, Exception? ex = null) { } }
+    static class StartupDiagnostics { public enum Stage { UiUnhandledException, FatalException } public static void Record(Stage stage, Exception? ex = null) { } public static Exception? RootCause(Exception? ex) => ex; }
     sealed class AutomationEngine
     {
         public sealed record LoginAttention(Guid WorkflowId, string WorkflowName, string Reason);
