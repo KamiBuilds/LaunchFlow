@@ -855,34 +855,45 @@ public partial class MainWindow : Window
             if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked) return;
             var next = wizard.CreatedWorkflow;
             if (next is null) return;
+            // Show the next-step dialog once, only for a genuinely first
+            // website. Upgraded users with existing websites are not interrupted.
+            var firstWebsite = _configuration.Workflows.Count == 0 &&
+                !_configuration.FirstWebsiteGuidanceShown;
+            var previousShortcutTip = _configuration.ShortcutTipShown;
             try
             {
-                // Store each website's credentials under its unique workflow ID.
+                // The encrypted credentials and website settings must persist
+                // before showing any nonessential UI message.
                 if (!string.IsNullOrEmpty(wizard.NewPassword))
                     _vault.Save(next.Id, new(wizard.NewUsername, wizard.NewPassword));
                 _configuration.Workflows.Add(next);
-                _store.Save(_configuration);
-                RefreshWorkflowList(next);
-                AppendLog($"Created website '{next.Name}' with " +
-                    (next.AutoLogin ? "an encrypted login." : "no automatic login."));
-                var firstWebsite = !_configuration.ShortcutTipShown;
                 if (firstWebsite)
                 {
-                    _configuration.ShortcutTipShown = true;
-                    _store.Save(_configuration);
+                    _configuration.FirstWebsiteGuidanceShown = true;
+                    _configuration.ShortcutTipShown = true; // avoid a second first-use dialog on Save
                 }
-                MessageBox.Show(this,
-                    WebsiteNextStepGuidance.ForCreatedWebsite(next.Name, next.AutoLogin, firstWebsite),
-                    WebsiteNextStepGuidance.DialogTitle(firstWebsite),
-                    MessageBoxButton.OK, MessageBoxImage.Information);
+                _store.SaveDurable(_configuration);
             }
             catch (Exception ex)
             {
                 _configuration.Workflows.Remove(next);
-                try { _vault.Delete(next.Id); } catch { }
+                _configuration.FirstWebsiteGuidanceShown = false;
+                _configuration.ShortcutTipShown = previousShortcutTip;
+                try { _vault.Delete(next.Id); } catch { /* preserve recovery on partial storage error */ }
                 MessageBox.Show(this, "The new website could not be saved: " + ex.Message,
                     "Create website", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
             }
+            RefreshWorkflowList(next);
+            AppendLog($"Created website '{next.Name}' with " +
+                (next.AutoLogin ? "an encrypted login." : "no automatic login."));
+            // No repeated confirmation modal; the new website is selected and
+            // Test this site is immediately available.
+            if (firstWebsite)
+                MessageBox.Show(this,
+                    WebsiteNextStepGuidance.ForCreatedWebsite(next.Name, next.AutoLogin, true),
+                    WebsiteNextStepGuidance.DialogTitle(true),
+                    MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
