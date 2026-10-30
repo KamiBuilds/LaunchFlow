@@ -285,7 +285,9 @@ public partial class MainWindow : Window
 
     private void LoginModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_loadingEditor) return;
+        // SelectedIndex="0" in XAML fires before the AutoLoginCheck control
+        // exists; startup selection is not a user edit.
+        if (_loadingEditor || _configuration is null || AutoLoginCheck is null) return;
         AutoLoginCheck.IsChecked = WebsiteLoginMode.UsesSavedPassword(SelectedLoginMode(LoginModeCombo.SelectedIndex));
         MarkUnsavedChanges();
     }
@@ -794,7 +796,10 @@ public partial class MainWindow : Window
 
     private void WorkflowList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_loadingEditor) return;
+        // Item selection can be raised during XAML construction; the editor
+        // and vault-backed configuration are not yet available at that point.
+        if (_loadingEditor || _configuration is null || WorkflowList is null ||
+            WorkflowEmptyState is null || NameBox is null) return;
         try { ApplyCurrentEditor(); }
         catch (Exception ex)
         {
@@ -1223,6 +1228,7 @@ public partial class MainWindow : Window
 
     private void WorkspaceCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (WorkspaceCombo is null || WorkspaceNameBox is null) return;
         if (WorkspaceCombo.SelectedItem is WorkspaceProfile profile)
             WorkspaceNameBox.Text = profile.Name;
         if (_configuration is not null) UpdateRunButtons();
@@ -1916,6 +1922,7 @@ public partial class MainWindow : Window
 
     private void KeePassDbSuggestion_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (_configuration is null || KeePassDbSuggestions is null || KeePassDbBox is null) return;
         if (KeePassDbSuggestions.SelectedItem is KeePassXcService.DatabaseChoice selected)
         {
             SetKeePassDatabase(selected.Path);
