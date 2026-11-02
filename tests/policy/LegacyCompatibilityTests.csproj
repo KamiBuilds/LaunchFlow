@@ -16,6 +16,7 @@
   </Target>
   <ItemGroup>
     <Compile Include="LegacyCompatibilityProgram.cs" />
+    <Compile Include="PlatformStubs.cs" />
     <Compile Include="CompatibilityTests.cs" />
     <Compile Include="../../LaunchFlow/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
     <Compile Include="../../LaunchFlow/Services/EnterprisePolicy.cs" Link="EnterprisePolicy.cs" />
