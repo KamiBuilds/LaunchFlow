@@ -233,7 +233,7 @@ check('1. Which website?' in wizard_xml and
 check('Click Add website.' in tutorial_code and 'Run all opens every enabled website.' in tutorial_code,
       "getting-started tutorial reflects the revised workflow")
 check('Text="No websites yet"' in main_xml and
-      'Currently selected website:' in main_xml and
+      'Choose exactly which website account to edit' in main_xml and
       'How should LaunchFlow sign in?' in main_xml and
       'Click="OpenWebsiteAdvancedSignIn_Click"' in main_xml and
       'SelectionChanged="SettingsTabs_SelectionChanged"' in main_xml and
