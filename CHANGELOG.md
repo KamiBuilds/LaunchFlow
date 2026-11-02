@@ -1,3 +1,15 @@
+# v0.7.44 — Adaptive one-page and two-stage login (development preview)
+
+- Detect a visible username and password on the same page and fill both normally.
+- Detect email-first pages, safely advance via a unique recognized Next/Log In button, then fill the password after navigation.
+- Resume from an already-open password page, including when the earlier username field is missing or read-only.
+- If the final submit selector is unavailable, recognize a unique local password-form Sign In/Log In button without requiring a recording. Never guess among multiple candidates.
+- Keep existing HTTPS, session/vault, credential-document and origin approval guards. A new IdP origin requires explicit approval; MFA, SSO handoffs and challenges remain manual.
+- Add isolated real-Chromium regression cases for both form layouts, mismatched second-stage buttons, resumed sessions and ambiguous submits; preserve the cross-origin and MFA tests.
+- Increment version numbers without changing encrypted vault schema, workflow IDs, profile locations or installer AppId.
+
+**Unsigned development preview.** Browser fixture tests do not constitute live ThousandEyes verification or native Windows installer acceptance.
+
 # v0.7.43 — Automatic email-first / password-second login
 
 - LaunchFlow now handles ordinary staged login pages without recording separate username/Next/password actions. After filling the username it identifies a single visible Log In / Next / Continue button, safely clicks it on the previously approved document, waits for the password stage, and fills/submits saved credentials.
