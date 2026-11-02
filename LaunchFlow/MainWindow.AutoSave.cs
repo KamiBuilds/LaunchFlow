@@ -53,9 +53,10 @@ public partial class MainWindow
         finally
         {
             _autoSaving = false;
-            // A failed write is retried on a new edit or an explicit Save.
-            // Keep pending changes in memory for the existing close/update gate.
-            _autoSaveTimer.Stop();
+            // Reentrant edits during an in-flight save re-arm the timer.
+            // A failed write stays dirty without retrying continuously.
+            if (_autoSaveSchedule.CanAttempt) _autoSaveTimer.Start();
+            else _autoSaveTimer.Stop();
         }
     }
 
