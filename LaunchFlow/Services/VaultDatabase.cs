@@ -44,9 +44,16 @@ public sealed class VaultDatabase
     private Configuration? _configCache;
     private Dictionary<Guid, SiteCredential>? _secretsCache;
 
-    public string DatabasePath { get; } =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+    // Production uses the exact original location. An explicit synthetic
+    // directory can be used by test harnesses without touching user data.
+    public VaultDatabase(string? databasePath = null)
+    {
+        DatabasePath = databasePath ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "LaunchFlow", "launchflow.db");
+    }
+
+    public string DatabasePath { get; }
 
     public string DataDirectory =>
         Path.GetDirectoryName(DatabasePath)
