@@ -21,6 +21,10 @@ public sealed class AutoSaveSchedule
 
     public bool HasPendingChanges { get; private set; }
 
+    // A new edit can re-arm auto-save after a previous attempt; a failed
+    // write must not create a timer-driven retry storm.
+    public bool CanAttempt => HasPendingChanges && !_attempted;
+
     public void Changed(DateTimeOffset nowUtc)
     {
         HasPendingChanges = true;
