@@ -33,6 +33,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Source invariants failed' }
       - name: Validate independently testable service contracts
         run: dotnet run --project tests/architecture/ServiceContracts.csproj -c Release -p:TreatWarningsAsErrors=true
+      - name: Verify real encrypted SQLite save/reopen and stale vault authorizations
+        run: dotnet run --project tests/save/EncryptedSaveTests.csproj -c Release -p:TreatWarningsAsErrors=true
       - name: Run production-linked workspace model regressions
         run: dotnet run --project tests/workspaces/WorkspaceTests.csproj -c Release -p:TreatWarningsAsErrors=true
       - name: Run production-linked UI orchestration regressions
