@@ -1,6 +1,6 @@
 # LaunchFlow
 
-> **v0.7.43 — built-in staged login without recording preview (not release-approved).** Local Windows desktop automation with an encrypted credential vault. Native Windows verification and Hermes lifecycle integration remain required before a stable publish.
+> **v0.7.44 — adaptive one-page and two-page login preview (not release-approved).** Local Windows desktop automation with an encrypted credential vault. Native Windows verification and Hermes lifecycle integration remain required before a stable publish.
 
 LaunchFlow opens your websites on the chosen screen, optionally signs in using local encrypted credentials, and replays recorded safe clicks.
 
