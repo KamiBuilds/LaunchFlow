@@ -37,11 +37,6 @@ public partial class MainWindow
 
             PasswordWebsiteCombo.SelectedItem = _selected;
             PasswordWebsiteCombo.IsEnabled = _configuration.Workflows.Count > 0;
-            PasswordSiteUrl.Text = _selected is null ? "" :
-                Uri.TryCreate(_selected.StartUrl, UriKind.Absolute, out var uri) ? uri.Host : _selected.StartUrl;
-            CredentialScopeNotice.Text = _selected is null
-                ? "Select a website to edit its saved login. Other websites will not be changed."
-                : $"Only '{_selected.Name}' will be updated. Other websites and your master password stay unchanged.";
             SaveCredentialsButton.IsEnabled = _selected is not null;
             ClearCredentialButton.IsEnabled = _selected is not null;
         }
