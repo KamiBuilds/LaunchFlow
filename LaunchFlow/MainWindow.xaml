@@ -404,12 +404,14 @@
         <TabItem Header="Passwords"><ScrollViewer VerticalScrollBarVisibility="Auto" Background="#111A2A"><StackPanel Margin="28" MaxWidth="840" HorizontalAlignment="Left"><TextBlock Text="Website passwords" FontSize="24" FontWeight="Bold" Margin="0,0,0,8"/><TextBlock Text="One master-password unlock lasts one hour, even if you visit other tabs. The encrypted vault relocks after your configurable Windows-lock timeout (10 minutes by default)." Foreground="#B6C8DD" TextWrapping="Wrap" Margin="0,0,0,7"/>
 <TextBlock x:Name="PasswordSessionLabel" Text="Locked · unlock to manage saved credentials." Foreground="#7FD9F8" Margin="0,0,0,13" TextWrapping="Wrap"/>
  <TextBlock Text="1. Choose exactly which website account to edit" Foreground="#D9ECFA" FontWeight="SemiBold" Margin="0,0,0,6"/>
- <ComboBox x:Name="PasswordWebsiteCombo" DisplayMemberPath="Name" SelectionChanged="PasswordWebsiteCombo_SelectionChanged"
-           AutomationProperties.Name="Website account to update" MinWidth="300" MaxWidth="520" HorizontalAlignment="Left" Margin="0,0,0,8"/>
- <TextBlock x:Name="PasswordSiteName" Text="No website selected" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,4"/>
- <TextBlock x:Name="PasswordSiteUrl" Foreground="#9EB9D6" Margin="0,0,0,6" TextWrapping="Wrap"/>
- <TextBlock x:Name="CredentialScopeNotice" Text="Select a website to edit its saved login. Other websites will not be changed."
-            Foreground="#7FE0D2" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,18"/><Border Background="#1B2636" CornerRadius="12" Padding="20" Margin="0,0,0,10" BorderThickness="1" BorderBrush="#2A4155">
+ <ComboBox x:Name="PasswordWebsiteCombo" SelectionChanged="PasswordWebsiteCombo_SelectionChanged"
+           AutomationProperties.Name="Website account to update" MinWidth="300" MaxWidth="520" HorizontalAlignment="Left" Margin="0,0,0,18">
+   <ComboBox.ItemTemplate>
+     <DataTemplate>
+       <TextBlock Text="{Binding Name}" Foreground="#F7FBFF"/>
+     </DataTemplate>
+   </ComboBox.ItemTemplate>
+ </ComboBox><Border Background="#1B2636" CornerRadius="12" Padding="20" Margin="0,0,0,10" BorderThickness="1" BorderBrush="#2A4155">
               <StackPanel>
                 <DockPanel Margin="0,0,0,4">
                   <TextBlock Text="SECURE LOGIN DETAILS" Style="{StaticResource SectionHeader}" DockPanel.Dock="Left"/>
