@@ -2,7 +2,7 @@ name: Windows installer — build and gated draft release
 
 on:
   push:
-    branches: [hermes, chatgpt, both, both-2, both-3, chatgpt-safety-hardening-20261028, chatgpt-selective-safety-review-20261029, chatgpt-appcontrol-startup-20261029, chatgpt-trusted-distribution-20261029, chatgpt-ux-clarity-20261029, chatgpt-ux-clarity-v0.7.34-upload-20261029, fix/v0.7.44-adaptive-login-build-20261102]
+    branches: [hermes, chatgpt, both, both-2, both-3, chatgpt-safety-hardening-20261028, chatgpt-selective-safety-review-20261029, chatgpt-appcontrol-startup-20261029, chatgpt-trusted-distribution-20261029, chatgpt-ux-clarity-20261029, chatgpt-ux-clarity-v0.7.34-upload-20261029, fix/v0.7.44-adaptive-login-build-20261102, fix/v0.7.45-per-website-credentials-20261102]
   pull_request:
   workflow_dispatch:
     inputs:
