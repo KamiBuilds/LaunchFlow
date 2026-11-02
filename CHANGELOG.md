@@ -1,3 +1,15 @@
+# v0.7.45 — Clearly scoped website password manager
+
+- Add an explicit website-account selector at the top of Settings → Passwords. The manager synchronizes with the workflow editor so login mode, KeePass entry and credential operations target the same website.
+- Display the selected website's hostname and a reminder that only this workflow's encrypted login is changed; no global website-password change exists.
+- Reject credential saving or deletion when the visible site selection does not match the selected workflow ID.
+- Warn before switching websites if replacement login fields have unsaved values, rather than quietly dropping them.
+- Keep the password masked; make the **new** username/email editable and readable. Existing saved values are never prefilled or displayed.
+- Add UI structure and isolated-site credential regression tests; preserve the existing encrypted vault location, workflow IDs, master password and installer AppId.
+- Bump development-preview version to v0.7.45. No credential migration is required.
+
+**Unsigned development preview only.** CI and synthetic UI tests are not real account or native installer upgrade acceptance.
+
 # v0.7.44 — Adaptive one-page and two-stage login (development preview)
 
 - Detect a visible username and password on the same page and fill both normally.
