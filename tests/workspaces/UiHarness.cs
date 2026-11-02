@@ -197,12 +197,54 @@ var tests = new List<(string Name, Func<Task> Body)>
         var workflow = ui._configuration.Workflows[0];
         ui._selected = workflow;
         ui._loadedCredentialWorkflowId = workflow.Id;
-        ui.UsernameBox.Password = "synthetic-user";
+        ui.PasswordWebsiteCombo.SelectedItem = workflow;
+        ui.UsernameBox.Text = "synthetic-user";
         ui.PasswordInput.Password = "synthetic-password";
         ui.SaveCredential();
         Check(ui._store.DurableSaves == 1 &&
             VaultDatabase.Current.Credentials[workflow.Id].Password == "synthetic-password",
             "credential success did not require a durable config write");
+        return Task.CompletedTask;
+    }),
+    ("website credentials are isolated by workflow ID", () =>
+    {
+        var ui = new UiFixture();
+        var first = ui._configuration.Workflows[0];
+        first.Name = "Nextcloud";
+        var second = new WebsiteWorkflow { Name = "ThousandEyes" };
+        ui._configuration.Workflows.Add(second);
+        VaultDatabase.Current.Credentials[first.Id] = new("first@example.invalid", "first-only-secret");
+        VaultDatabase.Current.Credentials[second.Id] = new("second@example.invalid", "second-only-secret");
+
+        ui._selected = second;
+        ui.PasswordWebsiteCombo.SelectedItem = second;
+        ui._loadedCredentialWorkflowId = second.Id;
+        ui.UsernameBox.Text = "changed@example.invalid";
+        ui.PasswordInput.Password = "new-second-secret";
+        ui.SaveCredential();
+        Check(VaultDatabase.Current.Credentials[first.Id] ==
+              new SiteCredential("first@example.invalid", "first-only-secret") &&
+              VaultDatabase.Current.Credentials[second.Id] ==
+              new SiteCredential("changed@example.invalid", "new-second-secret"),
+              "saving one website changed an unrelated website login");
+        return Task.CompletedTask;
+    }),
+    ("website credentials cannot save to a different selected account", () =>
+    {
+        var ui = new UiFixture();
+        var first = ui._configuration.Workflows[0];
+        var second = new WebsiteWorkflow { Name = "Another account" };
+        ui._configuration.Workflows.Add(second);
+        VaultDatabase.Current.Credentials[first.Id] = new("first@example.invalid", "original-secret");
+        ui._selected = first;
+        ui.PasswordWebsiteCombo.SelectedItem = second;
+        ui._loadedCredentialWorkflowId = first.Id;
+        ui.UsernameBox.Text = "incorrect-account@example.invalid";
+        ui.SaveCredential();
+        Check(VaultDatabase.Current.Credentials[first.Id] ==
+              new SiteCredential("first@example.invalid", "original-secret") &&
+              !VaultDatabase.Current.Credentials.ContainsKey(second.Id),
+              "mismatched selection changed one website credential");
         return Task.CompletedTask;
     }),
     ("SSO workflows never request a KeePass password", () =>
@@ -221,7 +263,8 @@ var tests = new List<(string Name, Func<Task> Body)>
         VaultDatabase.Current.Credentials[id] = new("old-user", "old-password");
         ui._loadedCredentialWorkflowId = id;
         using var policy = EnterprisePolicy.UseProviderForTesting(() => new Dictionary<string, object?> { ["DisableCredentialFill"] = 1 });
-        ui.UsernameBox.Password = "replacement";
+        ui.PasswordWebsiteCombo.SelectedItem = ui._selected;
+        ui.UsernameBox.Text = "replacement";
         ui.SaveCredential();
         Check(VaultDatabase.Current.Credentials[id].Username == "old-user" && ui._store.Saves == 0, "denied read overwrote saved credential");
         Check(MessageBox.Messages.Any(n => n.Contains("organization")), "policy save denial was not explained");
@@ -568,7 +611,7 @@ partial class UiFixture
     public void ChooseEntry() => ChooseKeePassEntry_Click(this, new RoutedEventArgs());
     public readonly CredentialVault _vault = new();
     public Guid? _loadedCredentialWorkflowId;
-    public readonly Control CredentialStatus = new(), UsernameBox = new(), PasswordInput = new(), AutoLoginCheck = new(), KeepassEntryBox = new(), WorkflowList = new();
+    public readonly Control CredentialStatus = new(), UsernameBox = new(), PasswordInput = new(), AutoLoginCheck = new(), KeepassEntryBox = new(), WorkflowList = new(), PasswordWebsiteCombo = new();
     public readonly Control KeePassDbBox = new(), KeePassKeyBox = new(), SettingsTabs = new();
     public void SetKeePassDatabase(string path) => KeePassDbBox.Text = path;
     public readonly FakeDispatcher Dispatcher = new();

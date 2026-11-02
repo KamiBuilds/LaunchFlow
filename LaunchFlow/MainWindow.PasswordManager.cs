@@ -22,6 +22,73 @@ namespace LaunchFlow;
 /// <summary>Master-password authorization and explicit credential manager controls.</summary>
 public partial class MainWindow
 {
+    private bool _syncingPasswordWebsiteSelection;
+
+    private void SyncPasswordWebsiteSelector()
+    {
+        if (PasswordWebsiteCombo is null || _configuration is null) return;
+        _syncingPasswordWebsiteSelection = true;
+        try
+        {
+            if (!ReferenceEquals(PasswordWebsiteCombo.ItemsSource, _configuration.Workflows))
+                PasswordWebsiteCombo.ItemsSource = _configuration.Workflows;
+            else
+                PasswordWebsiteCombo.Items.Refresh();
+
+            PasswordWebsiteCombo.SelectedItem = _selected;
+            PasswordWebsiteCombo.IsEnabled = _configuration.Workflows.Count > 0;
+            PasswordSiteUrl.Text = _selected is null ? "" :
+                Uri.TryCreate(_selected.StartUrl, UriKind.Absolute, out var uri) ? uri.Host : _selected.StartUrl;
+            CredentialScopeNotice.Text = _selected is null
+                ? "Select a website to edit its saved login. Other websites will not be changed."
+                : $"Only '{_selected.Name}' will be updated. Other websites and your master password stay unchanged.";
+            SaveCredentialsButton.IsEnabled = _selected is not null;
+            ClearCredentialButton.IsEnabled = _selected is not null;
+        }
+        finally { _syncingPasswordWebsiteSelection = false; }
+    }
+
+    private void PasswordWebsiteCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_syncingPasswordWebsiteSelection || _loadingEditor || _configuration is null ||
+            WorkflowList is null || PasswordWebsiteCombo is null || _windowsLocked ||
+            _vaultLockInProgress || _exiting || !PasswordSessionIsValid())
+            return;
+
+        var target = PasswordWebsiteCombo.SelectedItem as WebsiteWorkflow;
+        if (target is null || !_configuration.Workflows.Any(w => ReferenceEquals(w, target)))
+        {
+            SyncPasswordWebsiteSelector();
+            return;
+        }
+        if (ReferenceEquals(target, _selected)) return;
+
+        var previous = _selected;
+        var revision = _workspaceRevision;
+        var configuration = _configuration;
+        if (UsernameBox.Text.Length > 0 || PasswordInput.Password.Length > 0)
+        {
+            var answer = MessageBox.Show(this,
+                $"Unsaved login changes for '{previous?.Name ?? "the previous website"}' will be discarded. Switch to '{target.Name}'?",
+                "Discard unsaved website credentials?", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (answer != MessageBoxResult.Yes ||
+                revision != _workspaceRevision ||
+                !ReferenceEquals(configuration, _configuration) ||
+                !ReferenceEquals(previous, _selected) ||
+                !_configuration.Workflows.Any(w => ReferenceEquals(w, target)) ||
+                !PasswordSessionIsValid())
+            {
+                SyncPasswordWebsiteSelector();
+                return;
+            }
+        }
+
+        // Use the existing selected-workflow owner so login mode, KeePass
+        // entry, vault ID and the password editor always refer to one website.
+        WorkflowList.SelectedItem = target;
+        if (!ReferenceEquals(_selected, target)) SyncPasswordWebsiteSelector();
+    }
+
     private bool RequireMasterPassword(bool forcePrompt = false)
     {
         if (_vaultLockInProgress || _windowsLocked || _exiting) return false;

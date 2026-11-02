@@ -148,6 +148,22 @@ check(wizard_named["UsernameBox"].tag.endswith("}TextBox") and
       'NewPassword = autoLogin ? PasswordBox.Password : "";' in wizard_code and
       'if (!WasCreated) ClearPendingSecrets();' in wizard_code,
       "website wizard displays username/email in plaintext, keeps password masked and retains secret cleanup")
+manager_source = (root / "LaunchFlow/MainWindow.PasswordManager.cs").read_text(encoding="utf-8")
+credential_source = (root / "LaunchFlow/MainWindow.Credentials.cs").read_text(encoding="utf-8")
+editor_source = (root / "LaunchFlow/MainWindow.WebsiteEditor.cs").read_text(encoding="utf-8")
+check({"PasswordWebsiteCombo", "PasswordSiteName", "PasswordSiteUrl",
+       "CredentialScopeNotice", "SaveCredentialsButton", "ClearCredentialButton"}.issubset(named) and
+      named["PasswordWebsiteCombo"].get("DisplayMemberPath") == "Name" and
+      named["PasswordWebsiteCombo"].get("SelectionChanged") == "PasswordWebsiteCombo_SelectionChanged" and
+      named["UsernameBox"].tag.endswith("}TextBox") and
+      named["PasswordInput"].tag.endswith("}PasswordBox") and
+      'SyncPasswordWebsiteSelector();' in editor_source and
+      'ReferenceEquals(PasswordWebsiteCombo.SelectedItem, _selected)' in credential_source and
+      'UsernameBox.Text.Trim()' in credential_source and
+      'UsernameBox.Password' not in credential_source and
+      'private void PasswordWebsiteCombo_SelectionChanged' in manager_source and
+      'Unsaved login changes' in manager_source,
+      "Password Manager has explicit per-website selection with readable email, masked password and scope guard")
 check('Content="No login required' in ET.tostring(ui, encoding="unicode") and
       'WorkflowsNav.Content = Text("Websites");' in source and
       'SaveWorkspaceButton.Content = Text("Save");' in source and
@@ -217,7 +233,7 @@ check('1. Which website?' in wizard_xml and
 check('Click Add website.' in tutorial_code and 'Run all opens every enabled website.' in tutorial_code,
       "getting-started tutorial reflects the revised workflow")
 check('Text="No websites yet"' in main_xml and
-      'Currently selected website:' in main_xml and
+      'Choose exactly which website account to edit' in main_xml and
       'How should LaunchFlow sign in?' in main_xml and
       'Click="OpenWebsiteAdvancedSignIn_Click"' in main_xml and
       'SelectionChanged="SettingsTabs_SelectionChanged"' in main_xml and
@@ -250,9 +266,9 @@ csproj = ET.parse(root / "LaunchFlow/LaunchFlow.csproj")
 version = csproj.findtext("./PropertyGroup/Version")
 iss = (root / "installer/LaunchFlow.iss").read_text(encoding="utf-8")
 info = (root / "LaunchFlow/Services/AppInfo.cs").read_text(encoding="utf-8")
-check(version == "0.7.44" and f'#define AppVersion "{version}"' in iss
+check(version == "0.7.45" and f'#define AppVersion "{version}"' in iss
       and f'return v is null ? "{version}"' in info,
-      "assembly, installer and fallback version match 0.7.44")
+      "assembly, installer and fallback version match 0.7.45")
 guide = ET.parse(root / "LaunchFlow/TutorialWindow.xaml").getroot()
 guide_source = (root / "LaunchFlow/TutorialWindow.xaml.cs").read_text(encoding="utf-8")
 check('new TutorialWindow { Owner = this }.ShowDialog()' not in source and
