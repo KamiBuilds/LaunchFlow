@@ -186,7 +186,13 @@ public sealed partial class AutomationEngine
             }
 
             string? approvedSubmitOrigin = null;
-            if (!string.IsNullOrWhiteSpace(workflow.UsernameSelector))
+            // If the second page is already open after a previous run, resume
+            // at the password field. When both fields exist, fill both normally.
+            var passwordReady = requiresPassword &&
+                await PasswordStageReadyAsync(workflow, page, ct).ConfigureAwait(false);
+            var usernameReady = requiresUser &&
+                await LoginFieldReadyAsync(page, workflow.UsernameSelector, ct).ConfigureAwait(false);
+            if (requiresUser && (usernameReady || !passwordReady))
             {
                 var usernameOrigin = await FillCredentialAsync(workflow, page, workflow.UsernameSelector,
                     credential.Username, ct).ConfigureAwait(false);
@@ -214,6 +220,11 @@ public sealed partial class AutomationEngine
                     Log($"Username field not found for '{workflow.Name}'. Check the selector or sign in manually.");
                     return false;
                 }
+            }
+
+            else if (requiresUser && passwordReady)
+            {
+                Log($"Resuming password stage for '{workflow.Name}'.");
             }
 
             if (!string.IsNullOrWhiteSpace(workflow.PasswordSelector))
@@ -425,6 +436,11 @@ public sealed partial class AutomationEngine
             return await ClickApprovedLoginElementAsync(page, element,
                 approvedCredentialOrigin, ct).ConfigureAwait(false);
         }
+        // The second stage can use a different button/ID from the email page.
+        // Fallback only to an unambiguous approved form, never to SSO/MFA.
+        if (!string.IsNullOrWhiteSpace(workflow.PasswordSelector))
+            return await ClickUnambiguousFinalSubmitAsync(
+                workflow, page, approvedCredentialOrigin, ct).ConfigureAwait(false);
         return false;
     }
 
