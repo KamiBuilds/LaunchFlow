@@ -17,6 +17,8 @@ if (args.Contains("--dispatch-only")) { await DispatchedFillTests.RunAsync(playw
 await WorkflowExecutionTests.RunAsync(playwright, args);
 await EngineBehaviorTests.RunAsync(playwright, args);
 if (!args.Contains("--document-bound-only") && !args.Contains("--profile-only"))
+    await StagedLoginTests.RunAsync(playwright);
+if (!args.Contains("--document-bound-only") && !args.Contains("--profile-only"))
     await ManualConfirmationRaceTests.RunAsync(playwright);
 await EngineLifecycleTests.RunAsync(playwright, args);
 if (!args.Contains("--document-bound-only") && !args.Contains("--profile-only")) await DispatchedFillTests.RunAsync(playwright);
