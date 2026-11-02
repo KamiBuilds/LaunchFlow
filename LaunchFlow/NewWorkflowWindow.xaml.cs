@@ -69,7 +69,7 @@ public partial class NewWorkflowWindow : Window
         var monitor = (MonitorCombo.SelectedItem as MonitorChoice)?.Index ?? 0;
         var autoLogin = AutoLoginCheck.IsChecked == true;
         if (autoLogin && url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
-            (!string.IsNullOrEmpty(UsernameBox.Password) || !string.IsNullOrEmpty(PasswordBox.Password)))
+            (!string.IsNullOrEmpty(UsernameBox.Text) || !string.IsNullOrEmpty(PasswordBox.Password)))
         {
             var answer = MessageBox.Show(this,
                 "HTTP connections are not encrypted. Anyone with access to the network may be able to see login details sent to this website. Continue anyway?",
@@ -90,7 +90,7 @@ public partial class NewWorkflowWindow : Window
         };
 
         // No-login websites never store accidentally pasted credentials.
-        NewUsername = autoLogin ? UsernameBox.Password.Trim() : "";
+        NewUsername = autoLogin ? UsernameBox.Text.Trim() : "";
         NewPassword = autoLogin ? PasswordBox.Password : "";
         WasCreated = true;
         Close();
