@@ -23,6 +23,7 @@ public partial class MainWindow : Window
 {
     private readonly ConfigStore _store = new();
     private readonly WorkflowConfigurationService _workflowConfiguration;
+    private readonly ConfigurationSaveTransaction _saveTransaction;
     private readonly StartupRegistrationService _startupRegistration;
     private readonly MasterPasswordService _master = new();
     private TutorialWindow? _tutorial;
@@ -132,6 +133,7 @@ public partial class MainWindow : Window
         // Inject the persistence, URL policy and Windows registration adapters.
         // The domain services themselves never depend on WPF or machine state.
         _workflowConfiguration = new WorkflowConfigurationService(_store.SaveDurable, AutomationEngine.ValidateUrl);
+        _saveTransaction = new ConfigurationSaveTransaction(_store.SaveDurable, _workflowConfiguration.Validate);
         _startupRegistration = new StartupRegistrationService(TaskSchedulerService.Apply, StartupService.Apply);
         InitializeComponent();
         HeaderVersionLabel.Text = "v" + AppInfo.VersionString;
