@@ -152,8 +152,8 @@ try
         var read = ColdRead();
         Check(read.Workflows.Single().Name == "Non-secret change" &&
               !vault.HasCredential(read.Workflows.Single().Id) &&
-              !File.ReadAllBytes(vault.DatabasePath).AsSpan().IndexOf(
-                  System.Text.Encoding.UTF8.GetBytes("never-persist-implicitly")).Equals(0),
+              !System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(vault.DatabasePath))
+                  .Contains("never-persist-implicitly", StringComparison.Ordinal),
               "save unexpectedly stored credential data");
     });
     Run("post-commit OS failure remains saved; reentrant UI edit remains dirty", () =>
