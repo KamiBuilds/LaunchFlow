@@ -14,5 +14,7 @@
     <Compile Include="../../LaunchFlow/Services/StartupRegistrationService.cs" Link="Services/StartupRegistrationService.cs" />
     <Compile Include="../../LaunchFlow/Services/SessionLockPolicy.cs" Link="Services/SessionLockPolicy.cs" />
     <Compile Include="../../LaunchFlow/Services/AutoSaveSchedule.cs" Link="Services/AutoSaveSchedule.cs" />
+    <Compile Include="../../LaunchFlow/Services/ConfigurationSaveTransaction.cs" Link="Services/ConfigurationSaveTransaction.cs" />
+    <Compile Include="../../LaunchFlow/Services/WebsiteLoginMode.cs" Link="Services/WebsiteLoginMode.cs" />
   </ItemGroup>
 </Project>
