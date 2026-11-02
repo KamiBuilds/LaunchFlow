@@ -57,15 +57,6 @@ namespace System.Windows.Threading
     }
 }
 
-namespace LaunchFlow.Services
-{
-    public sealed class MonitorChoice
-    {
-        public int Index { get; init; }
-        public string DeviceName { get; init; } = "";
-    }
-}
-
 public sealed class FakeItems
 {
     public int Refreshes { get; private set; }
