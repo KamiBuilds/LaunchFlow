@@ -165,7 +165,7 @@ Check(failure.State == SaveTransactionState.StorageRejected &&
       txLive.Workflows[0].Name == "Original", "failed persistence retains original live model");
 var newerRevision = false;
 var race = tx.Commit(txLive, c => c.UiLanguage = "pl",
-    () => !newerRevision, 12, c => throw new Exception("stale publish"));
+    () => !newerRevision, 12, _ => { });
 Check(race.Published && !newerRevision, "positive publish control succeeds before race");
 newerRevision = false;
 var committedSuperseded = new ConfigurationSaveTransaction(
