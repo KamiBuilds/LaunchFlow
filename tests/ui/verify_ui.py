@@ -148,6 +148,22 @@ check(wizard_named["UsernameBox"].tag.endswith("}TextBox") and
       'NewPassword = autoLogin ? PasswordBox.Password : "";' in wizard_code and
       'if (!WasCreated) ClearPendingSecrets();' in wizard_code,
       "website wizard displays username/email in plaintext, keeps password masked and retains secret cleanup")
+manager_source = (root / "LaunchFlow/MainWindow.PasswordManager.cs").read_text(encoding="utf-8")
+credential_source = (root / "LaunchFlow/MainWindow.Credentials.cs").read_text(encoding="utf-8")
+editor_source = (root / "LaunchFlow/MainWindow.WebsiteEditor.cs").read_text(encoding="utf-8")
+check({"PasswordWebsiteCombo", "PasswordSiteName", "PasswordSiteUrl",
+       "CredentialScopeNotice", "SaveCredentialsButton", "ClearCredentialButton"}.issubset(named) and
+      named["PasswordWebsiteCombo"].get("DisplayMemberPath") == "Name" and
+      named["PasswordWebsiteCombo"].get("SelectionChanged") == "PasswordWebsiteCombo_SelectionChanged" and
+      named["UsernameBox"].tag.endswith("}TextBox") and
+      named["PasswordInput"].tag.endswith("}PasswordBox") and
+      'SyncPasswordWebsiteSelector();' in editor_source and
+      'ReferenceEquals(PasswordWebsiteCombo.SelectedItem, _selected)' in credential_source and
+      'UsernameBox.Text.Trim()' in credential_source and
+      'UsernameBox.Password' not in credential_source and
+      'private void PasswordWebsiteCombo_SelectionChanged' in manager_source and
+      'Unsaved login changes' in manager_source,
+      "Password Manager has explicit per-website selection with readable email, masked password and scope guard")
 check('Content="No login required' in ET.tostring(ui, encoding="unicode") and
       'WorkflowsNav.Content = Text("Websites");' in source and
       'SaveWorkspaceButton.Content = Text("Save");' in source and
