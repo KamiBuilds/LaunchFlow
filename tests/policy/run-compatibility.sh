@@ -31,6 +31,8 @@ legacy=(
   -c Release
   -p:VaultDatabaseSource="$ROOT/BaselineVault.cs"
   -p:LegacyConfigStoreSource="$ROOT/BaselineConfigStore.cs"
+  -p:BaseIntermediateOutputPath="$ROOT/legacy-obj/"
+  -p:BaseOutputPath="$ROOT/legacy-bin/"
   -p:TreatWarningsAsErrors=true
   -p:UseSharedCompilation=false
 )
