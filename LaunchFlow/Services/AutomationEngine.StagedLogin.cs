@@ -48,7 +48,8 @@ public sealed partial class AutomationEngine
     }
 
     private async Task<bool> AdvanceToPasswordStageAsync(
-        WebsiteWorkflow workflow, IPage page, string usernameOrigin, bool hadPasswordField, CancellationToken ct)
+        WebsiteWorkflow workflow, IPage page, CredentialFieldBinding usernameOwner,
+        bool hadPasswordField, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         RequireCredentialAccess();
@@ -57,7 +58,8 @@ public sealed partial class AutomationEngine
         // A configured selector is an explicit user choice, but a missing one
         // must not force the user to record a typical "Next"/"Log In" button.
         IElementHandle? target = null;
-        if (!string.IsNullOrWhiteSpace(workflow.UsernameContinueSelector))
+        var explicitSelector = !string.IsNullOrWhiteSpace(workflow.UsernameContinueSelector);
+        if (explicitSelector)
         {
             var selected = page.Locator(workflow.UsernameContinueSelector);
             var count = Math.Min(await selected.CountAsync().ConfigureAwait(false), 24);
@@ -94,7 +96,17 @@ public sealed partial class AutomationEngine
                     label.Trim().Equals("signin", StringComparison.OrdinalIgnoreCase))
                     continue;
                 var element = await button.ElementHandleAsync().ConfigureAwait(false);
-                if (element is not null) candidates.Add(element);
+                if (element is null) continue;
+                // Only count a candidate that belongs to the actual filled
+                // username field's original HTML form (including form= links).
+                if (!await element.EvaluateAsync<bool>(
+                    "(button, form) => { const owner = 'form' in button ? button.form : button.closest('form'); return form !== null && owner === form; }",
+                    usernameOwner.Form).ConfigureAwait(false))
+                {
+                    await element.DisposeAsync().ConfigureAwait(false);
+                    continue;
+                }
+                candidates.Add(element);
             }
 
             // Ambiguous sign-in buttons require the user's explicit selector;
@@ -110,8 +122,9 @@ public sealed partial class AutomationEngine
 
         await using (target)
         {
-            if (!await ClickApprovedLoginElementAsync(page, target, usernameOrigin, ct)
-                .ConfigureAwait(false)) return false;
+            if (!await ClickApprovedLoginElementAsync(
+                page, target, usernameOwner.Origin, ct, usernameOwner,
+                requireOwnedForm: !explicitSelector).ConfigureAwait(false)) return false;
         }
 
         // Navigation can be same-document React state, another path, or a
@@ -127,7 +140,7 @@ public sealed partial class AutomationEngine
             // When the original page already had a password control, a late
             // cross-origin navigation invalidates it. Never approve/fill a
             // replacement on the foreign document during that attempt.
-            if (hadPasswordField && !OriginsMatch(usernameOrigin, GetOrigin(page.Url)))
+            if (hadPasswordField && !OriginsMatch(usernameOwner.Origin, GetOrigin(page.Url)))
                 return false;
             try
             {

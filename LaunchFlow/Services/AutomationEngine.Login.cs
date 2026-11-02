@@ -194,34 +194,32 @@ public sealed partial class AutomationEngine
                 await LoginFieldReadyAsync(page, workflow.UsernameSelector, ct).ConfigureAwait(false);
             if (requiresUser && (usernameReady || !passwordReady))
             {
+                // Keep the actual filled input and its document/form handles alive
+                // through first-stage continuation. An origin string alone cannot
+                // identify the input's own form on a page with multiple forms.
+                var stageReached = true;
                 var usernameOrigin = await FillCredentialAsync(workflow, page, workflow.UsernameSelector,
-                    credential.Username, ct).ConfigureAwait(false);
+                    credential.Username, ct, async owner =>
+                    {
+                        if (requiresPassword &&
+                            !await PasswordStageReadyAsync(workflow, page, ct).ConfigureAwait(false))
+                        {
+                            var hadPasswordField = await PasswordStagePresentAsync(
+                                workflow, page, ct).ConfigureAwait(false);
+                            if (!hadPasswordField ||
+                                !string.IsNullOrWhiteSpace(workflow.UsernameContinueSelector))
+                                stageReached = await AdvanceToPasswordStageAsync(
+                                    workflow, page, owner, hadPasswordField, ct).ConfigureAwait(false);
+                        }
+                    }).ConfigureAwait(false);
                 if (usernameOrigin is not null)
                 {
                     approvedSubmitOrigin = usernameOrigin;
-                    // Email-first sites (including ThousandEyes) can render
-                    // the password form only after a username-stage submission.
-                    // A bounded, same-origin continuation replaces the need to
-                    // record "Log In"/"Next"; custom selectors still take priority.
-                    if (requiresPassword &&
-                        !await PasswordStageReadyAsync(workflow, page, ct).ConfigureAwait(false))
+                    if (!stageReached)
                     {
-                        var hadPasswordField = await PasswordStagePresentAsync(
-                            workflow, page, ct).ConfigureAwait(false);
-                        // User-specified continuation is authoritative. For
-                        // automatic detection, a pre-existing disabled or hidden
-                        // password input stays bound to the current document.
-                        if (!hadPasswordField ||
-                            !string.IsNullOrWhiteSpace(workflow.UsernameContinueSelector))
-                        {
-                            if (!await AdvanceToPasswordStageAsync(workflow, page,
-                                usernameOrigin, hadPasswordField, ct).ConfigureAwait(false))
-                            {
-                                Log($"Password stage was not reached for '{workflow.Name}'. " +
-                                    "An SSO prompt or additional verification may need manual attention.");
-                                return false;
-                            }
-                        }
+                        Log($"Password stage was not reached for '{workflow.Name}'. " +
+                            "An SSO prompt or additional verification may need manual attention.");
+                        return false;
                     }
                 }
                 else
@@ -460,7 +458,8 @@ public sealed partial class AutomationEngine
     /// </summary>
     private static async Task<bool> ClickApprovedLoginElementAsync(
         IPage page, IElementHandle element, string? approvedCredentialOrigin,
-        CancellationToken ct)
+        CancellationToken ct, CredentialFieldBinding? firstStageOwner = null,
+        bool requireOwnedForm = false)
     {
         var origin = await element.EvaluateAsync<string>("""
             element => {
@@ -480,14 +479,47 @@ public sealed partial class AutomationEngine
         if (!await element.EvaluateAsync<bool>(
             "(el, approved) => el.isConnected && el.ownerDocument.defaultView?.document === el.ownerDocument && el.ownerDocument.location.origin === approved",
             origin).ConfigureAwait(false)) return false;
+        // For username-stage actions, validate the original field/document/frame
+        // after the async DOM inspections, immediately before protected dispatch.
+        if (firstStageOwner is not null)
+        {
+            if (firstStageOwner.Frame.IsDetached ||
+                !ReferenceEquals(await element.OwnerFrameAsync().ConfigureAwait(false), firstStageOwner.Frame) ||
+                !ReferenceEquals(await firstStageOwner.Field.OwnerFrameAsync().ConfigureAwait(false), firstStageOwner.Frame))
+                return false;
+            if (!await firstStageOwner.Field.EvaluateAsync<bool>(
+                "(field, document) => field.isConnected && field.ownerDocument === document && document.defaultView?.document === document",
+                firstStageOwner.Document).ConfigureAwait(false)) return false;
+            if (!await element.EvaluateAsync<bool>(
+                "(button, document) => button.isConnected && button.ownerDocument === document && document.defaultView?.document === document",
+                firstStageOwner.Document).ConfigureAwait(false)) return false;
+            if (requireOwnedForm)
+            {
+                if (!await firstStageOwner.Field.EvaluateAsync<bool>(
+                    "(field, form) => form !== null && field.form === form",
+                    firstStageOwner.Form).ConfigureAwait(false)) return false;
+                if (!await element.EvaluateAsync<bool>(
+                    "(button, form) => { const owner = 'form' in button ? button.form : button.closest('form'); return form !== null && owner === form; }",
+                    firstStageOwner.Form).ConfigureAwait(false)) return false;
+            }
+        }
+        // DOM evaluation is awaitable. Re-check live authorization before ClickAsync.
+        RequireCredentialAccess();
+        RequireAutomationUrl(origin);
         ct.ThrowIfCancellationRequested();
         await element.ClickAsync().ConfigureAwait(false);
         RequireAutomationUrl(page.Url);
         return true;
     }
 
+    // Scoped to the exact successful FillAsync call; handles are disposed by
+    // FillCredentialAsync only after a same-document continuation has completed.
+    private sealed record CredentialFieldBinding(
+        string Origin, IElementHandle Field, IJSHandle Document, IJSHandle Form, IFrame Frame);
+
     private async Task<string?> FillCredentialAsync(
-        WebsiteWorkflow workflow, IPage page, string selector, string value, CancellationToken ct)
+        WebsiteWorkflow workflow, IPage page, string selector, string value,
+        CancellationToken ct, Func<CredentialFieldBinding, Task>? afterFill = null)
     {
         ct.ThrowIfCancellationRequested();
         // Bind a concrete field before inserting a secret. Wait for JS-rendered
@@ -543,7 +575,14 @@ public sealed partial class AutomationEngine
             if (!OriginsMatch(origin, await VerifyAsync().ConfigureAwait(false)))
                 throw new InvalidOperationException("Credential origin changed. Retry sign-in manually.");
             ct.ThrowIfCancellationRequested();
+            // Capture the browser-computed HTML form owner before input events can
+            // reparent the field. form= associations work even outside form ancestry.
+            await using var ownerForm = afterFill is null ? null :
+                await element.EvaluateHandleAsync("field => field.form").ConfigureAwait(false);
             await element.FillAsync(value).ConfigureAwait(false);
+            if (afterFill is not null && ownerForm is not null)
+                await afterFill(new CredentialFieldBinding(
+                    origin, element, document, ownerForm, frame)).ConfigureAwait(false);
             return origin;
         }
         catch (PlaywrightException)
