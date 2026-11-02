@@ -135,6 +135,19 @@ check(wizard_named["AutoLoginCheck"].get("IsChecked") == "False" and
       'LoginMode = autoLogin ? "Auto" : "None"' in
       (root / "LaunchFlow/NewWorkflowWindow.xaml.cs").read_text(encoding="utf-8"),
       "new local websites default to explicit No login required without credential prompts")
+# Username/email is intentionally readable in the create-website wizard.
+# The password must remain a WPF PasswordBox and must never be read as ordinary Text.
+wizard_code = (root / "LaunchFlow/NewWorkflowWindow.xaml.cs").read_text(encoding="utf-8")
+check(wizard_named["UsernameBox"].tag.endswith("}TextBox") and
+      wizard_named["PasswordBox"].tag.endswith("}PasswordBox") and
+      'Username / email (hidden)' not in ET.tostring(wizard, encoding="unicode") and
+      'UsernameBox.Text.Trim()' in wizard_code and
+      'UsernameBox.Password' not in wizard_code and
+      'PasswordBox.Password' in wizard_code and
+      'NewUsername = autoLogin ? UsernameBox.Text.Trim() : "";' in wizard_code and
+      'NewPassword = autoLogin ? PasswordBox.Password : "";' in wizard_code and
+      'if (!WasCreated) ClearPendingSecrets();' in wizard_code,
+      "website wizard displays username/email in plaintext, keeps password masked and retains secret cleanup")
 check('Content="No login required' in ET.tostring(ui, encoding="unicode") and
       'WorkflowsNav.Content = Text("Websites");' in source and
       'SaveWorkspaceButton.Content = Text("Save");' in source and
