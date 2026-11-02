@@ -22,6 +22,60 @@ namespace LaunchFlow;
 /// <summary>Editing, change tracking, validation and durable configuration save.</summary>
 public partial class MainWindow
 {
+    // A synchronous save owns exactly one edit generation and live configuration.
+    // No UI/control references enter the draft or encrypted persistence boundary.
+    private long _editGeneration;
+    private bool _saveInProgress;
+
+    private ConfigurationEditDraft CaptureConfigurationDraft(bool showNotification)
+    {
+        int delay = int.TryParse(DelayBox.Text, out int d) && d >= 0 && d <= 300
+            ? d : throw new ArgumentException("Unlock delay must be between 0 and 300 seconds.");
+        int minutes = int.TryParse(VaultTimeoutBox.Text, out int m) && m >= 1 && m <= 120
+            ? m : throw new ArgumentException("Vault lock timeout must be between 1 and 120 minutes.");
+
+        WebsiteEditDraft? website = null;
+        if (_selected is not null && !_loadingEditor)
+        {
+            var index = _configuration.Workflows.FindIndex(w => ReferenceEquals(w, _selected));
+            if (index < 0)
+                throw new InvalidOperationException("Website was replaced or removed; save the current selection again.");
+            var browser = BrowserSelection(BrowserCombo);
+            if (string.IsNullOrWhiteSpace(browser))
+                throw new InvalidOperationException("Choose an installed browser before saving this website.");
+            var monitor = MonitorCombo.SelectedItem as MonitorChoice;
+            var replaceMonitor = monitor is not null &&
+                (_monitorSelectionChanged || string.IsNullOrWhiteSpace(_selected.MonitorDeviceName));
+            website = new WebsiteEditDraft(
+                index, _selected.Id,
+                EnabledCheck.IsChecked == true,
+                string.IsNullOrWhiteSpace(NameBox.Text) ? "Unnamed website" : NameBox.Text.Trim(),
+                StartUrlBox.Text.Trim(), DestinationUrlBox.Text.Trim(), browser,
+                replaceMonitor, monitor?.Index ?? _selected.MonitorIndex,
+                monitor?.DeviceName ?? _selected.MonitorDeviceName,
+                SelectedLoginMode(LoginModeCombo.SelectedIndex),
+                UsernameContinueBox.Text.Trim(), PasswordOriginBox.Text.Trim(),
+                KeepassEntryBox.Text.Trim(), UsernameSelectorBox.Text.Trim(),
+                PasswordSelectorBox.Text.Trim(), SubmitSelectorBox.Text.Trim(),
+                CredentialOriginBox.Text.Trim(), LoginSuccessSelectorBox.Text.Trim(),
+                LoginSuccessUrlBox.Text.Trim(),
+                int.TryParse(LoginWaitBox.Text, out var seconds)
+                    ? Math.Clamp(seconds, 5, 180) : 60);
+        }
+        var tip = showNotification && !_configuration.ShortcutTipShown &&
+            _configuration.Workflows.Any(w => w.Enabled &&
+                !string.Equals(w.StartUrl, "https://example.com", StringComparison.OrdinalIgnoreCase));
+        return new ConfigurationEditDraft(
+            website, (LanguageCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "auto",
+            StartupCheck.IsChecked == true, UnlockCheck.IsChecked == true,
+            LaunchCheck.IsChecked == true, TrayCheck.IsChecked == true,
+            NotifyCheck.IsChecked == true, SealProfilesCheck.IsChecked == true,
+            TaskSchedulerCheck.IsChecked == true,
+            string.IsNullOrWhiteSpace(UpdateFeedBox.Text) ? null : UpdateFeedBox.Text.Trim(),
+            delay, minutes, ShortcutBox.Text, KeePassDbBox.Text.Trim(),
+            KeePassKeyBox.Text.Trim(), _configuration.ShortcutTipShown || tip);
+    }
+
     private void ApplyCurrentEditor()
     {
         if (_selected is null || _loadingEditor) return;
@@ -61,7 +115,8 @@ public partial class MainWindow
 
     private void MarkUnsavedChanges()
     {
-        if (_loadingEditor || _configuration is null || _exiting || _autoSaving) return;
+        if (_loadingEditor || _configuration is null || _exiting) return;
+        _editGeneration++;
         _autoSaveSchedule.Changed(DateTimeOffset.UtcNow);
         _autoSaveTimer.Start();
         _hasUnsavedChanges = true;
@@ -88,82 +143,120 @@ public partial class MainWindow
 
     private bool SaveAll(bool showNotification = false)
     {
-        if (_vaultLockInProgress || !VaultDatabase.Current.IsUnlocked) return false;
+        if (_saveInProgress || _vaultLockInProgress || !VaultDatabase.Current.IsUnlocked)
+            return false;
+
+        _saveInProgress = true;
         try
         {
-            ApplyCurrentEditor();
-            _configuration.UiLanguage = (LanguageCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "auto";
-            ApplyUiLanguage();
-            _configuration.StartWithWindows = StartupCheck.IsChecked == true;
-            _configuration.RunOnUnlock = UnlockCheck.IsChecked == true;
-            _configuration.RunOnAppStart = LaunchCheck.IsChecked == true;
-            _configuration.MinimizeToTray = TrayCheck.IsChecked == true;
-            _configuration.TrayNotificationsEnabled = NotifyCheck.IsChecked == true;
-            _configuration.SealBrowserProfilesOnLock = SealProfilesCheck.IsChecked == true;
-            _configuration.DiagnosticsLogEnabled = false;
-            _configuration.PreferTaskSchedulerAutostart = TaskSchedulerCheck.IsChecked == true;
-            _configuration.UpdateFeedUrl = string.IsNullOrWhiteSpace(UpdateFeedBox.Text)
-                ? null
-                : UpdateFeedBox.Text.Trim();
-            if (!int.TryParse(DelayBox.Text, out int delay) || delay < 0 || delay > 300)
-                throw new ArgumentException("Unlock delay must be between 0 and 300 seconds.");
-            _configuration.UnlockDelaySeconds = delay;
-            if (!int.TryParse(VaultTimeoutBox.Text, out int vaultMinutes) || vaultMinutes < 1 || vaultMinutes > 120)
-                throw new ArgumentException("Vault lock timeout must be between 1 and 120 minutes.");
-            _configuration.VaultLockMinutes = vaultMinutes;
-            _configuration.GlobalShortcut = ShortcutBox.Text;
-            _configuration.KeePassDatabasePath = KeePassDbBox.Text.Trim();
-            _configuration.KeePassKeyFilePath = KeePassKeyBox.Text.Trim();
-            RefreshKeePassStatus();
-            // The service validates every website before durable persistence.
-            // UI never signals a completed save unless that boundary succeeds.
-            _workflowConfiguration.Save(_configuration);
+            var originalConfig = _configuration;
+            var originalSelection = _selected;
+            var originalRevision = _editGeneration;
+            var vaultGeneration = VaultDatabase.Current.SessionGeneration;
+
+            // UI data are captured into an immutable draft. Nothing writes to
+            // live workflows until validation AND encrypted storage succeed.
+            var draft = CaptureConfigurationDraft(showNotification);
+            bool Owns() =>
+                ReferenceEquals(_configuration, originalConfig) &&
+                ReferenceEquals(_selected, originalSelection) &&
+                (originalSelection is null || originalConfig.Workflows.Any(w =>
+                    ReferenceEquals(w, originalSelection))) &&
+                _editGeneration == originalRevision &&
+                !_vaultLockInProgress && !_windowsLocked && !_exiting &&
+                VaultDatabase.Current.IsUnlocked &&
+                VaultDatabase.Current.SessionGeneration == vaultGeneration;
+
+            var result = _saveTransaction.Commit(originalConfig, draft.Apply,
+                Owns, vaultGeneration, draft.Apply);
+            if (!result.Published)
+            {
+                // Some outcomes have already committed a previous revision.
+                // Never acknowledge newer edits or turn a post-write conflict
+                // into a false rollback claim.
+                if (result.State == SaveTransactionState.CommittedButSuperseded)
+                {
+                    AppendLog("An earlier edit revision was saved; newer changes remain unsaved.");
+                    return false;
+                }
+                if (result.State == SaveTransactionState.CommittedButPublicationFailed)
+                {
+                    AppendLog("Configuration was committed but not published in the UI.");
+                    ShowAutoSaveFailed();
+                    return false;
+                }
+                if (result.Error is not null)
+                    throw result.Error;
+                return false; // superseded before the write
+            }
+
             MarkSaved();
+            // Platform/UI effects are NOT part of the storage transaction.
+            // Their failures must not misreport a successful encrypted commit.
             try
             {
                 var preference = (_configuration.StartWithWindows,
                     _configuration.PreferTaskSchedulerAutostart);
                 if (_lastAppliedStartupRegistration != preference)
                 {
-                    _startupRegistration.Apply(preference.StartWithWindows, preference.PreferTaskSchedulerAutostart);
+                    _startupRegistration.Apply(preference.StartWithWindows,
+                        preference.PreferTaskSchedulerAutostart);
                     _lastAppliedStartupRegistration = preference;
                 }
             }
             catch (Exception ex)
             {
-                AppendLog("Windows startup preference could not be applied: " + ex.Message);
+                AppendLog("Configuration saved, but Windows startup registration failed: " +
+                    ex.GetType().Name);
+                SaveStatusLabel.Text = "Saved · Startup setup failed";
             }
-            _loadingEditor = true;
-            WorkflowList.Items.Refresh();
-            WorkflowList.SelectedItem = _selected;
-            _loadingEditor = false;
-            if (showNotification) AppendLog("Settings and workflows saved.");
-            if (showNotification && !_configuration.ShortcutTipShown &&
-                _configuration.Workflows.Any(w => w.Enabled && !string.Equals(w.StartUrl, "https://example.com", StringComparison.OrdinalIgnoreCase)))
+
+            var wasLoading = _loadingEditor;
+            try
             {
-                _configuration.ShortcutTipShown = true;
-                _store.Save(_configuration);
-                MessageBox.Show(this, $"Your workspace is ready!\n\nPress {ShortcutBox.Text} any time LaunchFlow is running to open your enabled websites.\n\nYou can change this in Settings → Shortcuts.",
-                    "Run your workspace", MessageBoxButton.OK, MessageBoxImage.Information);
+                _loadingEditor = true;
+                ApplyUiLanguage();
+                AutoLoginCheck.IsChecked = draft.Website is not null &&
+                    WebsiteLoginMode.UsesSavedPassword(draft.Website.LoginMode);
+                RefreshKeePassStatus();
+                WorkflowList.Items.Refresh();
+                WorkflowList.SelectedItem = _selected;
+            }
+            catch (Exception ex)
+            {
+                AppendLog("Configuration saved; presentation refresh failed: " + ex.GetType().Name);
+            }
+            finally
+            {
+                _loadingEditor = wasLoading;
+            }
+            if (showNotification) AppendLog("Settings and workflows saved.");
+            if (showNotification && !_configuration.ShortcutTipShown == false &&
+                !originalConfig.ShortcutTipShown && draft.ShortcutTipShown)
+            {
+                // ShortcutTipShown is persisted in the original encrypted commit.
+                // This optional dialog may reenter WPF and generate a NEW dirty edit.
+                try
+                {
+                    MessageBox.Show(this, $"Your workspace is ready!\\n\\nPress {ShortcutBox.Text} any time LaunchFlow is running to open your enabled websites.\\n\\nYou can change this in Settings → Shortcuts.",
+                        "Run your workspace", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                catch (Exception ex) { AppendLog("Shortcut guidance failed: " + ex.GetType().Name); }
             }
             return true;
         }
         catch (Exception ex)
         {
-            // Debounced saves must never pop up a modal dialog on every invalid
-            // keystroke. Preserve the dirty state and allow explicit retry.
+            // Never conflate a failed save with an in-memory edit; retry remains possible.
+            ShowAutoSaveFailed();
             if (!_autoSaving)
-            {
-                ShowAutoSaveFailed();
                 MessageBox.Show(this, ex.Message, "Cannot save LaunchFlow",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
             else
-            {
-                AppendLog("Automatic save could not complete: " + ex.GetType().Name);
-            }
+                AppendLog("Automatic save failed: " + ex.GetType().Name);
             return false;
         }
+        finally { _saveInProgress = false; }
     }
 
 }
