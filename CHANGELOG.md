@@ -1,3 +1,14 @@
+# v0.7.43 — Automatic email-first / password-second login
+
+- LaunchFlow now handles ordinary staged login pages without recording separate username/Next/password actions. After filling the username it identifies a single visible Log In / Next / Continue button, safely clicks it on the previously approved document, waits for the password stage, and fills/submits saved credentials.
+- Works across same-document UI transitions and cross-page/domain redirects. Cross-origin identity-provider passwords still require explicit user origin approval; local login and SSO are never conflated.
+- Ambiguous buttons and MFA / security-code screens require manual attention instead of guessed clicks, credential retries or bypass attempts.
+- Keep the default-browser open-only mode, encrypted vault format, monitor positioning, existing login health checks and manual-capture workflows unchanged.
+- Add real isolated Chromium regressions for automatic two-stage login, signed-in page reuse without duplicate credential fill, denied and approved cross-origin IdPs, MFA barriers and ambiguous button refusal.
+- Version application, Inno Setup, fallback metadata and source report to v0.7.43.
+
+**Unsigned preview.** ThousandEyes local versus organizational SSO routing varies by tenant; real tenant login is not exercised by synthetic CI fixtures. Do not automate MFA or bypass organizational application controls.
+
 # v0.7.42 — Readable username/email in create-website wizard
 
 - Replace the masked WPF UsernameBox with an ordinary visible TextBox. Users can verify their email address or login name before creating a website.
