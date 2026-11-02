@@ -157,6 +157,8 @@ public partial class MainWindow
             // UI data are captured into an immutable draft. Nothing writes to
             // live workflows until validation AND encrypted storage succeed.
             var draft = CaptureConfigurationDraft(showNotification);
+            var showShortcutTip = showNotification &&
+                !originalConfig.ShortcutTipShown && draft.ShortcutTipShown;
             bool Owns() =>
                 ReferenceEquals(_configuration, originalConfig) &&
                 ReferenceEquals(_selected, originalSelection) &&
@@ -231,8 +233,7 @@ public partial class MainWindow
                 _loadingEditor = wasLoading;
             }
             if (showNotification) AppendLog("Settings and workflows saved.");
-            if (showNotification && !_configuration.ShortcutTipShown == false &&
-                !originalConfig.ShortcutTipShown && draft.ShortcutTipShown)
+            if (showShortcutTip)
             {
                 // ShortcutTipShown is persisted in the original encrypted commit.
                 // This optional dialog may reenter WPF and generate a NEW dirty edit.
