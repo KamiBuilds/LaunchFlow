@@ -1,3 +1,12 @@
+# v0.7.41 — Transactional-save architecture test build
+
+- Preview build of the isolated transaction/validation/publication work and encrypted vault-session protection from the pinned v0.7.40 baseline.
+- Includes regression tests for rejected SQLite writes, cold encrypted database reopen, stale vault authorization and auto-save reentrancy.
+- No intentional encrypted vault schema migration, workflow-ID change, or profile-path change.
+- Separate version number for this test installer, as required for each new user-visible build.
+
+**Development preview, not a stable release.** Unified lifecycle coordination and browser-session ownership milestones from the wider Hermes plan remain unfinished. Avoid relying on this test build for production credentials until native Windows upgrade and lock/unlock acceptance testing.
+
 # v0.7.40 — Encrypted auto-save
 
 - Add a 900 ms debounced auto-save for website and application-setting edits. Validation and encrypted durable persistence complete before the UI reports that changes are saved.
