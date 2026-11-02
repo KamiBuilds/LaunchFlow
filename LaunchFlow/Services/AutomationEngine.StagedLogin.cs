@@ -48,7 +48,7 @@ public sealed partial class AutomationEngine
     }
 
     private async Task<bool> AdvanceToPasswordStageAsync(
-        WebsiteWorkflow workflow, IPage page, string usernameOrigin, CancellationToken ct)
+        WebsiteWorkflow workflow, IPage page, string usernameOrigin, bool hadPasswordField, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         RequireCredentialAccess();
@@ -124,6 +124,11 @@ public sealed partial class AutomationEngine
             ct.ThrowIfCancellationRequested();
             RequireCredentialAccess();
             RequireAutomationUrl(page.Url);
+            // When the original page already had a password control, a late
+            // cross-origin navigation invalidates it. Never approve/fill a
+            // replacement on the foreign document during that attempt.
+            if (hadPasswordField && !OriginsMatch(usernameOrigin, GetOrigin(page.Url)))
+                return false;
             try
             {
                 if (await PasswordStageReadyAsync(workflow, page, ct).ConfigureAwait(false))
