@@ -539,7 +539,7 @@
                       <StackPanel Grid.Column="2"><TextBlock Text="Password field (CSS)" Style="{StaticResource FieldLabel}"/>
                         <TextBox x:Name="PasswordSelectorBox"/></StackPanel>
                     </Grid>
-                    <TextBlock Text="Next button after username (for two-page logins)" Style="{StaticResource FieldLabel}"/>
+                    <TextBlock Text="Username continuation selector (optional — automatic for most two-page logins)" Style="{StaticResource FieldLabel}"/>
                     <TextBox x:Name="UsernameContinueBox" Margin="0,0,0,11"/>
                     <TextBlock Text="Final sign-in button (CSS; blank means click manually)" Style="{StaticResource FieldLabel}"/>
                     <TextBox x:Name="SubmitSelectorBox" Margin="0,0,0,11"/>
