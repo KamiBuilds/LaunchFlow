@@ -151,9 +151,14 @@ check(wizard_named["UsernameBox"].tag.endswith("}TextBox") and
 manager_source = (root / "LaunchFlow/MainWindow.PasswordManager.cs").read_text(encoding="utf-8")
 credential_source = (root / "LaunchFlow/MainWindow.Credentials.cs").read_text(encoding="utf-8")
 editor_source = (root / "LaunchFlow/MainWindow.WebsiteEditor.cs").read_text(encoding="utf-8")
-check({"PasswordWebsiteCombo", "PasswordSiteName", "PasswordSiteUrl",
-       "CredentialScopeNotice", "SaveCredentialsButton", "ClearCredentialButton"}.issubset(named) and
-      named["PasswordWebsiteCombo"].get("DisplayMemberPath") == "Name" and
+check({"PasswordWebsiteCombo", "SaveCredentialsButton", "ClearCredentialButton"}.issubset(named) and
+      named["PasswordWebsiteCombo"].get("DisplayMemberPath") is None and
+      named["PasswordWebsiteCombo"].find(
+          "{http://schemas.microsoft.com/winfx/2006/xaml/presentation}ComboBox.ItemTemplate/"
+          "{http://schemas.microsoft.com/winfx/2006/xaml/presentation}DataTemplate/"
+          "{http://schemas.microsoft.com/winfx/2006/xaml/presentation}TextBlock"
+      ).get("Text") == "{Binding Name}" and
+      not {"PasswordSiteName", "PasswordSiteUrl", "CredentialScopeNotice"}.intersection(named) and
       named["PasswordWebsiteCombo"].get("SelectionChanged") == "PasswordWebsiteCombo_SelectionChanged" and
       named["UsernameBox"].tag.endswith("}TextBox") and
       named["PasswordInput"].tag.endswith("}PasswordBox") and
@@ -163,7 +168,7 @@ check({"PasswordWebsiteCombo", "PasswordSiteName", "PasswordSiteUrl",
       'UsernameBox.Password' not in credential_source and
       'private void PasswordWebsiteCombo_SelectionChanged' in manager_source and
       'Unsaved login changes' in manager_source,
-      "Password Manager has explicit per-website selection with readable email, masked password and scope guard")
+      "Password Manager displays website names without redundant warnings and preserves credential scope guards")
 check('Content="No login required' in ET.tostring(ui, encoding="unicode") and
       'WorkflowsNav.Content = Text("Websites");' in source and
       'SaveWorkspaceButton.Content = Text("Save");' in source and
