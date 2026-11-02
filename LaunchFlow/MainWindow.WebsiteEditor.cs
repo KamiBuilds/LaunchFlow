@@ -42,7 +42,6 @@ public partial class MainWindow
         ClearCredentialEditor();
         StepList.ItemsSource = null;
         CredentialStatus.Text = "No website selected";
-        PasswordSiteName.Text = "Select a website above";
         SyncPasswordWebsiteSelector();
         _loadingEditor = false;
     }
@@ -80,7 +79,6 @@ public partial class MainWindow
         LoginSuccessUrlBox.Text = w.LoginSuccessUrlContains;
         LoginWaitBox.Text = w.LoginWaitSeconds.ToString();
         ClearCredentialEditor();
-        PasswordSiteName.Text = w.Name;
         SyncPasswordWebsiteSelector();
         CredentialStatus.Text = DescribeCredentialStatus(w);
         if (MainTabs.SelectedIndex == 1 && SettingsTabs.SelectedIndex == 1 && PasswordSessionIsValid()) LoadCredentialEditor(w);
