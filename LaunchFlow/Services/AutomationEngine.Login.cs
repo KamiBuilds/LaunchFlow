@@ -204,7 +204,7 @@ public sealed partial class AutomationEngine
                     // A bounded, same-origin continuation replaces the need to
                     // record "Log In"/"Next"; custom selectors still take priority.
                     if (requiresPassword &&
-                        !await PasswordStageReadyAsync(workflow, page, ct).ConfigureAwait(false))
+                        !await PasswordStagePresentAsync(workflow, page, ct).ConfigureAwait(false))
                     {
                         if (!await AdvanceToPasswordStageAsync(workflow, page,
                             usernameOrigin, ct).ConfigureAwait(false))
