@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="AutoSaveHarness.cs" />
+    <Compile Include="PlatformStubs.cs" />
+    <Compile Include="obj/ProductionAutosave.g.cs" />
+    <Compile Include="../../LaunchFlow/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
+    <Compile Include="../../LaunchFlow/Services/EnterprisePolicy.cs" Link="Services/EnterprisePolicy.cs" />
+    <Compile Include="../../LaunchFlow/Services/VaultDatabase.cs" Link="Services/VaultDatabase.cs" />
+    <Compile Include="../../LaunchFlow/Services/ConfigStore.cs" Link="Services/ConfigStore.cs" />
+    <Compile Include="../../LaunchFlow/Services/PasswordStrength.cs" Link="Services/PasswordStrength.cs" />
+    <Compile Include="../../LaunchFlow/Services/WorkflowConfigurationService.cs" Link="Services/WorkflowConfigurationService.cs" />
+    <Compile Include="../../LaunchFlow/Services/WebsiteLoginMode.cs" Link="Services/WebsiteLoginMode.cs" />
+    <Compile Include="../../LaunchFlow/Services/ConfigurationSaveTransaction.cs" Link="Services/ConfigurationSaveTransaction.cs" />
+    <Compile Include="../../LaunchFlow/Services/AutoSaveSchedule.cs" Link="Services/AutoSaveSchedule.cs" />
+    <Compile Include="../../LaunchFlow/Services/StartupRegistrationService.cs" Link="Services/StartupRegistrationService.cs" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.31" />
+    <PackageReference Include="Konscious.Security.Cryptography.Argon2" Version="1.3.1" />
+  </ItemGroup>
+</Project>
