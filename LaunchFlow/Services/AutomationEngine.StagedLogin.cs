@@ -30,7 +30,7 @@ public sealed partial class AutomationEngine
             ct.ThrowIfCancellationRequested();
             var field = locator.Nth(i);
             if (await field.IsVisibleAsync().ConfigureAwait(false) &&
-                await field.IsEnabledAsync().ConfigureAwait(false))
+                await field.IsEditableAsync().ConfigureAwait(false))
                 return true;
         }
         return false;
