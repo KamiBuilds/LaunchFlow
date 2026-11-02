@@ -193,13 +193,20 @@ public sealed partial class AutomationEngine
                 if (usernameOrigin is not null)
                 {
                     approvedSubmitOrigin = usernameOrigin;
-                    if (!string.IsNullOrWhiteSpace(workflow.UsernameContinueSelector))
+                    // Email-first sites (including ThousandEyes) can render
+                    // the password form only after a username-stage submission.
+                    // A bounded, same-origin continuation replaces the need to
+                    // record "Log In"/"Next"; custom selectors still take priority.
+                    if (requiresPassword &&
+                        !await PasswordStageReadyAsync(workflow, page, ct).ConfigureAwait(false))
                     {
-                        await ExecuteStepAsync(page, new WorkflowStep
+                        if (!await AdvanceToPasswordStageAsync(workflow, page,
+                            usernameOrigin, ct).ConfigureAwait(false))
                         {
-                            Type = "Click", Target = workflow.UsernameContinueSelector
-                        }, ct).ConfigureAwait(false);
-                        await Task.Delay(800, ct).ConfigureAwait(false);
+                            Log($"Password stage was not reached for '{workflow.Name}'. " +
+                                "An SSO prompt or additional verification may need manual attention.");
+                            return false;
+                        }
                     }
                 }
                 else
@@ -415,30 +422,43 @@ public sealed partial class AutomationEngine
                 !await item.IsEnabledAsync().ConfigureAwait(false)) continue;
             await using var element = await item.ElementHandleAsync().ConfigureAwait(false);
             if (element is null) continue;
-            var origin = await element.EvaluateAsync<string>("""
-                element => {
-                    const doc = element.ownerDocument;
-                    if (!element.isConnected || doc.defaultView?.document !== doc)
-                        throw new Error('Login button document changed');
-                    return doc.location.origin;
-                }
-                """).ConfigureAwait(false);
-            RequireCredentialAccess();
-            RequireAutomationUrl(origin);
-            // Password approval already happened in FillCredentialAsync. Avoid
-            // re-prompting for the same SSO origin, but never click a form on a
-            // different site than the one that received the saved credential.
-            if (string.IsNullOrWhiteSpace(approvedCredentialOrigin) ||
-                !OriginsMatch(origin, approvedCredentialOrigin)) return false;
-            if (!await element.EvaluateAsync<bool>(
-                "(el, approved) => el.isConnected && el.ownerDocument.defaultView?.document === el.ownerDocument && el.ownerDocument.location.origin === approved",
-                origin).ConfigureAwait(false)) return false;
-            ct.ThrowIfCancellationRequested();
-            await element.ClickAsync().ConfigureAwait(false);
-            RequireAutomationUrl(page.Url);
-            return true;
+            return await ClickApprovedLoginElementAsync(page, element,
+                approvedCredentialOrigin, ct).ConfigureAwait(false);
         }
         return false;
+    }
+
+    /// <summary>
+    /// A login button may be clicked only on the exact document/origin that
+    /// received the approved username or password. Never relay a submitted
+    /// credential across an unapproved redirect, including an SSO redirect.
+    /// </summary>
+    private static async Task<bool> ClickApprovedLoginElementAsync(
+        IPage page, IElementHandle element, string? approvedCredentialOrigin,
+        CancellationToken ct)
+    {
+        var origin = await element.EvaluateAsync<string>("""
+            element => {
+                const doc = element.ownerDocument;
+                if (!element.isConnected || doc.defaultView?.document !== doc)
+                throw new Error('Login button document changed');
+                return doc.location.origin;
+            }
+            """).ConfigureAwait(false);
+        RequireCredentialAccess();
+        RequireAutomationUrl(origin);
+        // Password approval already happened in FillCredentialAsync. Avoid
+        // re-prompting for the same SSO origin, but never click a form on a
+        // different site than the one that received the saved credential.
+        if (string.IsNullOrWhiteSpace(approvedCredentialOrigin) ||
+            !OriginsMatch(origin, approvedCredentialOrigin)) return false;
+        if (!await element.EvaluateAsync<bool>(
+            "(el, approved) => el.isConnected && el.ownerDocument.defaultView?.document === el.ownerDocument && el.ownerDocument.location.origin === approved",
+            origin).ConfigureAwait(false)) return false;
+        ct.ThrowIfCancellationRequested();
+        await element.ClickAsync().ConfigureAwait(false);
+        RequireAutomationUrl(page.Url);
+        return true;
     }
 
     private async Task<string?> FillCredentialAsync(
