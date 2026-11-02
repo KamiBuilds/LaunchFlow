@@ -42,7 +42,7 @@ internal static class StagedLoginTests
         var page = await context.NewPageAsync();
         await page.GotoAsync("https://singlepage.test/login");
         var workflow = NewWorkflow("https://singlepage.test/login");
-        var vault = new CredentialVault();
+        var vault = NewVault();
         await using var engine = new AutomationEngine(vault);
         EngineBehaviorTests.Track(engine, workflow, context, page);
         var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
@@ -69,7 +69,7 @@ internal static class StagedLoginTests
         var page = await context.NewPageAsync();
         await page.GotoAsync("https://two-buttons.test/login");
         var workflow = NewWorkflow("https://two-buttons.test/login");
-        await using var engine = new AutomationEngine(new CredentialVault());
+        await using var engine = new AutomationEngine(NewVault());
         EngineBehaviorTests.Track(engine, workflow, context, page);
         var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
         Check(result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
@@ -92,7 +92,7 @@ internal static class StagedLoginTests
         var page = await context.NewPageAsync();
         await page.GotoAsync("https://resume-stage.test/password");
         var workflow = NewWorkflow("https://resume-stage.test/login");
-        await using var engine = new AutomationEngine(new CredentialVault());
+        await using var engine = new AutomationEngine(NewVault());
         EngineBehaviorTests.Track(engine, workflow, context, page);
         var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
         Check(result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
@@ -114,7 +114,7 @@ internal static class StagedLoginTests
         await page.GotoAsync("https://ambiguous-final.test/password");
         var workflow = NewWorkflow("https://ambiguous-final.test/login");
         workflow.LoginWaitSeconds = 5;
-        await using var engine = new AutomationEngine(new CredentialVault());
+        await using var engine = new AutomationEngine(NewVault());
         EngineBehaviorTests.Track(engine, workflow, context, page);
         var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
         Check(result.LoginNeedsAttention.Count == 1 &&
@@ -138,7 +138,7 @@ internal static class StagedLoginTests
         }));
         var page = await context.NewPageAsync();
         await page.GotoAsync("https://staged.test/login");
-        var vault = new CredentialVault();
+        var vault = NewVault();
         var workflow = NewWorkflow(page.Url);
         await using var engine = new AutomationEngine(vault);
         EngineBehaviorTests.Track(engine, workflow, context, page);
@@ -172,7 +172,7 @@ internal static class StagedLoginTests
         var page = await context.NewPageAsync();
         await page.GotoAsync("https://first.test/login");
         var workflow = NewWorkflow(page.Url);
-        var vault = new CredentialVault();
+        var vault = NewVault();
         await using var engine = new AutomationEngine(vault);
         EngineBehaviorTests.Track(engine, workflow, context, page);
         var approvals = new List<string>();
@@ -213,7 +213,7 @@ internal static class StagedLoginTests
         await page.GotoAsync("https://mfa-staged.test/login");
         var workflow = NewWorkflow(page.Url);
         workflow.Steps.Add(new WorkflowStep { Type = "Click", Target = "#followup" });
-        await using var engine = new AutomationEngine(new CredentialVault());
+        await using var engine = new AutomationEngine(NewVault());
         EngineBehaviorTests.Track(engine, workflow, context, page);
         var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
         Check(result.LoginNeedsAttention.Count == 1 && result.FinishedCount == 0 &&
@@ -235,13 +235,20 @@ internal static class StagedLoginTests
         await page.GotoAsync("https://ambiguous.test/login");
         var workflow = NewWorkflow(page.Url);
         workflow.LoginWaitSeconds = 5;
-        await using var engine = new AutomationEngine(new CredentialVault());
+        await using var engine = new AutomationEngine(NewVault());
         EngineBehaviorTests.Track(engine, workflow, context, page);
         var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
         Check(result.LoginNeedsAttention.Count == 1 &&
               await page.GetAttributeAsync("body", "data-clicked") is null,
               "ambiguous local-login buttons are not clicked blindly");
     }
+
+    // Valid synthetic email avoids the browser's native type=email form
+    // validation blocking submission before the engine can advance.
+    private static CredentialVault NewVault() => new()
+    {
+        Credential = new SiteCredential("test@example.invalid", "test-only-password")
+    };
 
     private static WebsiteWorkflow NewWorkflow(string url) => new()
     {
