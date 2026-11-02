@@ -124,4 +124,72 @@ Check(!autosave.HasPendingChanges && !autosave.Ready(t0.AddSeconds(10), true),
 Throws<ArgumentOutOfRangeException>(() => new AutoSaveSchedule(TimeSpan.Zero),
     "invalid zero auto-save delay is rejected");
 
+// Check the REAL isolated candidate/commit/publication contract, not a
+// WPF SaveAll stub. Invalid drafts and rejected writes must leave live state intact.
+var txLive = new Configuration
+{
+    UiLanguage = "en",
+    Workflows = new() { new WebsiteWorkflow { Name = "Original", StartUrl = "https://valid.example.test" } },
+    AdditionalSettings = new() { ["future_config"] = System.Text.Json.JsonDocument.Parse("{\"kept\":true}").RootElement.Clone() }
+};
+var liveWorkflow = txLive.Workflows[0];
+var liveList = txLive.Workflows;
+var txWrites = new List<Configuration>();
+long expectedVaultGeneration = 12;
+var tx = new ConfigurationSaveTransaction(
+    (candidate, expected) =>
+    {
+        if (expected != expectedVaultGeneration) throw new InvalidOperationException("stale key session");
+        txWrites.Add(candidate);
+    },
+    candidate =>
+    {
+        if (!candidate.Workflows[0].StartUrl.StartsWith("https://", StringComparison.Ordinal))
+            throw new ArgumentException("unsafe URL");
+    });
+var rejectedDraft = tx.Commit(txLive,
+    candidate => { candidate.UiLanguage = "pl"; candidate.Workflows[0].StartUrl = "javascript:bad"; },
+    () => true, 12, candidate => throw new Exception("must not publish rejected draft"));
+Check(rejectedDraft.State == SaveTransactionState.ValidationRejected &&
+      txLive.UiLanguage == "en" && txLive.Workflows[0].StartUrl == "https://valid.example.test" &&
+      txWrites.Count == 0, "invalid later value does not mutate live settings or reach storage");
+var staleBefore = tx.Commit(txLive, candidate => candidate.UiLanguage = "pl", () => false,
+    12, candidate => throw new Exception("must never publish"));
+Check(staleBefore.State == SaveTransactionState.SupersededBeforeWrite &&
+      txWrites.Count == 0, "superseded edit is refused before write");
+var failureTx = new ConfigurationSaveTransaction(
+    (_, _) => throw new IOException("synthetic disk refusal"), _ => { });
+var failure = failureTx.Commit(txLive, c => c.Workflows[0].Name = "Unsaved",
+    () => true, 12, _ => throw new Exception("must not publish failed storage"));
+Check(failure.State == SaveTransactionState.StorageRejected &&
+      txLive.Workflows[0].Name == "Original", "failed persistence retains original live model");
+var newerRevision = false;
+var race = tx.Commit(txLive, c => c.UiLanguage = "pl",
+    () => !newerRevision, 12, c => throw new Exception("stale publish"));
+Check(race.Published && !newerRevision, "positive publish control succeeds before race");
+newerRevision = false;
+var committedSuperseded = new ConfigurationSaveTransaction(
+    (c, _) => { txWrites.Add(c); newerRevision = true; }, _ => { });
+var late = committedSuperseded.Commit(txLive, c => c.UiLanguage = "nl", () => !newerRevision,
+    12, _ => throw new Exception("stale commit must not publish"));
+Check(late.State == SaveTransactionState.CommittedButSuperseded &&
+      txLive.UiLanguage == "en", "durable but superseded revision is not falsely acknowledged");
+newerRevision = false;
+var applied = tx.Commit(txLive, candidate => candidate.Workflows[0].Name = "Saved",
+    () => true, 12, candidate => liveWorkflow.Name = candidate.Workflows[0].Name);
+Check(applied.State == SaveTransactionState.CommittedAndPublished &&
+      ReferenceEquals(txLive.Workflows, liveList) &&
+      ReferenceEquals(txLive.Workflows[0], liveWorkflow) &&
+      liveWorkflow.Name == "Saved" && txLive.AdditionalSettings!.ContainsKey("future_config"),
+      "committed draft publishes in place and preserves configuration extension data");
+var tokenRejected = tx.Commit(txLive, c => c.UiLanguage = "nl", () => true, 11,
+    _ => throw new Exception("stale session must never publish"));
+Check(tokenRejected.State == SaveTransactionState.StorageRejected &&
+      txLive.UiLanguage == "en", "stale vault session cannot commit through owned writer");
+var dto = new ConfigurationEditDraft(null, "nl", false, false, false, true, true, true,
+    false, null, 5, 10, "Ctrl+M", "", "", true);
+dto.Apply(txLive);
+Check(txLive.UiLanguage == "nl" && txLive.AdditionalSettings.ContainsKey("future_config"),
+    "immutable draft applies known fields without dropping unknown configuration data");
+
 Console.WriteLine("PASS all pure architecture contracts");
