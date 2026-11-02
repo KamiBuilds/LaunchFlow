@@ -1,3 +1,14 @@
+# v0.7.42 — Readable username/email in create-website wizard
+
+- Replace the masked WPF UsernameBox with an ordinary visible TextBox. Users can verify their email address or login name before creating a website.
+- Keep the actual PasswordBox masked and preserve the existing explicit encrypted credential-storage path; recorded actions still exclude login details.
+- Read the username from TextBox.Text, including the existing insecure-HTTP confirmation path, while continuing to read the password from PasswordBox.Password.
+- Keep cancel/close clearing pending form fields and preserve optional-login behavior.
+- Add a WPF XAML/source regression check to prevent accidental username masking or password disclosure.
+- Bump Windows application, installer, version fallback, and file inventory to v0.7.42.
+
+**Unsigned development preview.** Preserve existing vault files. Actual native interactive wizard testing on Windows remains a user acceptance gate.
+
 # v0.7.41 — Transactional-save architecture test build
 
 - Preview build of the isolated transaction/validation/publication work and encrypted vault-session protection from the pinned v0.7.40 baseline.
