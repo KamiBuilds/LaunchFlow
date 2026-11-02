@@ -46,6 +46,7 @@ internal static class StagedLoginTests
         await using var engine = new AutomationEngine(vault);
         EngineBehaviorTests.Track(engine, workflow, context, page);
         var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Console.WriteLine($"Single-page fixture: finished={result.FinishedCount}, attention={result.LoginNeedsAttention.Count}, path={new Uri(page.Url).AbsolutePath}, vaultReads={vault.ReadCount}");
         Check(result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
               page.Url.EndsWith("/dashboard") && vault.ReadCount == 1,
               "single-page username + password submission still works without recording");
