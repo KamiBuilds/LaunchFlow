@@ -26,8 +26,8 @@ echo "Pinned legacy ConfigStore: $(git rev-parse "$BASELINE:LaunchFlow/Services/
 echo "Current test commit: $(git rev-parse HEAD)"
 # The two projects have different source inputs and separate obj/bin directories.
 # Pinned old source is never compiled together with the new ConfigStore session API.
+legacy_project="tests/policy/LegacyCompatibilityTests.csproj"
 legacy=(
-  --project tests/policy/LegacyCompatibilityTests.csproj
   -c Release
   -p:VaultDatabaseSource="$ROOT/BaselineVault.cs"
   -p:LegacyConfigStoreSource="$ROOT/BaselineConfigStore.cs"
@@ -42,9 +42,15 @@ current=(
   -p:TreatWarningsAsErrors=true
   -p:UseSharedCompilation=false
 )
-"$SDK" run "${legacy[@]}" -- --compat-create
+"$SDK" build "$legacy_project" "${legacy[@]}"
+legacy_dll="$ROOT/legacy-bin/Release/net8.0/LegacyCompatibilityTests.dll"
+if [[ ! -f "$legacy_dll" ]]; then
+  echo "Fresh legacy compatibility executable missing: $legacy_dll" >&2
+  exit 1
+fi
+"$SDK" "$legacy_dll" --compat-create
 "$SDK" run "${current[@]}" -- --compat-update
-"$SDK" run "${legacy[@]}" -- --compat-read
+"$SDK" "$legacy_dll" --compat-read
 "$SDK" build tests/policy/PolicyTests.csproj -c Release \
   -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
 echo "PASS: pinned baseline -> current session-bound save -> pinned baseline reader"
