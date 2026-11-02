@@ -14,6 +14,7 @@ internal static class StagedLoginTests
         await UnapprovedIdpAsync(playwright);
         await MfaRequiresHumanAsync(playwright);
         await AmbiguousButtonDoesNotGuessAsync(playwright);
+        await UnrelatedFirstStageButtonDoesNotDispatchAsync(playwright);
 
         Check(AutomationEngine.IsUsernameStageSubmitLabel("Log In") &&
               AutomationEngine.IsUsernameStageSubmitLabel("Next") &&
@@ -241,6 +242,53 @@ internal static class StagedLoginTests
         Check(result.LoginNeedsAttention.Count == 1 &&
               await page.GetAttributeAsync("body", "data-clicked") is null,
               "ambiguous local-login buttons are not clicked blindly");
+    }
+
+    private static async Task UnrelatedFirstStageButtonDoesNotDispatchAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(3000);
+        var unexpectedRequests = 0;
+        await context.RouteAsync("https://unrelated-form.test/**", async route =>
+        {
+            if (route.Request.Url.EndsWith("/unrelated-action", StringComparison.Ordinal))
+            {
+                Interlocked.Increment(ref unexpectedRequests);
+                await route.FulfillAsync(new() { Status = 204 });
+                return;
+            }
+            await route.FulfillAsync(new()
+            {
+                ContentType = "text/html",
+                Body = """
+                    <form id="login">
+                      <input id="email" type="email" autocomplete="username">
+                    </form>
+                    <form id="other">
+                      <input id="search" type="search">
+                      <button id="other-next" type="button"
+                        onclick="document.body.dataset.unrelatedClick='yes';fetch('/unrelated-action',{method:'POST'})">
+                        Next
+                      </button>
+                    </form>
+                    """
+            });
+        });
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://unrelated-form.test/login");
+        var workflow = NewWorkflow(page.Url);
+        workflow.LoginWaitSeconds = 5;
+        var vault = NewVault();
+        await using var engine = new AutomationEngine(vault);
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        var unrelatedClick = await page.GetAttributeAsync("body", "data-unrelated-click");
+        await page.WaitForTimeoutAsync(200);
+        var requests = Volatile.Read(ref unexpectedRequests);
+        Console.WriteLine($"WEB-01 two-form fixture: unrelatedClick={unrelatedClick ?? "none"}, unrelatedRequests={requests}, needsAttention={result.LoginNeedsAttention.Count}");
+        Check(unrelatedClick is null && requests == 0,
+            "WEB-01 unrelated form button must not receive an automatic login click/request");
     }
 
     // Valid synthetic email avoids the browser's native type=email form
