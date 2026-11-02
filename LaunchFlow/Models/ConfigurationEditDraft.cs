@@ -16,6 +16,7 @@ public sealed record WebsiteEditDraft(
     int MonitorIndex,
     string MonitorDeviceName,
     string LoginMode,
+    bool AutoLogin,
     string UsernameContinueSelector,
     string PasswordCredentialOrigin,
     string KeepassEntryPath,
@@ -42,7 +43,7 @@ public sealed record WebsiteEditDraft(
             workflow.MonitorDeviceName = MonitorDeviceName;
         }
         workflow.LoginMode = LoginMode;
-        workflow.AutoLogin = Services.WebsiteLoginMode.UsesSavedPassword(LoginMode);
+        workflow.AutoLogin = AutoLogin;
         workflow.UsernameContinueSelector = UsernameContinueSelector;
         workflow.PasswordCredentialOrigin = PasswordCredentialOrigin;
         workflow.KeepassEntryPath = KeepassEntryPath;
