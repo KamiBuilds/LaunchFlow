@@ -8,6 +8,7 @@
     <VaultDatabaseSource Condition="'$(VaultDatabaseSource)' == ''">../../LaunchFlow/Services/VaultDatabase.cs</VaultDatabaseSource>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="LegacyCompatibilityProgram.cs" />
     <Compile Include="../../LaunchFlow/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
     <Compile Include="../../LaunchFlow/Services/EnterprisePolicy.cs" Link="EnterprisePolicy.cs" Condition="Exists('../../LaunchFlow/Services/EnterprisePolicy.cs')" />
     <Compile Include="../../LaunchFlow/Services/CrashLog.cs" Link="CrashLog.cs" />
