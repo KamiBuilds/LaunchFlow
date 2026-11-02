@@ -141,6 +141,59 @@ try
         Check(ColdRead().Workflows.Single().Name == "Original",
             "locked auto-save wrote to cold encrypted storage");
     });
+    Run("session A revoked after validation refuses stale draft and retries under session B", () =>
+    {
+        var ui = new AutoSaveFixture();
+        var original = ui.Selected!;
+        var before = vault.SessionGeneration;
+        var validated = 0;
+        ui.AfterValidation = () =>
+        {
+            validated++;
+            vault.Lock();
+            Check(vault.Unlock(password), "failed to unlock fresh vault session B");
+            Check(vault.SessionGeneration != before, "vault generation did not rotate");
+        };
+        ui.NameBox.Text = "Revoked after validation";
+        WaitAndTick(ui);
+        Check(validated == 1, "actual validation callback was not reached");
+        Check(ui.Dirty && ui.SaveStatusLabel.Text == "Save failed" &&
+              !ui.TimerEnabled && ReferenceEquals(ui.Selected, original) &&
+              original.Name == "Original",
+              "revoked session incorrectly published or acknowledged stale draft");
+        Check(ColdRead().Workflows.Single().Name == "Original",
+              "revoked session persisted stale candidate");
+        ui.AfterValidation = null;
+        Check(ui.ManualSave() && !ui.Dirty &&
+              ColdRead().Workflows.Single().Name == "Revoked after validation",
+              "new save under session B did not commit pending edit");
+    });
+    Run("session A revoked at durable admission cannot write with session B key", () =>
+    {
+        var ui = new AutoSaveFixture();
+        var original = ui.Selected!;
+        var before = vault.SessionGeneration;
+        var reachedActualWriter = 0;
+        ui.BeforeDurableWrite = () =>
+        {
+            reachedActualWriter++;
+            vault.Lock();
+            Check(vault.Unlock(password), "failed to unlock session B at repository boundary");
+            Check(vault.SessionGeneration != before, "vault generation unchanged at write boundary");
+        };
+        ui.NameBox.Text = "Rejected inside vault write gate";
+        WaitAndTick(ui);
+        Check(reachedActualWriter == 1, "real durable repository write was not entered");
+        Check(ui.Dirty && ui.SaveStatusLabel.Text == "Save failed" &&
+              !ui.TimerEnabled && original.Name == "Original",
+              "under-gate session rejection published stale edit or claimed success");
+        Check(ColdRead().Workflows.Single().Name == "Original",
+              "under-gate session rejection changed encrypted disk");
+        ui.BeforeDurableWrite = null;
+        Check(ui.ManualSave() && !ui.Dirty &&
+              ColdRead().Workflows.Single().Name == "Rejected inside vault write gate",
+              "new session retry failed after a stale under-gate write");
+    });
     Run("credential input is excluded from dirty subscriptions and implicit save", () =>
     {
         var ui = new AutoSaveFixture();
@@ -229,6 +282,8 @@ partial class AutoSaveFixture
     private bool HasPendingEditorDialog => false;
 
     public Action? StartupHook;
+    public Action? AfterValidation;
+    public Action? BeforeDurableWrite;
     public readonly List<string> Logs = new();
     public readonly FakeControl NameBox = new(), StartUrlBox = new(), DestinationUrlBox = new();
     public readonly FakeControl BrowserCombo = new(), MonitorCombo = new(), EnabledCheck = new();
@@ -269,7 +324,17 @@ partial class AutoSaveFixture
                 (u.Scheme != "https" && u.Scheme != "http"))
                 throw new ArgumentException("Invalid test website URL");
         });
-        _saveTransaction = new ConfigurationSaveTransaction(_store.SaveDurable, validator.Validate);
+        _saveTransaction = new ConfigurationSaveTransaction(
+            (candidate, expectedSession) =>
+            {
+                BeforeDurableWrite?.Invoke();
+                _store.SaveDurable(candidate, expectedSession);
+            },
+            candidate =>
+            {
+                validator.Validate(candidate);
+                AfterValidation?.Invoke();
+            });
         AttachProductionDirtyEvents();
         StartAutoSave();
     }
