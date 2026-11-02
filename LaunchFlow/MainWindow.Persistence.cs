@@ -54,6 +54,7 @@ public partial class MainWindow
                 replaceMonitor, monitor?.Index ?? _selected.MonitorIndex,
                 monitor?.DeviceName ?? _selected.MonitorDeviceName,
                 SelectedLoginMode(LoginModeCombo.SelectedIndex),
+                WebsiteLoginMode.UsesSavedPassword(SelectedLoginMode(LoginModeCombo.SelectedIndex)),
                 UsernameContinueBox.Text.Trim(), PasswordOriginBox.Text.Trim(),
                 KeepassEntryBox.Text.Trim(), UsernameSelectorBox.Text.Trim(),
                 PasswordSelectorBox.Text.Trim(), SubmitSelectorBox.Text.Trim(),
