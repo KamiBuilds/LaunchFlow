@@ -204,14 +204,23 @@ public sealed partial class AutomationEngine
                     // A bounded, same-origin continuation replaces the need to
                     // record "Log In"/"Next"; custom selectors still take priority.
                     if (requiresPassword &&
-                        !await PasswordStagePresentAsync(workflow, page, ct).ConfigureAwait(false))
+                        !await PasswordStageReadyAsync(workflow, page, ct).ConfigureAwait(false))
                     {
-                        if (!await AdvanceToPasswordStageAsync(workflow, page,
-                            usernameOrigin, ct).ConfigureAwait(false))
+                        var hadPasswordField = await PasswordStagePresentAsync(
+                            workflow, page, ct).ConfigureAwait(false);
+                        // User-specified continuation is authoritative. For
+                        // automatic detection, a pre-existing disabled or hidden
+                        // password input stays bound to the current document.
+                        if (!hadPasswordField ||
+                            !string.IsNullOrWhiteSpace(workflow.UsernameContinueSelector))
                         {
-                            Log($"Password stage was not reached for '{workflow.Name}'. " +
-                                "An SSO prompt or additional verification may need manual attention.");
-                            return false;
+                            if (!await AdvanceToPasswordStageAsync(workflow, page,
+                                usernameOrigin, hadPasswordField, ct).ConfigureAwait(false))
+                            {
+                                Log($"Password stage was not reached for '{workflow.Name}'. " +
+                                    "An SSO prompt or additional verification may need manual attention.");
+                                return false;
+                            }
                         }
                     }
                 }
