@@ -36,6 +36,17 @@ public sealed partial class AutomationEngine
         return false;
     }
 
+    // A password input already bound to this document may be temporarily
+    // disabled or hidden. Preserve that exact document binding rather than
+    // clicking Next and retargeting credentials onto a replacement document.
+    private static async Task<bool> PasswordStagePresentAsync(
+        WebsiteWorkflow workflow, IPage page, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (string.IsNullOrWhiteSpace(workflow.PasswordSelector)) return false;
+        return await page.Locator(workflow.PasswordSelector).CountAsync().ConfigureAwait(false) > 0;
+    }
+
     private async Task<bool> AdvanceToPasswordStageAsync(
         WebsiteWorkflow workflow, IPage page, string usernameOrigin, CancellationToken ct)
     {
@@ -78,7 +89,10 @@ public sealed partial class AutomationEngine
                     el => (el.getAttribute('aria-label') || el.innerText ||
                            el.textContent || el.value || '').trim()
                     """).ConfigureAwait(false);
-                if (!IsUsernameStageSubmitLabel(label)) continue;
+                if (!IsUsernameStageSubmitLabel(label) ||
+                    label.Trim().Equals("sign in", StringComparison.OrdinalIgnoreCase) ||
+                    label.Trim().Equals("signin", StringComparison.OrdinalIgnoreCase))
+                    continue;
                 var element = await button.ElementHandleAsync().ConfigureAwait(false);
                 if (element is not null) candidates.Add(element);
             }
