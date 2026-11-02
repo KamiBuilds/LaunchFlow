@@ -401,14 +401,21 @@
             
           </StackPanel>
         </ScrollViewer></TabItem>
-        <TabItem Header="Passwords"><ScrollViewer VerticalScrollBarVisibility="Auto" Background="#111A2A"><StackPanel Margin="28" MaxWidth="840" HorizontalAlignment="Left"><TextBlock Text="Passwords for this website" FontSize="24" FontWeight="Bold" Margin="0,0,0,8"/><TextBlock Text="One master-password unlock lasts one hour, even if you visit other tabs. The encrypted vault relocks after your configurable Windows-lock timeout (10 minutes by default)." Foreground="#B6C8DD" TextWrapping="Wrap" Margin="0,0,0,7"/>
-<TextBlock x:Name="PasswordSessionLabel" Text="Locked · unlock to manage saved credentials." Foreground="#7FD9F8" Margin="0,0,0,13" TextWrapping="Wrap"/><TextBlock Text="Currently selected website:" Foreground="#9EB9D6"/><TextBlock x:Name="PasswordSiteName" FontSize="17" FontWeight="SemiBold" Margin="0,5,0,18"/><Border Background="#1B2636" CornerRadius="12" Padding="20" Margin="0,0,0,10" BorderThickness="1" BorderBrush="#2A4155">
+        <TabItem Header="Passwords"><ScrollViewer VerticalScrollBarVisibility="Auto" Background="#111A2A"><StackPanel Margin="28" MaxWidth="840" HorizontalAlignment="Left"><TextBlock Text="Website passwords" FontSize="24" FontWeight="Bold" Margin="0,0,0,8"/><TextBlock Text="One master-password unlock lasts one hour, even if you visit other tabs. The encrypted vault relocks after your configurable Windows-lock timeout (10 minutes by default)." Foreground="#B6C8DD" TextWrapping="Wrap" Margin="0,0,0,7"/>
+<TextBlock x:Name="PasswordSessionLabel" Text="Locked · unlock to manage saved credentials." Foreground="#7FD9F8" Margin="0,0,0,13" TextWrapping="Wrap"/>
+ <TextBlock Text="1. Choose exactly which website account to edit" Foreground="#D9ECFA" FontWeight="SemiBold" Margin="0,0,0,6"/>
+ <ComboBox x:Name="PasswordWebsiteCombo" DisplayMemberPath="Name" SelectionChanged="PasswordWebsiteCombo_SelectionChanged"
+           AutomationProperties.Name="Website account to update" MinWidth="300" MaxWidth="520" HorizontalAlignment="Left" Margin="0,0,0,8"/>
+ <TextBlock x:Name="PasswordSiteName" Text="No website selected" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,4"/>
+ <TextBlock x:Name="PasswordSiteUrl" Foreground="#9EB9D6" Margin="0,0,0,6" TextWrapping="Wrap"/>
+ <TextBlock x:Name="CredentialScopeNotice" Text="Select a website to edit its saved login. Other websites will not be changed."
+            Foreground="#7FE0D2" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,18"/><Border Background="#1B2636" CornerRadius="12" Padding="20" Margin="0,0,0,10" BorderThickness="1" BorderBrush="#2A4155">
               <StackPanel>
                 <DockPanel Margin="0,0,0,4">
                   <TextBlock Text="SECURE LOGIN DETAILS" Style="{StaticResource SectionHeader}" DockPanel.Dock="Left"/>
                   <TextBlock x:Name="CredentialStatus" Text="No password saved" Foreground="#6EE7D7" HorizontalAlignment="Right" VerticalAlignment="Top"/>
                 </DockPanel>
-                <TextBlock Text="Saved credentials are encrypted in your local vault. Both fields always stay masked. Leave either field blank to keep its saved value; enter a replacement and click Save credentials to update it." TextWrapping="Wrap" Foreground="#A7B8CB" Margin="0,0,0,11"/>
+                <TextBlock Text="2. Enter only the account details you want to replace. The saved username and password are not displayed; leave either field blank to keep it unchanged. Your password remains masked and encrypted in the vault." TextWrapping="Wrap" Foreground="#A7B8CB" Margin="0,0,0,11"/>
                 <TextBlock Text="How should LaunchFlow sign in?" Style="{StaticResource FieldLabel}" Margin="0,0,0,6"/>
                 <ComboBox x:Name="LoginModeCombo" SelectedIndex="0" AutomationProperties.Name="Sign-in mode"
                           SelectionChanged="LoginModeCombo_SelectionChanged">
@@ -434,17 +441,17 @@
                 </Expander>
                 <Grid Margin="0,12,0,0">
                   <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="15"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                  <StackPanel Grid.Column="0"><TextBlock Text="Username or email (hidden)" Style="{StaticResource FieldLabel}"/>
-                    <PasswordBox x:Name="UsernameBox" Background="#0D1522" Foreground="White" BorderBrush="#354358" Padding="9" FontSize="13" Height="35"/></StackPanel>
-                  <StackPanel Grid.Column="2"><TextBlock Text="Password (hidden, encrypted when saved)" Style="{StaticResource FieldLabel}"/>
+                  <StackPanel Grid.Column="0"><TextBlock Text="New username or email (leave blank to keep current)" Style="{StaticResource FieldLabel}"/>
+                    <TextBox x:Name="UsernameBox" AutomationProperties.Name="New website username or email" Background="#0D1522" Foreground="White" BorderBrush="#354358" Padding="9" FontSize="13" Height="35"/></StackPanel>
+                  <StackPanel Grid.Column="2"><TextBlock Text="New password (leave blank to keep current)" Style="{StaticResource FieldLabel}"/>
                     <PasswordBox x:Name="PasswordInput" Background="#0D1522" Foreground="White" BorderBrush="#354358" Padding="9" FontSize="13" Height="35"/></StackPanel>
                 </Grid>
                 <StackPanel Orientation="Horizontal" Margin="0,10,0,12">
-                  <Button Content="Save credentials" Click="SaveCredentials_Click" Background="#55D8C8" Foreground="#061421" FontWeight="SemiBold"/>
-                  <Button Content="Remove saved credentials" Click="ClearCredential_Click" Margin="10,0,0,0"/>
+                  <Button x:Name="SaveCredentialsButton" Content="Save for selected website" Click="SaveCredentials_Click" Background="#55D8C8" Foreground="#061421" FontWeight="SemiBold"/>
+                  <Button x:Name="ClearCredentialButton" Content="Remove from selected website" Click="ClearCredential_Click" Margin="10,0,0,0"/>
                 </StackPanel>
                 <StackPanel Margin="0,0,0,12">
-                  <TextBlock Text="Your username and password are never shown in plain text, including when editing saved credentials." Foreground="#96AFC3" TextWrapping="Wrap"/>
+                  <TextBlock Text="LaunchFlow updates only the encrypted login for the website chosen above. Changing credentials here does not change the password on the website itself. Only the new email you type is visible; saved credentials are never prefilled." Foreground="#96AFC3" TextWrapping="Wrap"/>
                 </StackPanel>
                 <!-- Old optional success URL kept invisible for migration and advanced configurations. -->
                 <TextBox x:Name="LoginSuccessUrlBox" Visibility="Collapsed"/>
