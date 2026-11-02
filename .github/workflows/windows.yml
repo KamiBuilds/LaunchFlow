@@ -49,6 +49,10 @@ jobs:
         run: python3 tools/Verify-LaunchFlow-Source.py
       - name: Verify baseline-to-new-to-baseline encrypted data compatibility
         run: DOTNET=dotnet bash tests/policy/run-compatibility.sh
+      - name: Exercise production WPF autosave methods through encrypted SQLite
+        run: |
+          python3 tests/autosave/extract.py
+          dotnet run --project tests/autosave/AutosaveIntegrationTests.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
       - name: Build runtime harness
         run: dotnet build tests/runtime/RuntimeTests.csproj -c Release -warnaserror
       - name: Install isolated development Chromium
