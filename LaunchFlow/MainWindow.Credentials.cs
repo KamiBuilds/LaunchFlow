@@ -27,7 +27,8 @@ public partial class MainWindow
         // A modal confirmation pumps WPF events: import or a selection change
         // can replace _selected while the Yes/No prompt is open.
         if (_selected is not { } workflow || _windowsLocked || _vaultLockInProgress ||
-            _exiting || !VaultDatabase.Current.IsUnlocked || !CredentialReadAllowed()) return;
+            _exiting || !VaultDatabase.Current.IsUnlocked || !CredentialReadAllowed() ||
+            !ReferenceEquals(PasswordWebsiteCombo.SelectedItem, workflow)) return;
         var revision = _workspaceRevision;
         if (MessageBox.Show(this,
                 $"Remove the encrypted login password saved for '{workflow.Name}'?",
@@ -37,7 +38,8 @@ public partial class MainWindow
         if (!CredentialDeleteGuard.IsCurrent(_configuration, _selected, workflow,
                 revision, _workspaceRevision,
                 VaultDatabase.Current.IsUnlocked && !_windowsLocked &&
-                !_vaultLockInProgress && !_exiting && CredentialReadAllowed()))
+                !_vaultLockInProgress && !_exiting && CredentialReadAllowed() &&
+                ReferenceEquals(PasswordWebsiteCombo.SelectedItem, workflow)))
         {
             AppendLog("Credential deletion canceled: the website, configuration or vault authorization changed during confirmation.");
             return;
@@ -63,9 +65,10 @@ public partial class MainWindow
 
     private void SaveCredentials_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is null)
+        if (_selected is null || !ReferenceEquals(PasswordWebsiteCombo.SelectedItem, _selected) ||
+            !_configuration.Workflows.Any(w => ReferenceEquals(w, _selected)))
         {
-            MessageBox.Show(this, "Select a workflow before saving credentials.",
+            MessageBox.Show(this, "Choose a website in the Password Manager before saving credentials.",
                 "No workflow selected", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -90,7 +93,7 @@ public partial class MainWindow
             var existing = _vault.Read(_selected.Id);
             // Only explicitly entered, nonempty values overwrite what is already saved.
             // Saved identities are never reloaded into the editor or exposed on screen.
-            var newUsername = UsernameBox.Password.Trim();
+            var newUsername = UsernameBox.Text.Trim();
             var newPassword = PasswordInput.Password;
             var username = string.IsNullOrEmpty(newUsername) ? existing?.Username ?? "" : newUsername;
             var password = string.IsNullOrEmpty(newPassword) ? existing?.Password ?? "" : newPassword;
@@ -115,8 +118,8 @@ public partial class MainWindow
             _loadedCredentialWorkflowId = _selected.Id;
             CredentialStatus.Text = "Encrypted credentials saved";
             AppendLog($"Credentials securely updated for workflow '{_selected.Name}'.");
-            MessageBox.Show(this, "Credentials saved in the encrypted vault. " +
-                "The previous values have been replaced where you entered new ones.",
+            MessageBox.Show(this, $"Credentials for '{_selected.Name}' saved in the encrypted vault. " +
+                "Other websites and the master password were not changed.",
                 "Credentials saved", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
