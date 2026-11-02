@@ -119,8 +119,11 @@ check('WorkspaceCatalog.PendingRunIsCurrent(' in source and
       "modal workflow dispatch rechecks current workspace and saves are durable")
 store = (root / "LaunchFlow/Services/ConfigStore.cs").read_text(encoding="utf-8")
 check('public void SaveDurable(Configuration configuration)' in store and
-      'VaultDatabase.Current.SaveConfiguration(configuration)' in store,
-      "durable workspace persistence never falls back to transient storage")
+      'public void SaveDurable(Configuration configuration, long expectedSession)' in store and
+      '_vault.SaveConfiguration(configuration, expectedSession)' in store and
+      'SaveConfigurationUnderGate(config, expectedSession)' in
+          (root / "LaunchFlow/Services/VaultDatabase.cs").read_text(encoding="utf-8"),
+      "durable workspace persistence checks the expected vault session under its gate")
 extractor = (root / "tests/workspaces/extract-ui-methods.py").read_text(encoding="utf-8")
 check(extractor.count('read_text(encoding="utf-8")') >= 2 and
       'write_text(output, encoding="utf-8")' in extractor,
