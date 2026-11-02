@@ -5,6 +5,10 @@ using Microsoft.Playwright;
 
 using var playwright = await Playwright.CreateAsync();
 if (args.Contains("--staged-login-only")) { await StagedLoginTests.RunAsync(playwright); return; }
+if (!args.Contains("--document-bound-only") && !args.Contains("--profile-only") &&
+    !args.Contains("--monitor-only") && !args.Contains("--policy-only") &&
+    !args.Contains("--dispatch-only"))
+    await StagedLoginTests.RunAsync(playwright);
 if (args.Contains("--manual-confirmation-only")) { await ManualConfirmationRaceTests.RunAsync(playwright); return; }
 if (args.Contains("--policy-dispatch-only")) { await PolicyDispatchTests.RunAsync(playwright, args); return; }
 if (!args.Contains("--monitor-only") && !args.Contains("--document-bound-only") && !args.Contains("--profile-only") && !args.Contains("--dispatch-only"))
@@ -16,8 +20,6 @@ if (args.Contains("--policy-only")) return;
 if (args.Contains("--dispatch-only")) { await DispatchedFillTests.RunAsync(playwright); return; }
 await WorkflowExecutionTests.RunAsync(playwright, args);
 await EngineBehaviorTests.RunAsync(playwright, args);
-if (!args.Contains("--document-bound-only") && !args.Contains("--profile-only"))
-    await StagedLoginTests.RunAsync(playwright);
 if (!args.Contains("--document-bound-only") && !args.Contains("--profile-only"))
     await ManualConfirmationRaceTests.RunAsync(playwright);
 await EngineLifecycleTests.RunAsync(playwright, args);
