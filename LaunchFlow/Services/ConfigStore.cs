@@ -17,12 +17,14 @@ public sealed class ConfigStore
     };
 
     private Configuration? _temp;
+    private readonly VaultDatabase _vault;
+    public ConfigStore(VaultDatabase? vault = null) => _vault = vault ?? VaultDatabase.Current;
 
     public Configuration Load()
     {
-        if (VaultDatabase.Current.IsUnlocked)
+        if (_vault.IsUnlocked)
         {
-            var config = VaultDatabase.Current.LoadConfiguration();
+            var config = _vault.LoadConfiguration();
             _temp = null;
             return config;
         }
@@ -37,9 +39,9 @@ public sealed class ConfigStore
     public void Save(Configuration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
-        if (VaultDatabase.Current.IsUnlocked)
+        if (_vault.IsUnlocked)
         {
-            VaultDatabase.Current.SaveConfiguration(configuration);
+            _vault.SaveConfiguration(configuration);
             _temp = null;
             return;
         }
@@ -53,9 +55,9 @@ public sealed class ConfigStore
     public void SaveDurable(Configuration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
-        if (!VaultDatabase.Current.IsUnlocked)
+        if (!_vault.IsUnlocked)
             throw new InvalidOperationException("The encrypted vault is locked. Workspace changes were not saved.");
-        VaultDatabase.Current.SaveConfiguration(configuration);
+        _vault.SaveConfiguration(configuration);
         _temp = null;
     }
 
@@ -63,7 +65,7 @@ public sealed class ConfigStore
     public void SaveDurable(Configuration configuration, long expectedSession)
     {
         ArgumentNullException.ThrowIfNull(configuration);
-        VaultDatabase.Current.SaveConfiguration(configuration, expectedSession);
+        _vault.SaveConfiguration(configuration, expectedSession);
         _temp = null;
     }
 
