@@ -35,6 +35,12 @@ public sealed class VaultDatabase
 
     private readonly object _gate = new();
     private byte[]? _key;
+    // Monotonic vault authorization identity; read and write under _gate.
+    private long _sessionGeneration;
+    public long SessionGeneration
+    {
+        get { lock (_gate) return _sessionGeneration; }
+    }
     private Configuration? _configCache;
     private Dictionary<Guid, SiteCredential>? _secretsCache;
 
@@ -72,6 +78,7 @@ public sealed class VaultDatabase
 
                 ZeroKey();
                 _key = key;
+                _sessionGeneration++;
                 key = null;
                 _configCache = null;
                 _secretsCache = null;
@@ -122,6 +129,7 @@ public sealed class VaultDatabase
                 }
 
                 _key = key;
+                _sessionGeneration++;
                 key = null;
                 WriteSealed(connection, "config", Serialize(config));
                 PersistCredentials(connection, secrets ?? new Dictionary<Guid, SiteCredential>());
@@ -184,13 +192,27 @@ public sealed class VaultDatabase
 
     public void SaveConfiguration(Configuration config)
     {
-        RequireUnlocked();
-        lock (_gate)
-        {
-            using var connection = OpenConnection();
-            WriteSealed(connection, "config", Serialize(config));
-            _configCache = CloneConfig(config);
-        }
+        ArgumentNullException.ThrowIfNull(config);
+        lock (_gate) SaveConfigurationUnderGate(config, expectedSession: null);
+    }
+
+    /// <summary>
+    /// Commit only while the exact captured vault authorization is current.
+    /// The session/key checks and encrypted write share the SAME lock.
+    /// </summary>
+    public void SaveConfiguration(Configuration config, long expectedSession)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        lock (_gate) SaveConfigurationUnderGate(config, expectedSession);
+    }
+
+    private void SaveConfigurationUnderGate(Configuration config, long? expectedSession)
+    {
+        if (_key is null || (expectedSession.HasValue && _sessionGeneration != expectedSession))
+            throw new InvalidOperationException("Vault authorization changed; configuration was not saved.");
+        using var connection = OpenConnection();
+        WriteSealed(connection, "config", Serialize(config));
+        _configCache = CloneConfig(config);
     }
 
     public bool HasCredential(Guid id)
@@ -307,6 +329,7 @@ public sealed class VaultDatabase
 
                 ZeroKey();
                 _key = newKey;
+                _sessionGeneration++;
                 newKey = null;
                 WriteSealed(connection, "config", Serialize(config));
                 PersistCredentials(connection, secrets);
@@ -435,6 +458,8 @@ public sealed class VaultDatabase
     private void ZeroKey()
     {
         if (_key is null) return;
+        // Revoke the previous authorization before dropping the old key.
+        _sessionGeneration++;
         CryptographicOperations.ZeroMemory(_key);
         _key = null;
     }
