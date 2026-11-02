@@ -15,6 +15,8 @@ internal static class StagedLoginTests
         await MfaRequiresHumanAsync(playwright);
         await AmbiguousButtonDoesNotGuessAsync(playwright);
         await UnrelatedFirstStageButtonDoesNotDispatchAsync(playwright);
+        await OwnedFirstStageButtonIgnoresOtherFormAsync(playwright);
+        await ExplicitFormAssociatedContinuationAsync(playwright);
 
         Check(AutomationEngine.IsUsernameStageSubmitLabel("Log In") &&
               AutomationEngine.IsUsernameStageSubmitLabel("Next") &&
@@ -289,6 +291,99 @@ internal static class StagedLoginTests
         Console.WriteLine($"WEB-01 two-form fixture: unrelatedClick={unrelatedClick ?? "none"}, unrelatedRequests={requests}, needsAttention={result.LoginNeedsAttention.Count}");
         Check(unrelatedClick is null && requests == 0,
             "WEB-01 unrelated form button must not receive an automatic login click/request");
+    }
+
+    private static async Task OwnedFirstStageButtonIgnoresOtherFormAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(3000);
+        var unrelatedRequests = 0;
+        await context.RouteAsync("https://owned-stage.test/**", async route =>
+        {
+            var uri = new Uri(route.Request.Url);
+            if (uri.AbsolutePath == "/unrelated-action")
+            {
+                Interlocked.Increment(ref unrelatedRequests);
+                await route.FulfillAsync(new() { Status = 204 });
+                return;
+            }
+            await route.FulfillAsync(new()
+            {
+                ContentType = "text/html",
+                Body = uri.AbsolutePath == "/login"
+                    ? """
+                      <form id="login">
+                        <input id="email" type="email">
+                        <button id="owned-next" type="button"
+                          onclick="location.href='/password'">Next</button>
+                      </form>
+                      <form id="unrelated">
+                        <button id="unrelated-next" type="button"
+                          onclick="document.body.dataset.unrelatedClick='yes';fetch('/unrelated-action',{method:'POST'})">Next</button>
+                      </form>
+                      """
+                    : uri.AbsolutePath == "/password"
+                    ? """
+                      <form onsubmit="event.preventDefault();location.href='/dashboard'">
+                        <input id="secret" type="password">
+                        <button type="submit">Sign in</button>
+                      </form>
+                      """
+                    : "<h1 id='signed-in'>Dashboard</h1>"
+            });
+        });
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://owned-stage.test/login");
+        var workflow = NewWorkflow(page.Url);
+        await using var engine = new AutomationEngine(NewVault());
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
+              page.Url.EndsWith("/dashboard", StringComparison.Ordinal) &&
+              Volatile.Read(ref unrelatedRequests) == 0,
+              "FORM-02 valid same-form Next is selected instead of unrelated form's Next");
+        Console.WriteLine("PASS FORM-02 owned first-stage Next; unrelatedRequests=0");
+    }
+
+    private static async Task ExplicitFormAssociatedContinuationAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(3000);
+        await context.RouteAsync("https://form-associated.test/**", route =>
+        {
+            var uri = new Uri(route.Request.Url);
+            return route.FulfillAsync(new()
+            {
+                ContentType = "text/html",
+                Body = uri.AbsolutePath == "/login"
+                    ? """
+                      <form id="login" onsubmit="event.preventDefault();location.href='/password'">
+                        <input id="email" type="email">
+                      </form>
+                      <button id="external-next" type="submit" form="login">Next</button>
+                      """
+                    : uri.AbsolutePath == "/password"
+                    ? """
+                      <form onsubmit="event.preventDefault();location.href='/dashboard'">
+                        <input id="secret" type="password">
+                        <button type="submit">Sign in</button>
+                      </form>
+                      """
+                    : "<h1 id='signed-in'>Dashboard</h1>"
+            });
+        });
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://form-associated.test/login");
+        var workflow = NewWorkflow(page.Url);
+        await using var engine = new AutomationEngine(NewVault());
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
+              page.Url.EndsWith("/dashboard", StringComparison.Ordinal),
+              "FORM-03 form= associated external Next button remains a valid login continuation");
+        Console.WriteLine("PASS FORM-03 external form-associated Next");
     }
 
     // Valid synthetic email avoids the browser's native type=email form
