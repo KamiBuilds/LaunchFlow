@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants>$(DefineConstants);LEGACY_COMPAT</DefineConstants>
+  </PropertyGroup>
+  <Target Name="ValidatePinnedLegacyInputs" BeforeTargets="CoreCompile">
+    <Error Condition="'$(VaultDatabaseSource)' == ''" Text="Pinned legacy VaultDatabaseSource is required." />
+    <Error Condition="'$(LegacyConfigStoreSource)' == ''" Text="Pinned legacy ConfigStoreSource is required." />
+    <Error Condition="!Exists('$(VaultDatabaseSource)')" Text="Pinned legacy VaultDatabase source does not exist." />
+    <Error Condition="!Exists('$(LegacyConfigStoreSource)')" Text="Pinned legacy ConfigStore source does not exist." />
+  </Target>
+  <ItemGroup>
+    <Compile Include="LegacyCompatibilityProgram.cs" />
+    <Compile Include="CompatibilityTests.cs" />
+    <Compile Include="../../LaunchFlow/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
+    <Compile Include="../../LaunchFlow/Services/EnterprisePolicy.cs" Link="EnterprisePolicy.cs" />
+    <Compile Include="../../LaunchFlow/Services/CrashLog.cs" Link="CrashLog.cs" />
+    <Compile Include="$(VaultDatabaseSource)" Link="VaultDatabase.cs" />
+    <Compile Include="$(LegacyConfigStoreSource)" Link="ConfigStore.cs" />
+    <Compile Include="../../LaunchFlow/Services/CredentialVault.cs" Link="CredentialVault.cs" />
+    <Compile Include="../../LaunchFlow/Services/SecureTransferService.cs" Link="SecureTransferService.cs" />
+    <Compile Include="../../LaunchFlow/Services/PortableExport.cs" Link="PortableExport.cs" />
+    <Compile Include="../../LaunchFlow/Services/PasswordStrength.cs" Link="PasswordStrength.cs" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.31" />
+    <PackageReference Include="Konscious.Security.Cryptography.Argon2" Version="1.3.1" />
+  </ItemGroup>
+</Project>
