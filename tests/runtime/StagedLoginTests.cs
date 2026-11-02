@@ -6,7 +6,11 @@ internal static class StagedLoginTests
 {
     public static async Task RunAsync(IPlaywright playwright)
     {
+        await SinglePageLoginAsync(playwright);
         await EmailThenPasswordAsync(playwright);
+        await DifferentFinalSubmitAsync(playwright);
+        await ResumeAtPasswordAsync(playwright);
+        await AmbiguousFinalSubmitAsync(playwright);
         await UnapprovedIdpAsync(playwright);
         await MfaRequiresHumanAsync(playwright);
         await AmbiguousButtonDoesNotGuessAsync(playwright);
@@ -20,6 +24,101 @@ internal static class StagedLoginTests
               !AutomationEngine.IsUsernameStageSubmitLabel("Verify code"),
               "built-in username progression recognizes local-login buttons and refuses SSO/MFA controls");
         Console.WriteLine("PASS multi-stage login regression suite");
+    }
+
+
+    private static async Task SinglePageLoginAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(3000);
+        await context.RouteAsync("https://singlepage.test/**", route => route.FulfillAsync(new()
+        {
+            ContentType = "text/html",
+            Body = route.Request.Url.EndsWith("/login", StringComparison.Ordinal)
+                ? "<form onsubmit=\"event.preventDefault();location.href='/dashboard'\"><input id='email' type='email'><input id='secret' type='password'><button type='submit'>Sign in</button></form>"
+                : "<h1 id='signed-in'>Signed in</h1>"
+        }));
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://singlepage.test/login");
+        var workflow = NewWorkflow("https://singlepage.test/login");
+        var vault = new CredentialVault();
+        await using var engine = new AutomationEngine(vault);
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
+              page.Url.EndsWith("/dashboard") && vault.ReadCount == 1,
+              "single-page username + password submission still works without recording");
+    }
+
+    private static async Task DifferentFinalSubmitAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(3000);
+        await context.RouteAsync("https://two-buttons.test/**", route => route.FulfillAsync(new()
+        {
+            ContentType = "text/html",
+            Body = route.Request.Url.EndsWith("/login", StringComparison.Ordinal)
+                ? "<form onsubmit=\"event.preventDefault();location.href='/password'\"><input id='email' type='email'><button type='submit'>Next</button></form>"
+                : route.Request.Url.EndsWith("/password", StringComparison.Ordinal)
+                ? "<form><input id='secret' type='password'><button id='Button1' type='button' onclick=\"location.href='/dashboard'\">Sign in</button></form>"
+                : "<h1 id='signed-in'>Dashboard</h1>"
+        }));
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://two-buttons.test/login");
+        var workflow = NewWorkflow("https://two-buttons.test/login");
+        await using var engine = new AutomationEngine(new CredentialVault());
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
+              page.Url.EndsWith("/dashboard"),
+              "different final button ID/type is handled automatically with no recording");
+    }
+
+    private static async Task ResumeAtPasswordAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(3000);
+        await context.RouteAsync("https://resume-stage.test/**", route => route.FulfillAsync(new()
+        {
+            ContentType = "text/html",
+            Body = route.Request.Url.EndsWith("/password", StringComparison.Ordinal)
+                ? "<form onsubmit=\"event.preventDefault();location.href='/dashboard'\"><input id='email' readonly value='user@test.invalid'><input id='secret' type='password'><button type='submit'>Log In</button></form>"
+                : "<h1 id='signed-in'>Dashboard</h1>"
+        }));
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://resume-stage.test/password");
+        var workflow = NewWorkflow("https://resume-stage.test/login");
+        await using var engine = new AutomationEngine(new CredentialVault());
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
+              page.Url.EndsWith("/dashboard"),
+              "reuses a current password-only stage and ignores read-only email field");
+    }
+
+    private static async Task AmbiguousFinalSubmitAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(3000);
+        await context.RouteAsync("https://ambiguous-final.test/**", route => route.FulfillAsync(new()
+        {
+            ContentType = "text/html",
+            Body = "<form><input id='secret' type='password'><button type='button' onclick=\"document.body.dataset.clicked='one'\">Log In</button><button type='button' onclick=\"document.body.dataset.clicked='two'\">Sign in</button></form>"
+        }));
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://ambiguous-final.test/password");
+        var workflow = NewWorkflow("https://ambiguous-final.test/login");
+        workflow.LoginWaitSeconds = 5;
+        await using var engine = new AutomationEngine(new CredentialVault());
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(result.LoginNeedsAttention.Count == 1 &&
+              await page.GetAttributeAsync("body", "data-clicked") is null,
+              "ambiguous password submit buttons require manual choice and are never guessed");
     }
 
     private static async Task EmailThenPasswordAsync(IPlaywright playwright)
