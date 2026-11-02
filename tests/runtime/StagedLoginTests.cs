@@ -167,7 +167,7 @@ internal static class StagedLoginTests
             ContentType = "text/html",
             Body = route.Request.Url.EndsWith("/password", StringComparison.Ordinal)
                 ? "<form onsubmit=\"event.preventDefault();location.href='/dashboard'\"><input id='secret' type='password'><button type='submit'>Sign in</button></form>"
-                : "<main id='signed-in'>Authenticated</main>"
+                : "<main id='signed-in'>Dashboard</main>"
         }));
         var page = await context.NewPageAsync();
         await page.GotoAsync("https://first.test/login");
