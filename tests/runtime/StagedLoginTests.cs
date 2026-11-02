@@ -17,6 +17,7 @@ internal static class StagedLoginTests
         await UnrelatedFirstStageButtonDoesNotDispatchAsync(playwright);
         await OwnedFirstStageButtonIgnoresOtherFormAsync(playwright);
         await ExplicitFormAssociatedContinuationAsync(playwright);
+        await ExplicitNonFormContinuationAsync(playwright);
 
         Check(AutomationEngine.IsUsernameStageSubmitLabel("Log In") &&
               AutomationEngine.IsUsernameStageSubmitLabel("Next") &&
@@ -384,6 +385,48 @@ internal static class StagedLoginTests
               page.Url.EndsWith("/dashboard", StringComparison.Ordinal),
               "FORM-03 form= associated external Next button remains a valid login continuation");
         Console.WriteLine("PASS FORM-03 external form-associated Next");
+    }
+
+    private static async Task ExplicitNonFormContinuationAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(3000);
+        await context.RouteAsync("https://explicit-spa.test/**", route =>
+        {
+            var uri = new Uri(route.Request.Url);
+            return route.FulfillAsync(new()
+            {
+                ContentType = "text/html",
+                Body = uri.AbsolutePath == "/login"
+                    ? """
+                      <main>
+                        <input id="email" type="email">
+                        <button id="explicit-next" type="button"
+                          onclick="location.href='/password'">Continue</button>
+                      </main>
+                      """
+                    : uri.AbsolutePath == "/password"
+                    ? """
+                      <form onsubmit="event.preventDefault();location.href='/dashboard'">
+                        <input id="secret" type="password">
+                        <button type="submit">Sign in</button>
+                      </form>
+                      """
+                    : "<h1 id='signed-in'>Dashboard</h1>"
+            });
+        });
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://explicit-spa.test/login");
+        var workflow = NewWorkflow(page.Url);
+        workflow.UsernameContinueSelector = "#explicit-next";
+        await using var engine = new AutomationEngine(NewVault());
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
+              page.Url.EndsWith("/dashboard", StringComparison.Ordinal),
+              "FORM-10 explicit no-form SPA continuation retains supported functionality");
+        Console.WriteLine("PASS FORM-10 explicit no-form SPA continuation");
     }
 
     // Valid synthetic email avoids the browser's native type=email form
