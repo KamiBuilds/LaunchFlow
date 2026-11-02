@@ -112,9 +112,11 @@ Check(!autosave.Ready(t0.AddSeconds(5), false),
 Check(autosave.Ready(t0.AddMilliseconds(900), true),
     "autosave becomes eligible at the exact debounce threshold");
 autosave.Attempted();
+Check(!autosave.CanAttempt, "failed write does not continuously retry");
 Check(!autosave.Ready(t0.AddSeconds(3), true) && autosave.HasPendingChanges,
     "failed autosave retains dirty data without retry storms");
 autosave.Changed(t0.AddSeconds(3));
+Check(autosave.CanAttempt, "new edits during an attempted save re-arm auto-save");
 Check(!autosave.Ready(t0.AddSeconds(3).AddMilliseconds(500), true) &&
       autosave.Ready(t0.AddSeconds(3).AddMilliseconds(901), true),
     "next user edit safely retries after a new debounce interval");
