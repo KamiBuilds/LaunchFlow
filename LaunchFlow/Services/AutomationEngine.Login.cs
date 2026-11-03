@@ -163,6 +163,11 @@ public sealed partial class AutomationEngine
             Log($"Existing signed-in dashboard confirmed for '{workflow.Name}'.");
             return true;
         }
+        // The homepage is classified and navigated before a saved password is read.
+        // A newsletter email field is never by itself evidence of a login form.
+        await TryOpenLoginEntryAsync(workflow, page, ct).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+        RequireAutomationUrl(page.Url);
         var credential = _vault.Read(workflow, configuration, keepassMasterPassword);
         if (credential is null)
         {
@@ -185,91 +190,93 @@ public sealed partial class AutomationEngine
                 return false;
             }
 
-            string? approvedSubmitOrigin = null;
-            // If the second page is already open after a previous run, resume
-            // at the password field. When both fields exist, fill both normally.
+            // Default automatic discovery binds a single classified username field.
+            // Deliberate custom selectors continue through the existing advanced path.
+            var useDiscovery = workflow.UsernameSelector == StandardUsernameSelector;
+            var autoUsername = requiresUser && useDiscovery
+                ? await ResolveAutomaticUsernameAsync(page, ct).ConfigureAwait(false)
+                : null;
             var passwordReady = requiresPassword &&
                 await PasswordStageReadyAsync(workflow, page, ct).ConfigureAwait(false);
-            var usernameReady = requiresUser &&
-                await LoginFieldReadyAsync(page, workflow.UsernameSelector, ct).ConfigureAwait(false);
-            if (requiresUser && (usernameReady || !passwordReady))
+            var usernameReady = requiresUser && (useDiscovery
+                ? autoUsername is not null
+                : await LoginFieldReadyAsync(page, workflow.UsernameSelector, ct).ConfigureAwait(false));
+            var submitted = false;
+            try
             {
-                // Keep the actual filled input and its document/form handles alive
-                // through first-stage continuation. An origin string alone cannot
-                // identify the input's own form on a page with multiple forms.
-                var stageReached = true;
-                var usernameOrigin = await FillCredentialAsync(workflow, page, workflow.UsernameSelector,
-                    credential.Username, ct, async owner =>
-                    {
-                        if (requiresPassword &&
-                            !await PasswordStageReadyAsync(workflow, page, ct).ConfigureAwait(false))
-                        {
-                            var hadPasswordField = await PasswordStagePresentAsync(
-                                workflow, page, ct).ConfigureAwait(false);
-                            if (!hadPasswordField ||
-                                !string.IsNullOrWhiteSpace(workflow.UsernameContinueSelector))
-                                stageReached = await AdvanceToPasswordStageAsync(
-                                    workflow, page, owner, hadPasswordField, ct).ConfigureAwait(false);
-                        }
-                    }).ConfigureAwait(false);
-                if (usernameOrigin is not null)
+                if (requiresUser && (usernameReady || !passwordReady))
                 {
-                    approvedSubmitOrigin = usernameOrigin;
-                    if (!stageReached)
+                    if (!usernameReady && useDiscovery)
                     {
-                        Log($"Password stage was not reached for '{workflow.Name}'. " +
-                            "An SSO prompt or additional verification may need manual attention.");
+                        Log($"Could not identify the sign-in form safely for '{workflow.Name}'. Continue in the browser.");
+                        return false;
+                    }
+                    var stageReached = true;
+                    var selected = autoUsername;
+                    autoUsername = null; // Transfer this handle to the protected fill boundary.
+                    var usernameOrigin = await FillCredentialAsync(workflow, page, workflow.UsernameSelector,
+                        credential.Username, ct, async owner =>
+                        {
+                            if (requiresPassword &&
+                                !await PasswordStageReadyAsync(workflow, page, ct).ConfigureAwait(false))
+                            {
+                                var hadPasswordField = await PasswordStagePresentAsync(
+                                    workflow, page, ct).ConfigureAwait(false);
+                                if (!hadPasswordField ||
+                                    !string.IsNullOrWhiteSpace(workflow.UsernameContinueSelector))
+                                    stageReached = await AdvanceToPasswordStageAsync(
+                                        workflow, page, owner, hadPasswordField, ct).ConfigureAwait(false);
+                            }
+                        }, selected).ConfigureAwait(false);
+                    if (usernameOrigin is null || !stageReached)
+                    {
+                        Log($"Could not continue sign-in safely for '{workflow.Name}'. Complete it in the browser.");
                         return false;
                     }
                 }
-                else
-                {
-                    Log($"Username field not found for '{workflow.Name}'. Check the selector or sign in manually.");
-                    return false;
-                }
-            }
+                else if (requiresUser && passwordReady)
+                    Log($"Resuming password stage for '{workflow.Name}'.");
 
-            else if (requiresUser && passwordReady)
-            {
-                Log($"Resuming password stage for '{workflow.Name}'.");
-            }
-
-            if (!string.IsNullOrWhiteSpace(workflow.PasswordSelector))
-            {
-                var passwordOrigin = await FillCredentialAsync(workflow, page, workflow.PasswordSelector,
-                    credential.Password, ct).ConfigureAwait(false);
-                if (passwordOrigin is not null)
+                if (requiresPassword)
                 {
-                    approvedSubmitOrigin = passwordOrigin;
+                    var passwordOrigin = await FillCredentialAsync(workflow, page, workflow.PasswordSelector,
+                        credential.Password, ct, async owner =>
+                        {
+                            // Submit while the password's original document, frame,
+                            // field and browser-computed form owner are still bound.
+                            if (string.IsNullOrWhiteSpace(workflow.SubmitSelector)) return;
+                            submitPageBeforeClick = page.Url;
+                            submitWasAttempted = true;
+                            submitted = await ClickLoginSubmitAsync(workflow, page, owner, ct)
+                                .ConfigureAwait(false);
+                        }).ConfigureAwait(false);
+                    if (passwordOrigin is null)
+                    {
+                        Log($"Password field not found for '{workflow.Name}'. Complete sign-in in the browser.");
+                        return false;
+                    }
                 }
-                else
-                {
-                    Log($"Password field not found for '{workflow.Name}'. Check the selector or sign in manually.");
-                    return false;
-                }
-            }
 
-            // A partial login must never press Submit. Select a visible, enabled
-            // button instead of the hidden template many JS applications render first.
-            if (!string.IsNullOrWhiteSpace(workflow.SubmitSelector))
-            {
-                submitPageBeforeClick = page.Url;
-                submitWasAttempted = true;
-                if (!await ClickLoginSubmitAsync(workflow, page, approvedSubmitOrigin, ct).ConfigureAwait(false))
+                if ((!submitted && !string.IsNullOrWhiteSpace(workflow.SubmitSelector)) ||
+                    (string.IsNullOrWhiteSpace(workflow.SubmitSelector) && requiresPassword))
                 {
-                    // Some JavaScript login forms submit automatically after
-                    // the final input event. Admit only a verified redirect;
-                    // a missing button on the login page is still an error.
-                    if (await ObserveVerifiedRedirectAsync(page, initialLoginUrl, 1500, ct).ConfigureAwait(false))
+                    // Some SPAs transition during FillAsync. A missing submit is
+                    // not a license to press an unrelated button or Enter.
+                    if (await ObserveVerifiedRedirectAsync(page, initialLoginUrl, 1500, ct)
+                        .ConfigureAwait(false))
                     {
                         RequireCredentialAccess();
                         RequireAutomationUrl(page.Url);
-                        Log($"Signed-in dashboard confirmed for '{workflow.Name}'.");
                         return true;
                     }
-                    Log($"Login submit button not ready for '{workflow.Name}'. Check its selector.");
+                    Log($"No owned final sign-in action could be verified for '{workflow.Name}'. Continue in the browser.");
                     return false;
                 }
+            }
+            finally
+            {
+                if (autoUsername is not null)
+                    await autoUsername.DisposeAsync().ConfigureAwait(false);
             }
 
             ct.ThrowIfCancellationRequested();
@@ -284,14 +291,14 @@ public sealed partial class AutomationEngine
                     return false;
                 }
             }
-            else
+            else if (!await ObserveVerifiedRedirectAsync(page, initialLoginUrl,
+                Math.Min(waitMs, 5000), ct).ConfigureAwait(false))
             {
-                // If no explicit success condition was taught, keep the prior
-                // conservative challenge inspection in RunOneAsync.
-                await Task.Delay(Math.Min(waitMs, 3000), ct).ConfigureAwait(false);
+                Log($"Sign-in was submitted for '{workflow.Name}', but completion was not verified. Check the browser.");
+                return false;
             }
 
-            Log($"Auto-login attempted for '{workflow.Name}'.");
+            Log($"Sign-in verified for '{workflow.Name}'.");
             return true;
         }
         catch (OperationCanceledException) { throw; }
@@ -519,12 +526,14 @@ public sealed partial class AutomationEngine
 
     private async Task<string?> FillCredentialAsync(
         WebsiteWorkflow workflow, IPage page, string selector, string value,
-        CancellationToken ct, Func<CredentialFieldBinding, Task>? afterFill = null)
+        CancellationToken ct, Func<CredentialFieldBinding, Task>? afterFill = null,
+        IElementHandle? selectedElement = null)
     {
         ct.ThrowIfCancellationRequested();
         // Bind a concrete field before inserting a secret. Wait for JS-rendered
         // forms, but never allow that wait to retarget across a new document.
-        await using var element = await ResolveCredentialElementAsync(workflow, page, selector, ct).ConfigureAwait(false);
+        await using var element = selectedElement ??
+            await ResolveCredentialElementAsync(workflow, page, selector, ct).ConfigureAwait(false);
         if (element is null) return null;
         var frame = await element.OwnerFrameAsync().ConfigureAwait(false);
         if (frame is null) throw new InvalidOperationException("Credential field has no owning frame. Retry sign-in manually.");
