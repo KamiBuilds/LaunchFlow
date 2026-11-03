@@ -17,6 +17,10 @@ public partial class VisualRecorderWindow : Window
     private bool _healthPending;
     private int _healthTicks;
 
+    private readonly TaskCompletionSource _cleanupCompleted =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public Task CleanupCompleted => _cleanupCompleted.Task;
+    public bool CleanupFailed { get; private set; }
     public bool Saved { get; private set; }
     public List<WorkflowStep> RecordedSteps { get; } = new();
 
@@ -298,11 +302,23 @@ public partial class VisualRecorderWindow : Window
     private async void Window_Closed(object? sender, EventArgs e)
     {
         _stopping = true;
-        _recorder.Dispose();
         _drainTimer.Stop();
-        if (!Saved) RecordedSteps.Clear();
-        try { await _recorder.SynchronizeAsync(); }
-        catch (Exception) { /* Cleanup must not escape an async window event. */ }
+        try
+        {
+            _recorder.Dispose();
+            if (!Saved) RecordedSteps.Clear();
+            // The Window.Closed event can return before this await. The full
+            // operation owner cannot complete until browser callbacks drain.
+            await _recorder.SynchronizeAsync();
+        }
+        catch (Exception)
+        {
+            CleanupFailed = true;
+        }
+        finally
+        {
+            _cleanupCompleted.TrySetResult();
+        }
     }
 
     private void AddStep(string type, string target, string description, string? value = null)

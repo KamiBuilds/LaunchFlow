@@ -50,7 +50,8 @@ public partial class MainWindow : Window
     private long _workspaceRevision;
     private Task _vaultLockTask = Task.CompletedTask;
     private Task<AutomationEngine.RunResult>? _activeRunTask;
-    private Task<IPage>? _activeTeachTask;
+    private Task? _activeTeachTask;
+    private VisualRecorderWindow? _activeRecorder;
     private readonly Dictionary<Guid, SignInDecisionWindow> _openSignInDecisions = new();
     private NewWorkflowWindow? _newWorkflowWindow;
     private int _openStepEditors;

@@ -34,6 +34,9 @@ public partial class MainWindow
     {
         if (_windowsLocked) return; // Duplicate Windows events must not create timers.
         _windowsLocked = true;
+        // Recording cannot continue in the background while Windows is locked,
+        // even when the encrypted vault remains unlocked for the grace period.
+        CloseActiveRecorderForLock();
         UpdateRunButtons();
         _lockedSinceUtc = DateTimeOffset.UtcNow;
         _unlockCancellation?.Cancel();
