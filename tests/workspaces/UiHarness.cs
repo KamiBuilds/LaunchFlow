@@ -159,6 +159,27 @@ var tests = new List<(string Name, Func<Task> Body)>
         await teaching;
         Check(original.Steps.Count == 1 && other.Steps.Count == 0 && ui._store.Saves == 1, "Teach retargeted the selection");
     }),
+    ("LIFE-R03 active Teach represents the entire modeless recorder lifetime", async () =>
+    {
+        var ui = new UiFixture();
+        ui._selected = ui._configuration.Workflows[0];
+        var pending = AsyncVoidTracker.Run(ui.Record);
+        Check(ui.Recorder is not null && !pending.IsCompleted,
+            "LIFE-R03 fixture must reach a modeless recorder before completing");
+        var task = ui._activeTeachTask;
+        try
+        {
+            Check(task is { IsCompleted: false },
+                "LIFE-R03 active task ended at page acquisition while recorder was still open");
+        }
+        finally
+        {
+            ui.RecorderResult.TrySetResult(false);
+            await pending.WaitAsync(TimeSpan.FromSeconds(3));
+        }
+        Check(ui._activeTeachTask is null && !ui._teachingInProgress,
+            "LIFE-R03 completion did not release ownership");
+    }),
     ("LIFE-R01 modeless Teach refuses same-ID imported replacement", async () =>
     {
         var ui = new UiFixture();
