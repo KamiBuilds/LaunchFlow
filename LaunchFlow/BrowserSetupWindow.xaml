@@ -19,7 +19,7 @@
               AutomationProperties.Name="Open official Microsoft Edge download site"/>
       <Button Content="Google Chrome website" Click="Chrome_Click" Padding="12,9" Margin="0,0,9,0"
               AutomationProperties.Name="Open official Google Chrome download site"/>
-      <Button Content="Check again" Click="Refresh_Click" Padding="12,9"
+      <Button x:Name="BrowserCheckAgainButton" Content="Check again" Click="Refresh_Click" Padding="12,9"
               AutomationProperties.Name="Check installed browsers again"/>
     </WrapPanel>
     <TextBlock Text="Firefox requires a compatible Playwright browser runtime and is not configured by this dialog."

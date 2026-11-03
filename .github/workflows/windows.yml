@@ -45,6 +45,8 @@ jobs:
           dotnet-version: '8.0.x'
       - name: Validate WPF UI and v0.7.34 packaging contracts
         run: python3 tests/ui/verify_ui.py
+      - name: Verify one-action guide parity and generated written walkthrough
+        run: python3 tests/ui/verify_guide.py
       - name: Validate source invariants
         run: python3 tools/Verify-LaunchFlow-Source.py
       - name: Verify baseline-to-new-to-baseline encrypted data compatibility

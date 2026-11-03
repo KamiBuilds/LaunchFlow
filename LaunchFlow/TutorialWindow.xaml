@@ -1,65 +1,151 @@
 <Window x:Class="LaunchFlow.TutorialWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="LaunchFlow — Getting started" Width="820" Height="570"
-        MinWidth="680" MinHeight="460" WindowStartupLocation="CenterOwner"
+        Title="LaunchFlow — Getting started" Width="900" Height="640"
+        MinWidth="680" MinHeight="480" WindowStartupLocation="CenterOwner"
         Background="#111A2A" Foreground="#E9F1FB" FontFamily="Segoe UI" FontSize="14"
-        Icon="pack://application:,,,/Assets/LaunchFlow.ico">
-  <Grid Margin="28,24">
-    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-    <StackPanel>
-      <TextBlock Text="Welcome to LaunchFlow" FontSize="23" FontWeight="SemiBold"/>
-      <TextBlock x:Name="ProgressLabel" Text="Step 1 of 4" Margin="0,8,0,0" Foreground="#6EE7D7"/>
+        Icon="pack://application:,,,/Assets/LaunchFlow.ico"
+        Closed="Guide_Closed">
+  <Grid Margin="24,20">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <StackPanel Grid.Row="0" Margin="0,0,0,13">
+      <TextBlock Text="Getting started" FontSize="24" FontWeight="SemiBold"/>
+      <TextBlock Text="One action at a time. The guide does not change your websites or run automation."
+                 Margin="0,5,0,0" TextWrapping="Wrap" Foreground="#B5CADC" FontSize="12"/>
     </StackPanel>
-    <Grid Grid.Row="1" Margin="0,18,0,12">
+
+    <Grid Grid.Row="1" Margin="0,0,0,9">
       <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="Auto"/>
         <ColumnDefinition Width="*"/>
-        <ColumnDefinition Width="20"/>
-        <ColumnDefinition Width="285"/>
+        <ColumnDefinition Width="Auto"/>
       </Grid.ColumnDefinitions>
-      <StackPanel Grid.Column="0" VerticalAlignment="Center">
-        <TextBlock x:Name="StepHeading" Text="Add your first website" FontSize="21" FontWeight="SemiBold"
-                   Margin="0,0,0,18" TextWrapping="Wrap"/>
-        <TextBlock x:Name="StepDetails" FontSize="15" Foreground="#C4D6E9"
-                   TextWrapping="Wrap" LineHeight="25"/>
-        <TextBlock Text="The guide stays open while you follow these steps in LaunchFlow."
-                   Foreground="#71DDC9" TextWrapping="Wrap" FontSize="12" Margin="0,20,0,0"/>
-      </StackPanel>
-      <Border Grid.Column="2" Background="#0C1928" BorderBrush="#38536A" BorderThickness="1"
-              CornerRadius="12" Padding="14" VerticalAlignment="Center">
-        <StackPanel>
-          <TextBlock Text="VISUAL GUIDE · EXAMPLE" Foreground="#91B6D0" FontSize="10" FontWeight="SemiBold"
-                     Margin="0,0,0,12"/>
-          <Border Background="#203854" CornerRadius="6" Padding="10,9" Margin="0,0,0,8">
-            <TextBlock x:Name="ExampleTitle" Text="Websites" Foreground="#6FE6D5" FontWeight="SemiBold"/>
-          </Border>
-          <Border Background="#192D40" CornerRadius="6" Padding="9,12" Margin="0,0,0,8">
+      <TextBlock Text="Guide" Margin="0,8,10,0" VerticalAlignment="Top"
+                 Foreground="#C4D6E9" FontWeight="SemiBold"/>
+      <ComboBox x:Name="RouteCombo" Grid.Column="1" Height="36" MaxWidth="400"
+                HorizontalAlignment="Left" MinWidth="260"
+                AutomationProperties.Name="Choose getting started topic"
+                SelectionChanged="Route_SelectionChanged">
+        <ComboBoxItem Content="First website (no saved login)" Tag="basic" IsSelected="True"/>
+        <ComboBoxItem Content="Saved website login (optional)" Tag="passwords"/>
+        <ComboBoxItem Content="Record clicks (optional)" Tag="recording"/>
+        <ComboBoxItem Content="Startup and background (optional)" Tag="startup"/>
+        <ComboBoxItem Content="Troubleshooting" Tag="recovery"/>
+      </ComboBox>
+      <TextBlock x:Name="ProgressLabel" Grid.Column="2" Margin="14,8,0,0"
+                 VerticalAlignment="Top" Foreground="#6EE7D7" FontWeight="SemiBold"
+                 Text="Step 1 of 1" AutomationProperties.LiveSetting="Polite"/>
+    </Grid>
+
+    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled"
+                  Focusable="False" Margin="0,4,0,8">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="16"/>
+          <ColumnDefinition Width="270"/>
+        </Grid.ColumnDefinitions>
+
+        <StackPanel Grid.Column="0">
+          <TextBlock x:Name="StepHeading" FontSize="22" FontWeight="SemiBold"
+                     TextWrapping="Wrap" Margin="0,0,0,14"/>
+          <TextBlock Text="DO THIS" FontSize="11" FontWeight="Bold"
+                     Foreground="#6EE7D7" Margin="0,0,0,7"/>
+          <TextBlock x:Name="StepDetails" TextWrapping="Wrap" FontSize="16"
+                     LineHeight="25" Foreground="#E9F1FB" Margin="0,0,0,18"/>
+
+          <Border Background="#192E3D" BorderBrush="#355268" BorderThickness="1"
+                  CornerRadius="8" Padding="12" Margin="0,0,0,12">
             <StackPanel>
-              <TextBlock Text="YOUR WEBSITES" Foreground="#A9C5D5" FontSize="10"/>
-              <Border Background="#2457A6" CornerRadius="5" Padding="10" Margin="0,10,0,6">
-                <TextBlock x:Name="ExampleWebsite" Text="Example website" Foreground="White"/>
-              </Border>
-              <TextBlock Text="Select a website to edit its settings" TextWrapping="Wrap"
-                         Foreground="#AAC1D1" FontSize="11"/>
+              <TextBlock Text="YOU SHOULD NOW SEE" FontSize="11" FontWeight="SemiBold"
+                         Foreground="#8AE6D9" Margin="0,0,0,5"/>
+              <TextBlock x:Name="ExpectedResult" TextWrapping="Wrap"
+                         Foreground="#D2E4F0"/>
             </StackPanel>
           </Border>
-          <Border Background="#55D8C8" CornerRadius="6" Padding="11,10">
-            <TextBlock x:Name="ExampleAction" Text="+ New website" Foreground="#0B1220"
-                       FontWeight="SemiBold" HorizontalAlignment="Center" TextWrapping="Wrap"/>
+
+          <CheckBox x:Name="ConfirmStepBox" Content="I can see this result"
+                    Margin="0,2,0,11" VerticalAlignment="Center"
+                    Checked="ConfirmStep_Changed" Unchecked="ConfirmStep_Changed"
+                    AutomationProperties.Name="Manually confirm the current guide step"/>
+          <TextBlock x:Name="ConfirmationStatus" Foreground="#9FB7CB"
+                     TextWrapping="Wrap" FontSize="11" Margin="0,0,0,14"/>
+
+          <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+            <Button x:Name="ShowTargetButton" Content="Show target in app"
+                    Padding="12,7" Margin="0,0,8,0" Click="ShowTarget_Click"
+                    ToolTip="Highlight a visible control; never click or change its value"/>
+            <Button x:Name="RecoveryButton" Content="Can't find it?"
+                    Padding="12,7" Click="Recovery_Click"/>
+          </StackPanel>
+          <TextBlock x:Name="TargetFeedback" TextWrapping="Wrap" FontSize="12"
+                     Foreground="#A9C5D9" Margin="0,0,0,8"
+                     AutomationProperties.LiveSetting="Polite"/>
+          <Border x:Name="RecoveryPanel" Visibility="Collapsed"
+                  Background="#15283A" CornerRadius="7" Padding="11"
+                  Margin="0,0,0,9">
+            <TextBlock x:Name="RecoveryText" TextWrapping="Wrap"
+                       Foreground="#D3E6F3"/>
           </Border>
-          <TextBlock Text="Illustration only — no personal data or passwords." Foreground="#90A8BF"
-                     Margin="0,10,0,0" FontSize="10" TextWrapping="Wrap"/>
         </StackPanel>
-      </Border>
-    </Grid>
-    <Grid Grid.Row="2">
-      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-      <TextBlock Text="You can reopen this guide anytime with Help." Foreground="#A1B9CE"
-                 FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap"/>
+
+        <Border Grid.Column="2" VerticalAlignment="Top" Background="#0C1928"
+                BorderBrush="#38536A" BorderThickness="1" CornerRadius="12"
+                Padding="13" Margin="0,2,0,0">
+          <StackPanel>
+            <TextBlock Text="CONTROL LOCATOR · ILLUSTRATION" FontSize="10"
+                       FontWeight="SemiBold" Foreground="#91B6D0"
+                       TextWrapping="Wrap" Margin="0,0,0,12"/>
+            <Border Background="#203854" Padding="10,9" CornerRadius="6">
+              <TextBlock x:Name="ExampleTitle" FontWeight="SemiBold"
+                         Foreground="#6FE6D5" TextWrapping="Wrap"/>
+            </Border>
+            <Border Background="#192D40" Padding="11" CornerRadius="6"
+                    Margin="0,10,0,10">
+              <StackPanel>
+                <TextBlock Text="FIND THIS AREA" FontSize="10"
+                           Foreground="#A9C5D5" Margin="0,0,0,8"/>
+                <TextBlock x:Name="ExampleWebsite" FontWeight="SemiBold"
+                           TextWrapping="Wrap" Foreground="#D8EBF5"/>
+              </StackPanel>
+            </Border>
+            <Border Background="#55D8C8" Padding="11,12" CornerRadius="6">
+              <TextBlock x:Name="ExampleAction" FontWeight="SemiBold"
+                         TextAlignment="Center" TextWrapping="Wrap" Foreground="#0B1220"/>
+            </Border>
+            <TextBlock x:Name="ExampleCaption" Margin="0,11,0,0"
+                       TextWrapping="Wrap" FontSize="11" Foreground="#A6BED1"/>
+            <TextBlock Text="Based on current source labels; not a Windows screenshot."
+                       FontSize="10" TextWrapping="Wrap" Foreground="#90A8BF"
+                       Margin="0,9,0,0"/>
+          </StackPanel>
+        </Border>
+      </Grid>
+    </ScrollViewer>
+
+    <Grid Grid.Row="3" Margin="0,10,0,0">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="Auto"/>
+      </Grid.ColumnDefinitions>
+      <TextBlock Text="Open again with Getting started. Next only advances this guide."
+                 VerticalAlignment="Center" Foreground="#9EB8CC"
+                 TextWrapping="Wrap" FontSize="11" Margin="0,0,12,0"/>
       <StackPanel Grid.Column="1" Orientation="Horizontal">
-        <Button x:Name="BackButton" Content="Back" Width="88" Height="38" Click="Back_Click"/>
-        <Button x:Name="NextButton" Content="Next" Width="92" Height="38"
-                Style="{StaticResource PrimaryButton}" Click="Next_Click" Margin="4,0,0,0" IsDefault="True"/>
+        <Button x:Name="BackButton" Content="Back" MinWidth="72" Height="38"
+                Click="Back_Click" Margin="0,0,7,0"/>
+        <Button x:Name="NextButton" Content="Next" MinWidth="82" Height="38"
+                Style="{StaticResource PrimaryButton}" Click="Next_Click"
+                IsDefault="True" Margin="0,0,7,0"/>
+        <Button x:Name="CloseGuideButton" Content="Close" MinWidth="72" Height="38"
+                IsCancel="True" Click="Close_Click"/>
       </StackPanel>
     </Grid>
   </Grid>
