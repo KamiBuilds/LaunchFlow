@@ -38,14 +38,16 @@ public partial class MainWindow
     // recorder into a replacement imported under that same ID.
     private bool RecorderOwnerIsCurrent(
         WebsiteWorkflow workflow, Configuration originalConfiguration,
-        long originalRevision, long originalVaultSession) =>
-        !_vaultLockInProgress && !_windowsLocked && !_exiting &&
-        VaultDatabase.Current.IsUnlocked &&
-        VaultDatabase.Current.SessionGeneration == originalVaultSession &&
-        ReferenceEquals(_configuration, originalConfiguration) &&
-        _workspaceRevision == originalRevision &&
-        _configuration.Workflows.Any(w => ReferenceEquals(w, workflow)) &&
-        TeachAllowed(workflow);
+        long originalRevision, long originalVaultSession)
+    {
+        return !_vaultLockInProgress && !_windowsLocked && !_exiting &&
+            VaultDatabase.Current.IsUnlocked &&
+            VaultDatabase.Current.SessionGeneration == originalVaultSession &&
+            ReferenceEquals(_configuration, originalConfiguration) &&
+            _workspaceRevision == originalRevision &&
+            _configuration.Workflows.Any(w => ReferenceEquals(w, workflow)) &&
+            TeachAllowed(workflow);
+    }
 
     private async Task SaveTaughtStepsAsync(WebsiteWorkflow workflow, IPage page,
         Configuration? admittedConfiguration = null, long? admittedRevision = null,
