@@ -170,7 +170,7 @@ var tests = new List<(string Name, Func<Task> Body)>
         var active = ui._activeTeachTask;
         await ui.Lock().WaitAsync(TimeSpan.FromSeconds(3));
         await teaching.WaitAsync(TimeSpan.FromSeconds(3));
-        Check(ui.Recorder.ClosedByLock && active!.IsCompleted && !ui._teachingInProgress &&
+        Check(ui.Recorder!.ClosedByLock && active!.IsCompleted && !ui._teachingInProgress &&
               ui._store.DurableSaves == 0 && ProfileVaultService.Seals == 1,
             "LIFE-R03 lock left live recorder or sealed before its completion");
     }),
