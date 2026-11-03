@@ -96,8 +96,7 @@ public sealed partial class AutomationEngine
             // Browser-led SSO still requires explicit evidence or confirmation.
             if (!manualConfirmation &&
                 (workflow.Steps.Count > 0 || !string.IsNullOrWhiteSpace(workflow.DestinationUrl)) &&
-                (string.Equals(workflow.LoginMode, "SSO", StringComparison.OrdinalIgnoreCase) ||
-                 !string.IsNullOrWhiteSpace(workflow.LoginSuccessSelector) ||
+                (!string.IsNullOrWhiteSpace(workflow.LoginSuccessSelector) ||
                  !string.IsNullOrWhiteSpace(workflow.LoginSuccessUrlContains)))
             {
                 var verified = await LoginHealth.VerifySuccessAsync(
@@ -284,7 +283,7 @@ public sealed partial class AutomationEngine
                                             submitWasAttempted = true;
                                             submitted = await ClickLoginSubmitAsync(
                                                 workflow, page, passwordOwner, ct).ConfigureAwait(false);
-                                        }, field, expectedForm: owner.Form).ConfigureAwait(false);
+                                        }, field, expectedForm: owner.Form, isPassword: true).ConfigureAwait(false);
                                     passwordHandledInsideUsername = origin is not null;
                                     if (!passwordHandledInsideUsername) stageReached = false;
                                 }
@@ -299,8 +298,18 @@ public sealed partial class AutomationEngine
                                     workflow, page, ct).ConfigureAwait(false);
                                 if (!hadPasswordField ||
                                     !string.IsNullOrWhiteSpace(workflow.UsernameContinueSelector))
-                                    stageReached = await AdvanceToPasswordStageAsync(
-                                        workflow, page, owner, hadPasswordField, ct).ConfigureAwait(false);
+                                {
+                                    if (string.IsNullOrWhiteSpace(workflow.UsernameContinueSelector) &&
+                                        !string.IsNullOrWhiteSpace(workflow.SubmitSelector) &&
+                                        workflow.SubmitSelector != StandardSubmitSelector)
+                                    {
+                                        stageReached = false;
+                                        Log($"A required password field is missing for '{workflow.Name}'. The configured final Submit will not be used as a first-stage continuation.");
+                                    }
+                                    else
+                                        stageReached = await AdvanceToPasswordStageAsync(
+                                            workflow, page, owner, hadPasswordField, ct).ConfigureAwait(false);
+                                }
                             }
                             else if (!requiresPassword &&
                                      !string.IsNullOrWhiteSpace(workflow.SubmitSelector))
@@ -324,21 +333,6 @@ public sealed partial class AutomationEngine
 
                 if (requiresPassword && !passwordHandledInsideUsername)
                 {
-                    if (!OriginsMatch(GetOrigin(page.Url), GetOrigin(workflow.StartUrl)))
-                    {
-                        var stageOrigin = GetOrigin(page.Url);
-                        if (!await IsOriginAllowedAsync(workflow, stageOrigin).ConfigureAwait(false))
-                        {
-                            Log($"Identity-provider origin was not approved for '{workflow.Name}'.");
-                            return false;
-                        }
-                        if (string.IsNullOrWhiteSpace(workflow.PasswordCredentialOrigin) ||
-                            !OriginsMatch(stageOrigin, GetOrigin(workflow.PasswordCredentialOrigin)))
-                        {
-                            Log($"The identity-provider password is not mapped for '{workflow.Name}'. Choose the correct credential before continuing.");
-                            return false;
-                        }
-                    }
                     // A staged or resumed default login must be classified
                     // again in the current document. Never reuse a global
                     // first-match password from a registration/other form.
@@ -359,7 +353,7 @@ public sealed partial class AutomationEngine
                             submitWasAttempted = true;
                             submitted = await ClickLoginSubmitAsync(workflow, page, owner, ct)
                                 .ConfigureAwait(false);
-                        }, selectedPassword).ConfigureAwait(false);
+                        }, selectedPassword, isPassword: true).ConfigureAwait(false);
                     if (passwordOrigin is null)
                     {
                         Log($"Password field not found for '{workflow.Name}'. Complete sign-in in the browser.");
@@ -708,7 +702,8 @@ public sealed partial class AutomationEngine
     private async Task<string?> FillCredentialAsync(
         WebsiteWorkflow workflow, IPage page, string selector, string value,
         CancellationToken ct, Func<CredentialFieldBinding, Task>? afterFill = null,
-        IElementHandle? selectedElement = null, IJSHandle? expectedForm = null)
+        IElementHandle? selectedElement = null, IJSHandle? expectedForm = null,
+        bool isPassword = false)
     {
         ct.ThrowIfCancellationRequested();
         // Bind a concrete field before inserting a secret. Wait for JS-rendered
@@ -757,6 +752,7 @@ public sealed partial class AutomationEngine
             await element.WaitForElementStateAsync(ElementState.Editable).WaitAsync(ct).ConfigureAwait(false);
             if (!OriginsMatch(origin, await VerifyAsync().ConfigureAwait(false)))
                 throw new InvalidOperationException("Credential origin changed. Retry sign-in manually.");
+            if (isPassword) RequirePasswordDestination(workflow, origin);
             if (!await IsOriginAllowedAsync(workflow, origin).WaitAsync(ct).ConfigureAwait(false))
                 throw new InvalidOperationException("Credential origin was not approved. Complete sign-in manually.");
             // Approval can await a dialog while the page navigates or the bound field becomes unavailable.
@@ -783,6 +779,7 @@ public sealed partial class AutomationEngine
             ct.ThrowIfCancellationRequested();
             RequireCredentialAccess();
             RequireAutomationUrl(origin);
+            if (isPassword) RequirePasswordDestination(workflow, origin);
             await element.FillAsync(value).ConfigureAwait(false);
             if (afterFill is not null && ownerForm is not null)
                 await afterFill(new CredentialFieldBinding(
@@ -801,16 +798,21 @@ public sealed partial class AutomationEngine
         }
     }
 
+    private static void RequirePasswordDestination(WebsiteWorkflow workflow, string fieldOrigin)
+    {
+        if (OriginsMatch(fieldOrigin, GetOrigin(workflow.StartUrl))) return;
+        if (string.IsNullOrWhiteSpace(workflow.PasswordCredentialOrigin) ||
+            !OriginsMatch(fieldOrigin, GetOrigin(workflow.PasswordCredentialOrigin)))
+            throw new InvalidOperationException(
+                "The password is not mapped to this identity provider. Sign in manually or choose the correct website credential.");
+    }
+
     private async Task<bool> IsOriginAllowedAsync(WebsiteWorkflow workflow, string origin)
     {
         if (string.IsNullOrWhiteSpace(origin)) return false;
 
         if (!string.IsNullOrWhiteSpace(workflow.CredentialOrigin) &&
             OriginsMatch(origin, GetOrigin(workflow.CredentialOrigin)))
-            return true;
-
-        if (!string.IsNullOrWhiteSpace(workflow.PasswordCredentialOrigin) &&
-            OriginsMatch(origin, GetOrigin(workflow.PasswordCredentialOrigin)))
             return true;
 
         if (workflow.ApprovedLoginOrigins.Contains(origin))
