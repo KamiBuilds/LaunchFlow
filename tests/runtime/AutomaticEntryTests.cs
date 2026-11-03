@@ -7,6 +7,7 @@ internal static class AutomaticEntryTests
     public static async Task RunAsync(IPlaywright playwright)
     {
         await HomeEntryAndGitHubFieldsAsync(playwright);
+        await ModalSignInEntryAsync(playwright);
         await CombinedWithUnrelatedNewsletterAsync(playwright);
         await IdentifierThenPasswordAsync(playwright);
         await ResumedPasswordOnlyAsync(playwright);
@@ -85,6 +86,45 @@ internal static class AutomaticEntryTests
         Check(again.FinishedCount == 1 && vault.ReadCount == 1 &&
               loginRequests == 1 && newsletterRequests == 0,
             "AUTO-23 repeated run must reuse existing signed-in page without fetching credentials");
+    }
+
+    private static async Task ModalSignInEntryAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(3000);
+        var entries = 0;
+        await context.RouteAsync("https://auto-dialog.test/**", route => route.FulfillAsync(new()
+        {
+            ContentType = "text/html",
+            Body = new Uri(route.Request.Url).AbsolutePath == "/"
+                ? """
+                  <button aria-haspopup="dialog" aria-controls="sign-in" type="button"
+                          onclick="document.getElementById('sign-in').hidden=false;window.dialogOpens++">
+                      Sign in
+                  </button>
+                  <button type="button" onclick="document.body.dataset.unrelated='yes'">Sign in</button>
+                  <div id="sign-in" role="dialog" hidden>
+                    <form id="login" onsubmit="event.preventDefault();location.href='/dashboard'">
+                      <input autocomplete="username" id="login_field">
+                      <input type="password" autocomplete="current-password">
+                      <button type="submit">Log in</button>
+                    </form>
+                  </div>
+                  <script>window.dialogOpens=0;</script>
+                  """
+                : "<h1 id='signed-in'>Dashboard</h1>"
+        }));
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://auto-dialog.test/");
+        var workflow = Workflow(page.Url);
+        var vault = Vault();
+        await using var engine = new AutomationEngine(vault);
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
+              page.Url.EndsWith("/dashboard") && vault.ReadCount == 1 && entries == 0,
+            "AUTO-01 homepage declared sign-in dialog opens, while unrelated button is ignored");
     }
 
     private static async Task CombinedWithUnrelatedNewsletterAsync(IPlaywright playwright)
