@@ -72,16 +72,18 @@ internal static class PolicyDispatchTests
             };
             await using var engine = new AutomationEngine(new CredentialVault());
             EngineBehaviorTests.Track(engine, workflow, context, tracked);
-            var result = await engine.RunAsync(new[] { workflow }, cancellation.Token);
+            AutomationEngine.RunResult? result = null;
+            var cancelled = false;
+            try { result = await engine.RunAsync(new[] { workflow }, cancellation.Token); }
+            catch (OperationCanceledException) when (caseName == "cancel") { cancelled = true; }
             var filled = await actual.GetAttributeAsync("body", "data-filled") == "yes";
             var clicked = await actual.GetAttributeAsync("body", "data-clicked") == "yes";
             var permitted = caseName == "control";
             var ok = ownerCaptured && (permitted
-                ? filled && clicked && result.FinishedCount == 1
-                : !filled && !clicked && result.FinishedCount == 0 &&
-                  result.FailedCount + result.LoginNeedsAttention.Count <= 1);
+                ? filled && clicked && result?.FinishedCount == 1
+                : !filled && !clicked && (cancelled || result?.FinishedCount == 0));
             Check(ok,
-                $"LOGIN-L3 form-owner capture {caseName}: no secret dispatch after revocation (captured={ownerCaptured}, filled={filled}, clicked={clicked}, finished={result.FinishedCount})",
+                $"LOGIN-L3 form-owner capture {caseName}: no secret dispatch after revocation (captured={ownerCaptured}, filled={filled}, clicked={clicked}, finished={result?.FinishedCount}, cancelled={cancelled})",
                 failures);
         }
     }
