@@ -435,27 +435,66 @@ public sealed partial class AutomationEngine
     }
 
     private async Task<bool> ClickLoginSubmitAsync(
-        WebsiteWorkflow workflow, IPage page, string? approvedCredentialOrigin, CancellationToken ct)
+        WebsiteWorkflow workflow, IPage page, CredentialFieldBinding passwordOwner, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+        RequireCredentialAccess();
+        RequireAutomationUrl(passwordOwner.Origin);
+        var ownsForm = await passwordOwner.Field.EvaluateAsync<bool>(
+            "(field, form) => form !== null && field.form === form",
+            passwordOwner.Form).ConfigureAwait(false);
+        // Default discovery must never click a page-wide no-form candidate.
+        // A deliberate advanced selector can support an owned no-form SPA.
+        var allowNoForm = !ownsForm && workflow.SubmitSelector != StandardSubmitSelector;
+        if (!ownsForm && !allowNoForm) return false;
+
         var locator = page.Locator(workflow.SubmitSelector);
-        var count = await locator.CountAsync().ConfigureAwait(false);
-        for (var i = 0; i < count; i++)
+        var count = Math.Min(await locator.CountAsync().ConfigureAwait(false), 32);
+        var candidates = new List<IElementHandle>();
+        try
         {
-            var item = locator.Nth(i);
-            if (!await item.IsVisibleAsync().ConfigureAwait(false) ||
-                !await item.IsEnabledAsync().ConfigureAwait(false)) continue;
-            await using var element = await item.ElementHandleAsync().ConfigureAwait(false);
-            if (element is null) continue;
-            return await ClickApprovedLoginElementAsync(page, element,
-                approvedCredentialOrigin, ct).ConfigureAwait(false);
+            for (var i = 0; i < count; i++)
+            {
+                ct.ThrowIfCancellationRequested();
+                var item = locator.Nth(i);
+                if (!await item.IsVisibleAsync().ConfigureAwait(false) ||
+                    !await item.IsEnabledAsync().ConfigureAwait(false)) continue;
+                var element = await item.ElementHandleAsync().ConfigureAwait(false);
+                if (element is null) continue;
+                var admitted = false;
+                try
+                {
+                    admitted = !ownsForm || await element.EvaluateAsync<bool>(
+                        "(button, form) => { const owner = 'form' in button ? button.form : button.closest('form'); return form !== null && owner === form; }",
+                        passwordOwner.Form).ConfigureAwait(false);
+                    if (admitted)
+                    {
+                        candidates.Add(element);
+                        element = null;
+                    }
+                }
+                finally
+                {
+                    if (element is not null) await element.DisposeAsync().ConfigureAwait(false);
+                }
+            }
+            if (candidates.Count > 1)
+            {
+                Log($"Several final sign-in actions match '{workflow.Name}'. Continue in the browser.");
+                return false;
+            }
+            if (candidates.Count == 1)
+                return await ClickApprovedLoginElementAsync(page, candidates[0],
+                    passwordOwner.Origin, ct, passwordOwner, ownsForm).ConfigureAwait(false);
         }
-        // The second stage can use a different button/ID from the email page.
-        // Fallback only to an unambiguous approved form, never to SSO/MFA.
-        if (!string.IsNullOrWhiteSpace(workflow.PasswordSelector))
-            return await ClickUnambiguousFinalSubmitAsync(
-                workflow, page, approvedCredentialOrigin, ct).ConfigureAwait(false);
-        return false;
+        finally
+        {
+            foreach (var candidate in candidates)
+                await candidate.DisposeAsync().ConfigureAwait(false);
+        }
+
+        return await ClickUnambiguousFinalSubmitAsync(
+            workflow, page, passwordOwner, ct).ConfigureAwait(false);
     }
 
     /// <summary>
