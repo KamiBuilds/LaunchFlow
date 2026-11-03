@@ -2,7 +2,7 @@ name: Windows installer — build and gated draft release
 
 on:
   push:
-    branches: [hermes, chatgpt, both, both-2, both-3, chatgpt-safety-hardening-20261028, chatgpt-selective-safety-review-20261029, chatgpt-appcontrol-startup-20261029, chatgpt-trusted-distribution-20261029, chatgpt-ux-clarity-20261029, chatgpt-ux-clarity-v0.7.34-upload-20261029, fix/v0.7.44-adaptive-login-build-20261102, fix/v0.7.45-per-website-credentials-20261102, fix/v0.7.46-password-site-picker-20261102]
+    branches: [hermes, chatgpt, both, both-2, both-3, chatgpt-safety-hardening-20261028, chatgpt-selective-safety-review-20261029, chatgpt-appcontrol-startup-20261029, chatgpt-trusted-distribution-20261029, chatgpt-ux-clarity-20261029, chatgpt-ux-clarity-v0.7.34-upload-20261029, fix/v0.7.44-adaptive-login-build-20261102, fix/v0.7.45-per-website-credentials-20261102, fix/v0.7.46-password-site-picker-20261102, validated/v0.7.46-three-checks-20261103]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -156,8 +156,47 @@ jobs:
           retention-days: 30
 
   draft-release:
-    if: github.event_name == 'workflow_dispatch' && inputs.publish_release
+    name: Draft-release readiness — verify artifact, no publication
     needs: windows
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Download installers from this exact tested run
+        uses: actions/download-artifact@v5
+        with:
+          name: LaunchFlow-v${{ needs.windows.outputs.version }}-${{ github.sha }}-Windows
+          path: dist
+      - name: Verify exact installers and SHA-256 manifest
+        shell: pwsh
+        env:
+          LF_VERSION: ${{ needs.windows.outputs.version }}
+        run: |
+          $expected = @("LaunchFlow-Setup-v$env:LF_VERSION-x64.exe", 'LaunchFlow-Universal-Installer.exe')
+          $required = @($expected + 'SHA256SUMS.txt' | Sort-Object)
+          $actual = @(Get-ChildItem -LiteralPath dist -File | ForEach-Object Name | Sort-Object)
+          if (($actual -join '|') -cne ($required -join '|')) {
+            throw 'Downloaded artifact file set does not match the two installers and checksum manifest.'
+          }
+          $manifest = @(Get-Content -LiteralPath dist/SHA256SUMS.txt | Where-Object { $_.Trim() })
+          if ($manifest.Count -ne $expected.Count) {
+            throw 'Checksum manifest has an unexpected number of entries.'
+          }
+          foreach ($filename in $expected) {
+            $path = Join-Path dist $filename
+            $file = Get-Item -LiteralPath $path
+            if ($file.Length -le 0) { throw "Installer is empty: $filename" }
+            $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($manifest -cnotcontains "$hash  $filename") {
+              throw "SHA-256 verification failed for $filename"
+            }
+          }
+          Write-Host "Verified both installers and their checksums on commit $env:GITHUB_SHA (no release created)."
+
+  publish-draft:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_release
+    needs: [windows, draft-release]
     runs-on: windows-latest
     timeout-minutes: 10
     # Configure required reviewers on this environment. Stable publication is a separate human action.
