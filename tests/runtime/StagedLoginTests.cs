@@ -193,10 +193,16 @@ internal static class StagedLoginTests
 
         engine.ApproveLoginOriginAsync = (_, origin) =>
             Task.FromResult(origin == "https://identity.test");
+        var originOnly = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(originOnly.LoginNeedsAttention.Count == 1 &&
+              page.Url.Contains("identity.test/password") &&
+              await page.InputValueAsync("#secret") == "",
+              "origin permission alone cannot send a website password to an unmapped identity provider");
+        workflow.PasswordCredentialOrigin = "https://identity.test";
         var approved = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
         Check(approved.FinishedCount == 1 && approved.LoginNeedsAttention.Count == 0 &&
               page.Url == "https://identity.test/dashboard",
-              "explicit approval permits password insertion at the redirected IdP origin");
+              "explicit password credential mapping permits insertion at the approved identity provider");
     }
 
     private static async Task MfaRequiresHumanAsync(IPlaywright playwright)
