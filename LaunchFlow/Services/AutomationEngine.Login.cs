@@ -86,8 +86,14 @@ public sealed partial class AutomationEngine
                 Log($"Login needs attention for '{workflow.Name}': {health.Reason} Pausing further steps for this site.");
                 return new LoginAttention(workflow.Id, workflow.Name, health.Reason);
             }
+            // A verified automatic saved-password attempt already established
+            // completion when no technical success selector was configured.
+            // Browser-led SSO still requires explicit evidence or confirmation.
             if (!manualConfirmation &&
-                (workflow.Steps.Count > 0 || !string.IsNullOrWhiteSpace(workflow.DestinationUrl)))
+                (workflow.Steps.Count > 0 || !string.IsNullOrWhiteSpace(workflow.DestinationUrl)) &&
+                (string.Equals(workflow.LoginMode, "SSO", StringComparison.OrdinalIgnoreCase) ||
+                 !string.IsNullOrWhiteSpace(workflow.LoginSuccessSelector) ||
+                 !string.IsNullOrWhiteSpace(workflow.LoginSuccessUrlContains)))
             {
                 var verified = await LoginHealth.VerifySuccessAsync(
                     page, workflow.LoginSuccessSelector, workflow.LoginSuccessUrlContains, ct)
