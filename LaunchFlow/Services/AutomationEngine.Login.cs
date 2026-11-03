@@ -256,7 +256,7 @@ public sealed partial class AutomationEngine
                         }, selected).ConfigureAwait(false);
                     if (usernameOrigin is null || !stageReached)
                     {
-                        Log($"Could not continue sign-in safely for '{workflow.Name}'. Complete it in the browser.");
+                        Log($"Could not continue sign-in safely for '{workflow.Name}'. Sign in manually in the browser.");
                         return false;
                     }
                 }
@@ -295,7 +295,7 @@ public sealed partial class AutomationEngine
                         RequireAutomationUrl(page.Url);
                         return true;
                     }
-                    Log($"No owned final sign-in action could be verified for '{workflow.Name}'. Continue in the browser.");
+                    Log($"No owned final sign-in action could be verified for '{workflow.Name}'. Sign in manually in the browser.");
                     return false;
                 }
             }
