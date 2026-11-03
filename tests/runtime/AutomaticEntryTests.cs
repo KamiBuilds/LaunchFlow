@@ -94,13 +94,15 @@ internal static class AutomaticEntryTests
         await using var context = await browser.NewContextAsync();
         context.SetDefaultTimeout(3000);
         var unrelatedRequests = 0;
-        await context.RouteAsync("https://auto-dialog.test/unrelated", async route =>
+        await context.RouteAsync("https://auto-dialog.test/**", route =>
         {
-            Interlocked.Increment(ref unrelatedRequests);
-            await route.FulfillAsync(new() { Status = 204 });
-        });
-        await context.RouteAsync("https://auto-dialog.test/**", route => route.FulfillAsync(new()
-        {
+            if (new Uri(route.Request.Url).AbsolutePath == "/unrelated")
+            {
+                Interlocked.Increment(ref unrelatedRequests);
+                return route.FulfillAsync(new() { Status = 204 });
+            }
+            return route.FulfillAsync(new()
+            {
             ContentType = "text/html",
             Body = new Uri(route.Request.Url).AbsolutePath == "/"
                 ? """
@@ -119,7 +121,8 @@ internal static class AutomaticEntryTests
                   <script>window.dialogOpens=0;</script>
                   """
                 : "<h1 id='signed-in'>Dashboard</h1>"
-        }));
+            });
+        });
         var page = await context.NewPageAsync();
         await page.GotoAsync("https://auto-dialog.test/");
         var workflow = Workflow(page.Url);
