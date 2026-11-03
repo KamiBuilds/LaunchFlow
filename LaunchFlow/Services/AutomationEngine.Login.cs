@@ -147,8 +147,7 @@ public sealed partial class AutomationEngine
         RequireAutomationUrl(page.Url);
         if (await LoginHealth.VerifiedApplicationSessionAsync(page, workflow.StartUrl, ct)
             .ConfigureAwait(false)) return true;
-        if (string.IsNullOrWhiteSpace(workflow.LoginSuccessSelector) &&
-            string.IsNullOrWhiteSpace(workflow.LoginSuccessUrlContains)) return false;
+        if (string.IsNullOrWhiteSpace(workflow.LoginSuccessSelector)) return false;
         if (!OriginsMatch(GetOrigin(page.Url), GetOrigin(workflow.StartUrl))) return false;
         if ((await LoginHealth.InspectAsync(page, ct).ConfigureAwait(false)).NeedsAttention) return false;
         var result = await LoginHealth.VerifySuccessAsync(
@@ -325,6 +324,22 @@ public sealed partial class AutomationEngine
 
                 if (requiresPassword && !passwordHandledInsideUsername)
                 {
+                    if (useDiscovery &&
+                        !OriginsMatch(GetOrigin(page.Url), GetOrigin(workflow.StartUrl)))
+                    {
+                        var stageOrigin = GetOrigin(page.Url);
+                        if (!await IsOriginAllowedAsync(workflow, stageOrigin).ConfigureAwait(false))
+                        {
+                            Log($"Identity-provider origin was not approved for '{workflow.Name}'.");
+                            return false;
+                        }
+                        if (string.IsNullOrWhiteSpace(workflow.PasswordCredentialOrigin) ||
+                            !OriginsMatch(stageOrigin, GetOrigin(workflow.PasswordCredentialOrigin)))
+                        {
+                            Log($"The identity-provider password is not mapped for '{workflow.Name}'. Choose the correct credential before continuing.");
+                            return false;
+                        }
+                    }
                     // A staged or resumed default login must be classified
                     // again in the current document. Never reuse a global
                     // first-match password from a registration/other form.
