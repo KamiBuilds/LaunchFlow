@@ -13,6 +13,8 @@ internal static class AutomaticEntryTests
         await ExternalFinalFormAssociationAsync(playwright);
         await UnrelatedFinalSubmitAsync(playwright);
         await SignupNeverReceivesPasswordAsync(playwright);
+        await MarketingMfaTextDoesNotBlockAsync(playwright);
+        await UnverifiedRedirectNeverRunsFollowupAsync(playwright);
         Console.WriteLine("PASS AUTO safe entry, semantic username and final form owner fixtures");
     }
 
@@ -175,11 +177,14 @@ internal static class AutomaticEntryTests
                 route.FulfillAsync(new()
                 {
                     ContentType = "text/html",
-                    Body = new Uri(route.Request.Url).AbsolutePath == "/"
-                        ? ambiguous
+                    Body = new Uri(route.Request.Url).AbsolutePath switch
+                    {
+                        "/" => ambiguous
                             ? "<a href='/login'>Sign in</a><a href='/other-login'>Log In</a>"
-                            : "<a href='/login'>Sign in</a><a href='/login'>Log In</a>"
-                        : "<form onsubmit=\"event.preventDefault();location.href='/dashboard'\"><input type='email'><input type='password'><button type='submit'>Sign in</button></form>"
+                            : "<a href='/login'>Sign in</a><a href='/login'>Log In</a>",
+                        "/dashboard" => "<h1 id='signed-in'>Dashboard</h1>",
+                        _ => "<form onsubmit=\"event.preventDefault();location.href='/dashboard'\"><input type='email'><input type='password'><button type='submit'>Sign in</button></form>"
+                    }
                 }));
             var page = await context.NewPageAsync();
             await page.GotoAsync("https://auto-entry.test/");
@@ -292,6 +297,51 @@ internal static class AutomaticEntryTests
               await page.InputValueAsync("#new-password") == "" &&
               vault.ReadCount == 0,
             "AUTO-22 sign-up/new-password form must never access saved credentials or fill");
+    }
+
+    private static async Task MarketingMfaTextDoesNotBlockAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        await context.RouteAsync("https://auto-marketing.test/**", route => route.FulfillAsync(new()
+        {
+            ContentType = "text/html",
+            Body = new Uri(route.Request.Url).AbsolutePath == "/login"
+                ? "<form onsubmit=\"event.preventDefault();location.href='/dashboard'\"><input type='email'><input type='password'><button type='submit'>Sign in</button></form>"
+                : "<h1 id='signed-in'>Dashboard</h1><footer>Learn about two-factor authentication and MFA.</footer>"
+        }));
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://auto-marketing.test/login");
+        var workflow = Workflow(page.Url);
+        await using var engine = new AutomationEngine(Vault());
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
+              page.Url.EndsWith("/dashboard"),
+            "AUTO-17 passive footer MFA/security education must not be mistaken for active challenge");
+    }
+
+    private static async Task UnverifiedRedirectNeverRunsFollowupAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        await context.RouteAsync("https://auto-uncertain.test/**", route => route.FulfillAsync(new()
+        {
+            ContentType = "text/html",
+            Body = new Uri(route.Request.Url).AbsolutePath == "/login"
+                ? "<form onsubmit=\"event.preventDefault();location.href='/welcome'\"><input type='email'><input type='password'><button type='submit'>Sign in</button></form>"
+                : "<h1>Welcome! Please finish verifying your details.</h1><button id='followup' onclick=\"document.body.dataset.followed='yes'\">Dangerous follow-up</button>"
+        }));
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://auto-uncertain.test/login");
+        var workflow = Workflow(page.Url);
+        workflow.Steps.Add(new WorkflowStep { Type = "Click", Target = "#followup" });
+        await using var engine = new AutomationEngine(Vault());
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(result.LoginNeedsAttention.Count == 1 && result.FinishedCount == 0 &&
+              await page.GetAttributeAsync("body", "data-followed") is null,
+            "AUTO-24 URL change and nonempty body never authorize unverified follow-up");
     }
 
     private static void Check(bool condition, string description) =>
