@@ -174,6 +174,16 @@ public sealed partial class AutomationEngine
         await TryOpenLoginEntryAsync(workflow, page, ct).ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
         RequireAutomationUrl(page.Url);
+        if (workflow.UsernameSelector == StandardUsernameSelector)
+        {
+            await using var identifier = await ResolveAutomaticUsernameAsync(page, ct).ConfigureAwait(false);
+            if (identifier is null &&
+                !await HasSupportedResumedPasswordStageAsync(workflow, page, ct).ConfigureAwait(false))
+            {
+                Log($"Could not identify the sign-in form safely for '{workflow.Name}'. Continue in the browser.");
+                return false;
+            }
+        }
         var credential = _vault.Read(workflow, configuration, keepassMasterPassword);
         if (credential is null)
         {
