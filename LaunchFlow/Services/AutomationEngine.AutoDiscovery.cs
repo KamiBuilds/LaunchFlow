@@ -21,7 +21,9 @@ public sealed partial class AutomationEngine
         ct.ThrowIfCancellationRequested();
         if (!Uri.TryCreate(page.Url, UriKind.Absolute, out var current) ||
             current.Scheme != Uri.UriSchemeHttps) return false;
-        if (await PasswordStageReadyAsync(workflow, page, ct).ConfigureAwait(false))
+        if (workflow.UsernameSelector == StandardUsernameSelector
+                ? await HasSupportedResumedPasswordStageAsync(workflow, page, ct).ConfigureAwait(false)
+                : await PasswordStageReadyAsync(workflow, page, ct).ConfigureAwait(false))
             return false;
 
         // If the current page has an intended identifier form, do not
@@ -131,10 +133,19 @@ public sealed partial class AutomationEngine
     private static async Task<bool> HasSupportedResumedPasswordStageAsync(
         WebsiteWorkflow workflow, IPage page, CancellationToken ct)
     {
+        await using var matched = await ResolveSupportedResumedPasswordStageAsync(
+            workflow, page, ct).ConfigureAwait(false);
+        return matched is not null;
+    }
+
+    private static async Task<IElementHandle?> ResolveSupportedResumedPasswordStageAsync(
+        WebsiteWorkflow workflow, IPage page, CancellationToken ct)
+    {
         // A password-only resumed stage is allowed only when it has the
         // semantics of a current-password login, not a reset/new-password form.
         var fields = page.Locator(workflow.PasswordSelector);
         var count = Math.Min(await fields.CountAsync().ConfigureAwait(false), 16);
+        IElementHandle? selected = null;
         for (var i = 0; i < count; i++)
         {
             ct.ThrowIfCancellationRequested();
@@ -165,9 +176,73 @@ public sealed partial class AutomationEngine
                     /(?:login|log-in|signin|sign-in|password|auth)/i.test(name + ' ' + path);
                 }
                 """).ConfigureAwait(false);
-            if (valid) return true;
+            if (!valid) continue;
+            var element = await field.ElementHandleAsync().ConfigureAwait(false);
+            if (element is null) continue;
+            if (selected is not null)
+            {
+                await element.DisposeAsync().ConfigureAwait(false);
+                await selected.DisposeAsync().ConfigureAwait(false);
+                return null;
+            }
+            selected = element;
         }
-        return false;
+        return selected;
+    }
+
+    // Keep the original username form as the authority for the combined
+    // password. A second registration form never qualifies by DOM order.
+    private static async Task<(bool Present, IElementHandle? Field)> ResolveCombinedPasswordAsync(
+        WebsiteWorkflow workflow, IPage page, CredentialFieldBinding usernameOwner,
+        CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var status = await usernameOwner.Field.EvaluateAsync<int>("""
+            (field, form) => {
+              if (!field.isConnected || !form?.isConnected || field.form !== form ||
+                  field.ownerDocument.defaultView?.document !== field.ownerDocument) return -1;
+              const passwords = Array.from(form.elements).filter(el =>
+                  el instanceof HTMLInputElement && el.type === 'password');
+              if (passwords.length === 0) return 0;
+              if (passwords.length !== 1) return -1;
+              const password = passwords[0];
+              if (/new-password|one-time-code/i.test(password.autocomplete || '')) return -1;
+              const intent = [form.id, form.getAttribute('action'), form.getAttribute('aria-label')].join(' ');
+              if (/(?:sign[ -]?up|register|create.?account|forgot|reset|change.?password)/i.test(intent))
+                return -1;
+              return 1;
+            }
+            """, usernameOwner.Form).ConfigureAwait(false);
+        if (status != 1) return (status != 0, null);
+
+        var matches = page.Locator(workflow.PasswordSelector);
+        var count = Math.Min(await matches.CountAsync().ConfigureAwait(false), 24);
+        IElementHandle? selected = null;
+        for (var i = 0; i < count; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var candidate = await matches.Nth(i).ElementHandleAsync().ConfigureAwait(false);
+            if (candidate is null) continue;
+            var owned = await candidate.EvaluateAsync<bool>("""
+                (field, form) => field.isConnected && field.form === form &&
+                    field.ownerDocument.defaultView?.document === field.ownerDocument &&
+                    field instanceof HTMLInputElement && field.type === 'password' &&
+                    !/new-password|one-time-code/i.test(field.autocomplete || '')
+                """, usernameOwner.Form).ConfigureAwait(false);
+            if (!owned)
+            {
+                await candidate.DisposeAsync().ConfigureAwait(false);
+                continue;
+            }
+            if (selected is not null)
+            {
+                await candidate.DisposeAsync().ConfigureAwait(false);
+                await selected.DisposeAsync().ConfigureAwait(false);
+                return (true, null);
+            }
+            selected = candidate;
+        }
+        return (true, selected);
     }
 
     private static bool IsLocalSignInLabel(string? label)
@@ -222,8 +297,9 @@ public sealed partial class AutomationEngine
                       if (forbidden.test(purpose)) return 0;
                       const controls = Array.from(form.elements);
                       const passwords = controls.filter(el => el instanceof HTMLInputElement &&
-                        el.type === 'password' && !/new-password|one-time-code/.test(el.autocomplete || ''));
-                      if (passwords.length > 1) return 0;
+                        el.type === 'password');
+                      if (passwords.some(el => /new-password|one-time-code/i.test(el.autocomplete || '')) ||
+                          passwords.length > 1) return 0;
                       const signInActions = controls.filter(el => {
                         if (!(el instanceof HTMLButtonElement || el instanceof HTMLInputElement)) return false;
                         if (el.disabled || el.getClientRects().length === 0) return false;
@@ -238,7 +314,19 @@ public sealed partial class AutomationEngine
                         const label = (el.getAttribute('aria-label') || el.innerText || el.value || '').trim().toLowerCase();
                         return /^(next|continue|continue to password|log in|login|sign in|signin)$/i.test(label);
                       });
-                      return continuations.length === 1 ? 2 : 0;
+                      if (continuations.length !== 1) return 0;
+                      // Email + Continue is not login intent. Require an
+                      // authentication-specific form, identifier, or URL.
+                      const explicitIntent = /(?:login|log-in|signin|sign-in|auth|identifier)/i.test(purpose) ||
+                        /(?:^|\\s)username(?:\\s|$)/i.test(field.autocomplete || '') ||
+                        /^(?:login|login_field|username)$/i.test(field.id || '') ||
+                        /^(?:login|username)$/i.test(field.name || '');
+                      if (explicitIntent) return 2;
+                      const path = field.ownerDocument.location.pathname;
+                      const label = (continuations[0].getAttribute('aria-label') ||
+                        continuations[0].innerText || continuations[0].value || '').trim();
+                      return /\\/(?:login|log-in|signin|sign-in|auth)(?:\\/|$)/i.test(path) &&
+                        /^(?:next|log in|login|sign in|signin)$/i.test(label) ? 1 : 0;
                     }
                     """).ConfigureAwait(false);
                 if (score > highest)
