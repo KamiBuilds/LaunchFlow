@@ -144,7 +144,6 @@ public sealed partial class AutomationEngine
         WebsiteWorkflow workflow, IPage page, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        RequireCredentialAccess();
         RequireAutomationUrl(page.Url);
         if (await LoginHealth.VerifiedApplicationSessionAsync(page, workflow.StartUrl, ct)
             .ConfigureAwait(false)) return true;
@@ -156,7 +155,6 @@ public sealed partial class AutomationEngine
             page, workflow.LoginSuccessSelector, workflow.LoginSuccessUrlContains, ct)
             .ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
-        RequireCredentialAccess();
         RequireAutomationUrl(page.Url);
         return !result.NeedsAttention;
     }
