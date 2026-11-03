@@ -99,8 +99,8 @@ public partial class TutorialWindow : Window
                     "At compact widths this caption can be hidden. Check the Save changes button and its tooltip; never treat a failed save as complete.",
                     "MainWindow", "SaveStatusLabel"),
                 new("BASIC-13", "Save pending changes if needed",
-                    "If edits are still pending, click Save changes.",
-                    "LaunchFlow", "Websites · top toolbar", "Save changes",
+                    "If edits are still pending, click Save changes (or Retry save after a failed save).",
+                    "LaunchFlow", "Websites · top toolbar", "Save changes / Retry save",
                     "The application acknowledges a successful durable save, or shows a failure to correct.",
                     "Only press this if you have changes to keep. If saving fails or the vault is locked, leave edits pending and retry after resolving the cause.",
                     "MainWindow", "SaveChangesButton"),
@@ -128,8 +128,8 @@ public partial class TutorialWindow : Window
                 new("PASS-04", "Choose one sign-in mode",
                     "Choose your preferred option under How should LaunchFlow sign in?",
                     "LaunchFlow", "Settings → Passwords", "How should LaunchFlow sign in?",
-                    "One mode is selected: saved password, no login or browser SSO.",
-                    "SSO is for browser-led sign-in and can require manual MFA. Do not enable saved-password mode for HTTP or an untrusted origin.",
+                    "One mode is selected: saved password, no login or browser SSO. The guide will follow that choice.",
+                    "Saved password has separate credential-entry steps. No login and SSO only need settings saved; SSO/MFA may require manual attention. Never authorize untrusted login origins.",
                     "MainWindow", "LoginModeCombo"),
                 new("PASS-05", "Enter an account name",
                     "If updating it, enter a username in New username or email (leave blank to keep current).",
@@ -155,6 +155,12 @@ public partial class TutorialWindow : Window
                     "The status confirms that the selected website's credentials were saved.",
                     "If the status still says 'No password saved' or an error appears, do not assume storage succeeded. A blocked IdP/MFA step needs manual attention.",
                     "MainWindow", "CredentialStatus"),
+                new("PASS-09", "Save No login or SSO settings",
+                    "Click Save changes (or Retry save if a previous save failed).",
+                    "LaunchFlow", "Top toolbar · website settings", "Save changes / Retry save",
+                    "LaunchFlow confirms that the selected sign-in preference was saved, or shows a failure to fix.",
+                    "Do not enter a new password or click Save for selected website for No login/SSO. A mode change does not remove stored credentials. Confirm the save status and retry after resolving failures.",
+                    "MainWindow", "SaveChangesButton"),
             ],
             ["recording"] =
             [
@@ -248,8 +254,8 @@ public partial class TutorialWindow : Window
                     "Use human sign-in for MFA/SSO. Do not disable HTTPS checks or guess untrusted login buttons.",
                     "MainWindow", "RepairButton"),
                 new("HELP-04", "Saving failed",
-                    "After fixing the error, click Save changes again.",
-                    "LaunchFlow", "Websites · top toolbar", "Save changes",
+                    "After fixing the error, click Retry save (or Save changes if that is the current label).",
+                    "LaunchFlow", "Websites · top toolbar", "Save changes / Retry save",
                     "A successful durable save is acknowledged.",
                     "Keep pending edits intact. If the vault is locked, unlock it before retrying. A failed write is not a completed save.",
                     "MainWindow", "SaveChangesButton"),
@@ -264,6 +270,9 @@ public partial class TutorialWindow : Window
 
     private readonly HashSet<string> _confirmed = new(StringComparer.Ordinal);
     private string _route = "basic";
+    // This is guidance state only, derived from the real non-secret sign-in mode.
+    // It cannot change application settings or fetch stored credentials.
+    private string _passwordMode = "Auto";
     private int _current;
     private bool _updating;
     private AdornerLayer? _highlightLayer;
@@ -278,7 +287,34 @@ public partial class TutorialWindow : Window
         UpdateView();
     }
 
-    private GuideStep CurrentStep => Routes[_route][_current];
+    private GuideStep[] VisiblePages => _route != "passwords"
+        ? Routes[_route]
+        : Routes[_route].Where(step =>
+            step.Id is "PASS-01" or "PASS-02" or "PASS-03" or "PASS-04" ||
+            (_passwordMode == "Auto"
+                ? step.Id is "PASS-05" or "PASS-06" or "PASS-07" or "PASS-08"
+                : step.Id == "PASS-09")).ToArray();
+
+    private GuideStep CurrentStep => VisiblePages[_current];
+
+    private MainWindow? CurrentMainWindow() =>
+        System.Windows.Application.Current.Windows.OfType<MainWindow>()
+            .FirstOrDefault(window => window.IsLoaded && window.IsVisible);
+
+    private void ReadSelectedPasswordMode()
+    {
+        if (CurrentMainWindow()?.FindName("LoginModeCombo") is not ComboBox box) return;
+        var mode = (box.SelectedItem as ComboBoxItem)?.Tag as string;
+        _passwordMode = mode is "None" or "SSO" ? mode : "Auto";
+    }
+
+    private string CurrentSaveButtonLabel()
+    {
+        var button = CurrentMainWindow()?.FindName("SaveChangesButton") as Button;
+        var label = button?.Content as string;
+        return label is "Save changes" or "Retry save"
+            ? label : "Save changes / Retry save";
+    }
 
     private void Route_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -287,14 +323,16 @@ public partial class TutorialWindow : Window
 
         _route = route;
         _current = 0;
+        if (_route == "passwords") ReadSelectedPasswordMode();
         ClearHighlight();
         UpdateView();
     }
 
     private void UpdateView()
     {
+        var pages = VisiblePages;
+        if (_current >= pages.Length) _current = pages.Length - 1;
         var step = CurrentStep;
-        var pages = Routes[_route];
         ClearHighlight();
         _updating = true;
         try
@@ -305,9 +343,17 @@ public partial class TutorialWindow : Window
             // "Instellingen" in Dutch; most wizard/recorder labels stay English.
             var visibleLabel = step.TargetName == "SettingsNav"
                 ? LocalizationService.Text("Settings")
-                : step.ControlLabel;
+                : step.TargetName == "SaveChangesButton"
+                    ? CurrentSaveButtonLabel()
+                    : step.ControlLabel;
             StepDetails.Text = step.TargetName == "SettingsNav"
                 ? $"Select {visibleLabel} in the top navigation."
+                : step.Id == "BASIC-13"
+                    ? $"If edits are still pending, click {visibleLabel}."
+                : step.Id == "HELP-04"
+                    ? $"After resolving the error, click {visibleLabel}."
+                : step.Id == "PASS-09"
+                    ? $"Click {visibleLabel} to save the selected No login/SSO preference."
                 : step.Instruction;
             ExpectedResult.Text = step.Expected;
             ExampleTitle.Text = step.Location;
@@ -336,7 +382,7 @@ public partial class TutorialWindow : Window
         if (_updating || ConfirmStepBox is null) return;
         if (ConfirmStepBox.IsChecked == true) _confirmed.Add(CurrentStep.Id);
         else _confirmed.Remove(CurrentStep.Id);
-        var pages = Routes[_route];
+        var pages = VisiblePages;
         ConfirmationStatus.Text = $"{pages.Count(p => _confirmed.Contains(p.Id))} of {pages.Length} results manually confirmed. " +
             "Next does not mark a task complete.";
     }
@@ -356,7 +402,10 @@ public partial class TutorialWindow : Window
 
     private void Next_Click(object sender, RoutedEventArgs e)
     {
-        if (_current == Routes[_route].Length - 1)
+        // The actual selected sign-in mode (never passwords) determines which
+        // instructions apply after PASS-04. No login/SSO skip credential entry.
+        if (CurrentStep.Id == "PASS-04") ReadSelectedPasswordMode();
+        if (_current == VisiblePages.Length - 1)
         {
             Close();
             return;
