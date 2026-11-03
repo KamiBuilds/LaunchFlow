@@ -35,7 +35,8 @@ internal static class PolicyDispatchTests
                     <form id="login">
                       <input id="user" oninput="document.body.dataset.filled='yes'">
                       <button id="submit" type="button"
-                        onclick="document.body.dataset.clicked='yes'">Sign in</button>
+                        onclick="document.body.dataset.clicked='yes';document.getElementById('verified').hidden=false">Sign in</button>
+                      <span id="verified" hidden>Authenticated</span>
                     </form>
                     """
             }));
@@ -68,7 +69,7 @@ internal static class PolicyDispatchTests
             var workflow = new WebsiteWorkflow
             {
                 StartUrl = actual.Url, AutoLogin = true, UsernameSelector = "#user",
-                PasswordSelector = "", SubmitSelector = "#submit", LoginSuccessSelector = "body"
+                PasswordSelector = "", SubmitSelector = "#submit", LoginSuccessSelector = "#verified"
             };
             await using var engine = new AutomationEngine(new CredentialVault());
             EngineBehaviorTests.Track(engine, workflow, context, tracked);
