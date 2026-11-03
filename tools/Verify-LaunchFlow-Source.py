@@ -58,8 +58,14 @@ check('EnsureStartupWorkflowVisible();' in main_code and 'MainTabs.SelectedIndex
 main_code='\n'.join(p.read_text(encoding='utf-8') for p in sorted((root/'LaunchFlow').glob('MainWindow*.cs')))
 recorder_code=(root/'LaunchFlow/VisualRecorderWindow.xaml.cs').read_text(encoding='utf-8')
 build_script=(root/'BUILD-INSTALLER.ps1').read_text(encoding='utf-8')
-check('FirstOrDefault(w => w.Id == workflow.Id)' in main_code,
-      'Teach persists clicks only to its original website')
+check('RecorderOwnerIsCurrent(' in main_code and
+      'ReferenceEquals(w, workflow)' in main_code and
+      '_workspaceRevision == originalRevision' in main_code and
+      'VaultDatabase.Current.SessionGeneration == originalVaultSession' in main_code and
+      '_store.SaveDurable(originalConfiguration, originalVaultSession)' in main_code and
+      'FirstOrDefault(w => w.Id == workflow.Id)' not in
+          (root/'LaunchFlow/MainWindow.Execution.cs').read_text(encoding='utf-8'),
+      'Teach publication binds the original workflow reference, revision and vault session')
 check('_teachingInProgress' in main_code, 'overlapping Teach sessions are blocked')
 check('TeachRecorderScript.Install' in teach_service and 'internal const string Install' in teach_script,
       'recorder page-initialization script is invoked')
