@@ -34,54 +34,75 @@ public partial class MainWindow
         return completion.Task;
     }
 
-    private async Task SaveTaughtStepsAsync(WebsiteWorkflow workflow, IPage page)
+    // A workflow ID is a persistence key, not authority to publish an old
+    // recorder into a replacement imported under that same ID.
+    private bool RecorderOwnerIsCurrent(
+        WebsiteWorkflow workflow, Configuration originalConfiguration,
+        long originalRevision, long originalVaultSession) =>
+        !_vaultLockInProgress && !_windowsLocked && !_exiting &&
+        VaultDatabase.Current.IsUnlocked &&
+        VaultDatabase.Current.SessionGeneration == originalVaultSession &&
+        ReferenceEquals(_configuration, originalConfiguration) &&
+        _workspaceRevision == originalRevision &&
+        _configuration.Workflows.Any(w => ReferenceEquals(w, workflow)) &&
+        TeachAllowed(workflow);
+
+    private async Task SaveTaughtStepsAsync(WebsiteWorkflow workflow, IPage page,
+        Configuration? admittedConfiguration = null, long? admittedRevision = null,
+        long? admittedVaultSession = null)
     {
-        if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow)) return;
+        var originalConfiguration = admittedConfiguration ?? _configuration;
+        var originalRevision = admittedRevision ?? _workspaceRevision;
+        var originalVaultSession = admittedVaultSession ?? VaultDatabase.Current.SessionGeneration;
+        if (!RecorderOwnerIsCurrent(workflow, originalConfiguration, originalRevision,
+                originalVaultSession)) return;
         var recorder = new VisualRecorderWindow(page) { Owner = this };
         var saved = await ShowRecorderAsync(recorder);
         // Teach uses a modeless window. Return LaunchFlow to the foreground
         // after its capture window closes, without leaving the user hunting in the taskbar.
         if (!_exiting && !_windowsLocked && IsLoaded) ShowFromTray();
         if (!saved || recorder.RecordedSteps.Count == 0) return;
-        if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow)) return;
-
-        // Teach remains modeless; the selected website may have changed.
-        var original = _configuration.Workflows.FirstOrDefault(w => w.Id == workflow.Id);
-        if (original is null)
+        if (!RecorderOwnerIsCurrent(workflow, originalConfiguration, originalRevision,
+                originalVaultSession))
         {
-            MessageBox.Show(this,
-                "This website was removed while Teach was open, so no clicks were saved.",
-                "Website no longer exists", MessageBoxButton.OK, MessageBoxImage.Information);
+            // Do not resolve by matching ID: imported workflows may deliberately
+            // retain that ID while replacing the old object and its authority.
+            AppendLog("Teach actions were discarded because the website, configuration or vault session changed.");
             return;
         }
 
-        int previousCount = original.Steps.Count;
-        original.Steps.AddRange(recorder.RecordedSteps);
+        int previousCount = workflow.Steps.Count;
+        workflow.Steps.AddRange(recorder.RecordedSteps);
         // Recorder actions are committed immediately to the encrypted vault.
         // Never report success for ConfigStore's locked-vault temp fallback.
-        try { _store.SaveDurable(_configuration); }
+        try { _store.SaveDurable(originalConfiguration, originalVaultSession); }
         catch
         {
-            original.Steps.RemoveRange(previousCount, original.Steps.Count - previousCount);
+            workflow.Steps.RemoveRange(previousCount, workflow.Steps.Count - previousCount);
             throw;
         }
-        if (_selected?.Id == original.Id) RefreshSteps();
+        if (ReferenceEquals(_selected, workflow)) RefreshSteps();
         if (!_hasUnsavedChanges) MarkSaved();
-        AppendLog($"Saved {recorder.RecordedSteps.Count} taught action(s) for '{original.Name}'.");
+        AppendLog($"Saved {recorder.RecordedSteps.Count} taught action(s) for '{workflow.Name}'.");
     }
 
     private async void RecordSteps_Click(object sender, RoutedEventArgs e)
     {
         if (_teachingInProgress || _runInProgress || _vaultLockInProgress || _windowsLocked || _exiting || _selected is null || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(_selected) || !SaveAll()) return;
         var workflow = _selected;
+        var admittedConfiguration = _configuration;
+        var admittedRevision = _workspaceRevision;
+        var admittedVaultSession = VaultDatabase.Current.SessionGeneration;
         _teachingInProgress = true;
         UpdateRunButtons();
         try
         {
             _activeTeachTask = _runner.GetPageForRecorderAsync(workflow);
             var page = await _activeTeachTask;
-            if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow)) return;
-            await SaveTaughtStepsAsync(workflow, page);
+            if (!RecorderOwnerIsCurrent(workflow, admittedConfiguration, admittedRevision,
+                    admittedVaultSession)) return;
+            await SaveTaughtStepsAsync(workflow, page, admittedConfiguration, admittedRevision,
+                admittedVaultSession);
         }
         catch (Exception ex)
         {
@@ -112,6 +133,9 @@ public partial class MainWindow
         var workflow = target ?? _selected;
         if (_teachingInProgress || _vaultLockInProgress || _windowsLocked || _exiting || workflow is null ||
             !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow) || !SaveAll()) return;
+        var admittedConfiguration = _configuration;
+        var admittedRevision = _workspaceRevision;
+        var admittedVaultSession = VaultDatabase.Current.SessionGeneration;
         _teachingInProgress = true;
         UpdateRunButtons();
         try
@@ -121,13 +145,18 @@ public partial class MainWindow
             // to sign in, which is precisely what Repair asks them to do.
             AppendLog($"Repair login for '{workflow.Name}': sign in in the browser, teach safe clicks, then Save actions.");
             WorkflowStatusLabel.Text = "Repair login · Use the browser and modeless Teach window";
-            if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow)) return;
+            if (!RecorderOwnerIsCurrent(workflow, admittedConfiguration, admittedRevision,
+                    admittedVaultSession)) return;
             _activeTeachTask = _runner.GetPageForRecorderAsync(workflow);
             var page = await _activeTeachTask;
-            if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow)) return;
+            if (!RecorderOwnerIsCurrent(workflow, admittedConfiguration, admittedRevision,
+                    admittedVaultSession)) return;
             var health = await LoginHealth.InspectAsync(page);
             if (health.NeedsAttention) AppendLog($"Repair login: {health.Reason}");
-            await SaveTaughtStepsAsync(workflow, page);
+            if (!RecorderOwnerIsCurrent(workflow, admittedConfiguration, admittedRevision,
+                    admittedVaultSession)) return;
+            await SaveTaughtStepsAsync(workflow, page, admittedConfiguration, admittedRevision,
+                admittedVaultSession);
         }
         finally
         {
