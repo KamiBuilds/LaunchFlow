@@ -25,13 +25,56 @@ public partial class MainWindow
     private void Run_Click(object sender, RoutedEventArgs e) => _ = RunEnabledAsync();
     private void RunSelected_Click(object sender, RoutedEventArgs e) => _ = RunEnabledAsync(onlySelected: true);
 
-    private static Task<bool> ShowRecorderAsync(VisualRecorderWindow recorder)
+    private async Task<bool> ShowRecorderAsync(VisualRecorderWindow recorder)
     {
-        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        recorder.Closed += (_, _) => completion.TrySetResult(recorder.Saved);
-        try { recorder.Show(); }
-        catch (Exception ex) { completion.TrySetException(ex); }
-        return completion.Task;
+        var closed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        EventHandler onClosed = (_, _) => closed.TrySetResult(recorder.Saved);
+        _activeRecorder = recorder;
+        recorder.Closed += onClosed;
+        try
+        {
+            recorder.Show();
+            var saved = await closed.Task;
+            // Closed is a synchronous WPF event; recorder callback disposal
+            // and Playwright drain can continue asynchronously after it fires.
+            await recorder.CleanupCompleted;
+            if (recorder.CleanupFailed)
+                throw new InvalidOperationException("Recorder cleanup could not finish safely.");
+            return saved;
+        }
+        catch
+        {
+            // A failed Show cannot leave a still-live recorder as an untracked
+            // browser listener. Close is best-effort; the lock path will block
+            // profile sealing if teardown ultimately fails.
+            if (recorder.IsVisible)
+            {
+                try { recorder.Close(); } catch { /* preserve original exception */ }
+            }
+            throw;
+        }
+        finally
+        {
+            recorder.Closed -= onClosed;
+            if (ReferenceEquals(_activeRecorder, recorder)) _activeRecorder = null;
+        }
+    }
+
+    private bool CloseActiveRecorderForLock()
+    {
+        var recorder = _activeRecorder;
+        if (recorder is null) return true;
+        try
+        {
+            if (recorder.IsVisible) recorder.Close();
+            AppendLog("Active Teach recording was stopped before browser lock/cleanup.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AppendLog("Recorder could not close; vault remains locked and profiles are retained: " + ex.GetType().Name);
+            return false;
+        }
     }
 
     // A workflow ID is a persistence key, not authority to publish an old
@@ -88,32 +131,43 @@ public partial class MainWindow
         AppendLog($"Saved {recorder.RecordedSteps.Count} taught action(s) for '{workflow.Name}'.");
     }
 
+    private async Task RunTeachOperationAsync(
+        WebsiteWorkflow workflow, Configuration admittedConfiguration,
+        long admittedRevision, long admittedVaultSession)
+    {
+        var page = await _runner.GetPageForRecorderAsync(workflow);
+        if (!RecorderOwnerIsCurrent(workflow, admittedConfiguration, admittedRevision,
+                admittedVaultSession)) return;
+        await SaveTaughtStepsAsync(workflow, page, admittedConfiguration, admittedRevision,
+            admittedVaultSession);
+    }
+
     private async void RecordSteps_Click(object sender, RoutedEventArgs e)
     {
-        if (_teachingInProgress || _runInProgress || _vaultLockInProgress || _windowsLocked || _exiting || _selected is null || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(_selected) || !SaveAll()) return;
+        if (_teachingInProgress || _runInProgress || _vaultLockInProgress || _windowsLocked || _exiting ||
+            _selected is null || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(_selected) || !SaveAll()) return;
         var workflow = _selected;
         var admittedConfiguration = _configuration;
         var admittedRevision = _workspaceRevision;
         var admittedVaultSession = VaultDatabase.Current.SessionGeneration;
         _teachingInProgress = true;
         UpdateRunButtons();
-        try
-        {
-            _activeTeachTask = _runner.GetPageForRecorderAsync(workflow);
-            var page = await _activeTeachTask;
-            if (!RecorderOwnerIsCurrent(workflow, admittedConfiguration, admittedRevision,
-                    admittedVaultSession)) return;
-            await SaveTaughtStepsAsync(workflow, page, admittedConfiguration, admittedRevision,
-                admittedVaultSession);
-        }
+        // The tracked task covers acquisition, modeless recording, callback
+        // drain and publication, not merely GetPageForRecorderAsync.
+        var operation = RunTeachOperationAsync(workflow, admittedConfiguration,
+            admittedRevision, admittedVaultSession);
+        _activeTeachTask = operation;
+        try { await operation; }
         catch (Exception ex)
         {
-            MessageBox.Show(this, MakeBrowserFriendlyMessage(ex),
-                "Teach clicks", MessageBoxButton.OK, MessageBoxImage.Warning);
+            if (!_vaultLockInProgress && !_windowsLocked && !_exiting)
+                MessageBox.Show(this, MakeBrowserFriendlyMessage(ex),
+                    "Teach clicks", MessageBoxButton.OK, MessageBoxImage.Warning);
+            else AppendLog("Teach was stopped during vault/session cleanup: " + ex.GetType().Name);
         }
         finally
         {
-            _activeTeachTask = null;
+            if (ReferenceEquals(_activeTeachTask, operation)) _activeTeachTask = null;
             _teachingInProgress = false;
             UpdateRunButtons();
         }
@@ -125,44 +179,51 @@ public partial class MainWindow
         try { await RepairLoginCoreAsync(); }
         catch (Exception ex)
         {
-            MessageBox.Show(this, MakeBrowserFriendlyMessage(ex),
-                "Repair login", MessageBoxButton.OK, MessageBoxImage.Warning);
+            if (!_vaultLockInProgress && !_windowsLocked && !_exiting)
+                MessageBox.Show(this, MakeBrowserFriendlyMessage(ex),
+                    "Repair login", MessageBoxButton.OK, MessageBoxImage.Warning);
+            else AppendLog("Repair was stopped during vault/session cleanup: " + ex.GetType().Name);
         }
+    }
+
+    private async Task RunRepairOperationAsync(
+        WebsiteWorkflow workflow, Configuration admittedConfiguration,
+        long admittedRevision, long admittedVaultSession)
+    {
+        // Repair is a modeless Teach operation with a health inspection.
+        AppendLog($"Repair login for '{workflow.Name}': sign in in the browser, teach safe clicks, then Save actions.");
+        WorkflowStatusLabel.Text = "Repair login · Use the browser and modeless Teach window";
+        if (!RecorderOwnerIsCurrent(workflow, admittedConfiguration, admittedRevision,
+                admittedVaultSession)) return;
+        var page = await _runner.GetPageForRecorderAsync(workflow);
+        if (!RecorderOwnerIsCurrent(workflow, admittedConfiguration, admittedRevision,
+                admittedVaultSession)) return;
+        var health = await LoginHealth.InspectAsync(page);
+        if (health.NeedsAttention) AppendLog($"Repair login: {health.Reason}");
+        if (!RecorderOwnerIsCurrent(workflow, admittedConfiguration, admittedRevision,
+                admittedVaultSession)) return;
+        await SaveTaughtStepsAsync(workflow, page, admittedConfiguration, admittedRevision,
+            admittedVaultSession);
     }
 
     private async Task RepairLoginCoreAsync(WebsiteWorkflow? target = null)
     {
         var workflow = target ?? _selected;
-        if (_teachingInProgress || _vaultLockInProgress || _windowsLocked || _exiting || workflow is null ||
-            !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow) || !SaveAll()) return;
+        if (_teachingInProgress || _vaultLockInProgress || _windowsLocked || _exiting ||
+            workflow is null || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow) ||
+            !SaveAll()) return;
         var admittedConfiguration = _configuration;
         var admittedRevision = _workspaceRevision;
         var admittedVaultSession = VaultDatabase.Current.SessionGeneration;
         _teachingInProgress = true;
         UpdateRunButtons();
-        try
-        {
-            // Instructions already live in the modeless Teach recorder.
-            // A blocking notice here prevented users from clicking their browser
-            // to sign in, which is precisely what Repair asks them to do.
-            AppendLog($"Repair login for '{workflow.Name}': sign in in the browser, teach safe clicks, then Save actions.");
-            WorkflowStatusLabel.Text = "Repair login · Use the browser and modeless Teach window";
-            if (!RecorderOwnerIsCurrent(workflow, admittedConfiguration, admittedRevision,
-                    admittedVaultSession)) return;
-            _activeTeachTask = _runner.GetPageForRecorderAsync(workflow);
-            var page = await _activeTeachTask;
-            if (!RecorderOwnerIsCurrent(workflow, admittedConfiguration, admittedRevision,
-                    admittedVaultSession)) return;
-            var health = await LoginHealth.InspectAsync(page);
-            if (health.NeedsAttention) AppendLog($"Repair login: {health.Reason}");
-            if (!RecorderOwnerIsCurrent(workflow, admittedConfiguration, admittedRevision,
-                    admittedVaultSession)) return;
-            await SaveTaughtStepsAsync(workflow, page, admittedConfiguration, admittedRevision,
-                admittedVaultSession);
-        }
+        var operation = RunRepairOperationAsync(workflow, admittedConfiguration,
+            admittedRevision, admittedVaultSession);
+        _activeTeachTask = operation;
+        try { await operation; }
         finally
         {
-            _activeTeachTask = null;
+            if (ReferenceEquals(_activeTeachTask, operation)) _activeTeachTask = null;
             _teachingInProgress = false;
             UpdateRunButtons();
         }
