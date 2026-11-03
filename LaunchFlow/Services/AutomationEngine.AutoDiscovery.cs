@@ -73,6 +73,48 @@ public sealed partial class AutomationEngine
         return true;
     }
 
+    private static async Task<bool> HasSupportedResumedPasswordStageAsync(
+        WebsiteWorkflow workflow, IPage page, CancellationToken ct)
+    {
+        // A password-only resumed stage is allowed only when it has the
+        // semantics of a current-password login, not a reset/new-password form.
+        var fields = page.Locator(workflow.PasswordSelector);
+        var count = Math.Min(await fields.CountAsync().ConfigureAwait(false), 16);
+        for (var i = 0; i < count; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var field = fields.Nth(i);
+            if (!await field.IsVisibleAsync().ConfigureAwait(false) ||
+                !await field.IsEditableAsync().ConfigureAwait(false)) continue;
+            var valid = await field.EvaluateAsync<bool>("""
+                field => {
+                  if (!(field instanceof HTMLInputElement) ||
+                      field.type !== 'password' ||
+                      /new-password|one-time-code/i.test(field.autocomplete || '')) return false;
+                  const form = field.form;
+                  if (!form) return false;
+                  if (/(?:sign[ -]?up|register|create.?account|forgot|reset|change.?password)/i.test(
+                      [form.id, form.getAttribute('action'), form.getAttribute('aria-label')].join(' ')))
+                    return false;
+                  const otherPassword = Array.from(form.elements).filter(el =>
+                    el instanceof HTMLInputElement && el.type === 'password');
+                  if (otherPassword.length !== 1) return false;
+                  const hasFinal = Array.from(form.elements).some(el =>
+                    (el instanceof HTMLButtonElement || el instanceof HTMLInputElement) &&
+                    (el.type === 'submit' || /^(log in|login|sign in|signin)$/i.test(
+                      (el.getAttribute('aria-label') || el.innerText || el.value || '').trim())));
+                  if (!hasFinal) return false;
+                  const name = [form.id, form.getAttribute('aria-label'), form.getAttribute('action')].join(' ');
+                  const path = field.ownerDocument.location.pathname;
+                  return /current-password/i.test(field.autocomplete || '') ||
+                    /(?:login|log-in|signin|sign-in|password|auth)/i.test(name + ' ' + path);
+                }
+                """).ConfigureAwait(false);
+            if (valid) return true;
+        }
+        return false;
+    }
+
     private static bool IsLocalSignInLabel(string? label)
     {
         if (string.IsNullOrWhiteSpace(label)) return false;
