@@ -4,6 +4,10 @@ using LaunchFlow.Services;
 using Microsoft.Playwright;
 
 using var playwright = await Playwright.CreateAsync();
+if (args.Contains("--independent-stage-probes-only")) { await IndependentStageProbes.RunAsync(playwright); return; }
+if (!args.Contains("--document-bound-only") && !args.Contains("--profile-only") &&
+    !args.Contains("--monitor-only") && !args.Contains("--policy-only") &&
+    !args.Contains("--dispatch-only")) await IndependentStageProbes.RunAsync(playwright);
 if (args.Contains("--review-probes-only")) { await ReviewLoginProbes.RunAsync(playwright); return; }
 if (!args.Contains("--document-bound-only") && !args.Contains("--profile-only") &&
     !args.Contains("--monitor-only") && !args.Contains("--policy-only") &&
