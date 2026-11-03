@@ -96,6 +96,52 @@ public static class LoginHealth
         catch (Exception) { return false; }
     }
 
+    public static async Task<bool> VerifiedApplicationSessionAsync(
+        IPage page, string expectedApplicationUrl, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        try
+        {
+            if (!Uri.TryCreate(expectedApplicationUrl, UriKind.Absolute, out var expected) ||
+                !Uri.TryCreate(page.Url, UriKind.Absolute, out var actual) ||
+                actual.Scheme != Uri.UriSchemeHttps ||
+                !string.Equals(expected.Scheme, actual.Scheme, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(expected.Authority, actual.Authority, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if ((await InspectAsync(page, ct).ConfigureAwait(false)).NeedsAttention) return false;
+            if (await page.Locator("input[autocomplete='one-time-code']:visible, input[type='password']:visible")
+                    .CountAsync().ConfigureAwait(false) > 0)
+                return false;
+
+            var accountControls = page.Locator(
+                "button[aria-label='Account'], button[aria-label='User menu'], " +
+                "[data-testid='user-menu'], [data-testid='account-menu']");
+            var signOutControls = page.Locator(
+                "a[href*='/logout' i], a[href*='/signout' i], " +
+                "button[aria-label='Sign out'], button[aria-label='Log out']");
+            var accountVisible = false;
+            var signOutVisible = false;
+            var accountCount = Math.Min(await accountControls.CountAsync().ConfigureAwait(false), 24);
+            for (var i = 0; i < accountCount; i++)
+                if (await accountControls.Nth(i).IsVisibleAsync().ConfigureAwait(false))
+                {
+                    accountVisible = true;
+                    break;
+                }
+            var signOutCount = Math.Min(await signOutControls.CountAsync().ConfigureAwait(false), 24);
+            for (var i = 0; i < signOutCount; i++)
+                if (await signOutControls.Nth(i).IsVisibleAsync().ConfigureAwait(false))
+                {
+                    signOutVisible = true;
+                    break;
+                }
+            return accountVisible && signOutVisible;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception) { return false; }
+    }
+
     public static async Task<Report> InspectAsync(IPage page, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
@@ -117,6 +163,17 @@ public static class LoginHealth
                 if (await heading.IsVisibleAsync().ConfigureAwait(false))
                     prominent += " " + (await heading.InnerTextAsync().ConfigureAwait(false)).ToLowerInvariant();
             }
+            if (prominent.Contains("account locked", StringComparison.Ordinal) ||
+                prominent.Contains("too many attempts", StringComparison.Ordinal))
+                return new Report(true, "Account is temporarily locked. Stop automatic sign-in.");
+            if (prominent.Contains("invalid password", StringComparison.Ordinal) ||
+                prominent.Contains("incorrect password", StringComparison.Ordinal) ||
+                prominent.Contains("invalid credentials", StringComparison.Ordinal))
+                return new Report(true, "Saved sign-in details were rejected. Update the website password.");
+            if (prominent.Contains("access denied", StringComparison.Ordinal) ||
+                prominent.Contains("permission denied", StringComparison.Ordinal) ||
+                prominent.Contains("unauthorized", StringComparison.Ordinal))
+                return new Report(true, "This account cannot access the application.");
             foreach (var hint in ChallengeHints)
             {
                 if (prominent.Contains(hint, StringComparison.Ordinal))
