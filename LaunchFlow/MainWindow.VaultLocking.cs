@@ -53,6 +53,9 @@ public partial class MainWindow
             UpdateRunButtons();
             try { _runCancellation?.Cancel(); }
             catch (Exception ex) { AppendLog("Cancellation callback failed during lock: " + ex.GetType().Name); }
+            // Stop the modeless recorder before closing browser contexts.
+            // Only then can the full Teach task safely drain its callbacks.
+            if (!CloseActiveRecorderForLock()) return;
             LockPasswordManager(message);
             ClearCredentialEditor();
             try { await _runner.CloseSessionsAsync(); }
@@ -86,8 +89,24 @@ public partial class MainWindow
             }
             try { if (pendingRun is not null) await pendingRun; }
             catch (Exception ex) { AppendLog("Automation ended during lock: " + ex.GetType().Name); }
-            try { if (pendingTeach is not null) await pendingTeach; }
-            catch (Exception ex) { AppendLog("Teach ended during lock: " + ex.GetType().Name); }
+            try
+            {
+                if (pendingTeach is not null)
+                    await pendingTeach.WaitAsync(TimeSpan.FromSeconds(12));
+            }
+            catch (OperationCanceledException)
+            {
+                // Browser closure canceled page acquisition as intended.
+                AppendLog("Teach acquisition was canceled during lock.");
+            }
+            catch (Exception ex)
+            {
+                // Timeout or failed callback drain is not a successful cleanup.
+                // Preserve profiles and leave the existing retry/blocked gate.
+                AppendLog("Teach operation did not drain; browser profiles retained and lock retry required: " +
+                    ex.GetType().Name);
+                return;
+            }
             cleanupComplete = true;
             if (_configuration.SealBrowserProfilesOnLock)
             {
