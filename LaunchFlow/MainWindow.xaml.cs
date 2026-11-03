@@ -44,6 +44,7 @@ public partial class MainWindow : Window
     private bool _runStatusActive;
     private bool _vaultLockInProgress;
     private bool _vaultCleanupFailed;
+    private bool _profileSealFailed;
     private bool _installerShutdownInProgress;
     private bool _installerProfileSealFailed;
     private bool _monitorSelectionChanged;
@@ -334,7 +335,9 @@ public partial class MainWindow : Window
         MainTabs.IsEnabled = !_vaultLockInProgress;
         RetryVaultLockButton.Visibility = _vaultCleanupFailed ? Visibility.Visible : Visibility.Collapsed;
         if (_vaultCleanupFailed)
-            WorkflowStatusLabel.Text = "Browser cleanup did not complete; profiles retained and automation blocked. Retry Lock vault.";
+            WorkflowStatusLabel.Text = _profileSealFailed
+                ? "Browser profile sealing did not complete; profiles retained and automation blocked. Retry Lock vault."
+                : "Browser cleanup did not complete; profiles retained and automation blocked. Retry Lock vault.";
     }
 
     private static System.Drawing.Icon CreateTrayIcon()
@@ -477,12 +480,12 @@ public partial class MainWindow : Window
             if (_hasUnsavedChanges)
                 throw new InvalidOperationException(
                     "New unsaved changes appeared during shutdown. LaunchFlow remains open; unlock and save before retrying.");
-            if (_vaultCleanupFailed || _vaultLockInProgress)
-                throw new InvalidOperationException(
-                    "A browser session could not be closed safely. LaunchFlow is still open. Close the affected browser windows, then use Lock vault and retry Setup. Profiles were retained.");
             if (_installerProfileSealFailed)
                 throw new InvalidOperationException(
                     "Encrypted browser-profile sealing failed. LaunchFlow remains open and the original profile files are retained. Retry Lock vault before updating.");
+            if (_vaultCleanupFailed || _vaultLockInProgress)
+                throw new InvalidOperationException(
+                    "A browser session could not be closed safely. LaunchFlow is still open. Close the affected browser windows, then use Lock vault and retry Setup. Profiles were retained.");
             _exiting = true;
             UpdateRunButtons();
             Close();

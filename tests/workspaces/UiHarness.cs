@@ -615,6 +615,25 @@ var tests = new List<(string Name, Func<Task> Body)>
         await ui.Lock();
         Check(ProfileVaultService.Seals == 1 && !ui._vaultLockInProgress, "repeat lock failed to retry cleanup");
     }),
+    ("profile seal failure holds the lock gate, reports the right cause, and permits retry", async () =>
+    {
+        var ui = new UiFixture();
+        ui._runner.CloseRelease.SetResult();
+        ProfileVaultService.FailSeal = true;
+        await ui.Lock();
+        Check(ProfileVaultService.Seals == 1 &&
+              !VaultDatabase.Current.IsUnlocked && ui._vaultCleanupFailed &&
+              ui._vaultLockInProgress && !ui.Unlock(),
+            "profile seal exception was incorrectly marked as successful cleanup");
+        Check(ui.WorkflowStatusLabel.Text.Contains("profile sealing", StringComparison.OrdinalIgnoreCase) &&
+              ui.RetryVaultLockButton.Visibility == Visibility.Visible,
+            "profile seal failure does not have a distinct actionable retry state");
+        ProfileVaultService.FailSeal = false;
+        await ui.Lock();
+        Check(ProfileVaultService.Seals == 2 && !ui._vaultCleanupFailed &&
+              !ui._vaultLockInProgress && ui.RetryVaultLockButton.Visibility == Visibility.Collapsed,
+            "profile seal retry did not complete and release the lock gate");
+    }),
     ("overlapping locks close sessions before observing a stalled dispatched run", async () =>
     {
         var ui = new UiFixture();
@@ -657,7 +676,7 @@ partial class UiFixture
     public readonly Dictionary<Guid, SignInDecisionWindow> _openSignInDecisions = new();
     public readonly Configuration _configuration = new() { Workflows = new() { new WebsiteWorkflow() } };
     public WebsiteWorkflow? _selected = new();
-    public bool _runStatusActive = false, _vaultCleanupFailed = false;
+    public bool _runStatusActive = false, _vaultCleanupFailed = false, _profileSealFailed = false;
     public bool _hasUnsavedChanges = false;
     public bool _installerShutdownInProgress = false, _installerProfileSealFailed = false;
     public long _workspaceRevision;
@@ -676,7 +695,7 @@ partial class UiFixture
     public int Prompts;
     public bool Cleared;
     public readonly List<string> Notifications = new();
-    public UiFixture() { VaultDatabase.Current.IsUnlocked = true; VaultDatabase.Current.Credentials.Clear(); ProfileVaultService.Seals = 0; KeePassXcService.Reset(); MessageBox.Hook = null; MessageBox.Result = MessageBoxResult.Yes; MessageBox.Messages.Clear(); }
+    public UiFixture() { VaultDatabase.Current.IsUnlocked = true; VaultDatabase.Current.Credentials.Clear(); ProfileVaultService.Seals = 0; ProfileVaultService.FailSeal = false; KeePassXcService.Reset(); MessageBox.Hook = null; MessageBox.Result = MessageBoxResult.Yes; MessageBox.Messages.Clear(); }
     public readonly MasterPasswordService _master = new();
     public readonly ConfigStore _store = new();
     public bool _passwordsUnlocked = true;
@@ -905,7 +924,8 @@ namespace LaunchFlow.Services
     static class ProfileVaultService
     {
         public static int Seals;
-        public static void SealAll() => Interlocked.Increment(ref Seals);
+        public static bool FailSeal;
+        public static void SealAll() { Interlocked.Increment(ref Seals); if (FailSeal) throw new System.IO.IOException("synthetic seal rejection"); }
         public static void UnsealAll() { }
     }
     static class KeePassXcService
