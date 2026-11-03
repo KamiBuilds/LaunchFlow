@@ -265,3 +265,35 @@ jobs:
             if ($asset.Count -ne 1 -or $asset[0].state -cne 'uploaded' -or $asset[0].size -ne (Get-Item -LiteralPath $file).Length -or $asset[0].digest -cne $digest) { throw "Draft asset verification failed: $file" }
           }
           Write-Host "Verified DRAFT ONLY: release $($verified.id). Stable publication remains a separate human action."
+
+  archive-and-cleanup:
+    name: Archive and remove old branches (one-time, post-verification)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/validated/v0.7.46-three-checks-20261103'
+    needs: draft-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout exact validated branch and all history
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Snapshot every branch SHA and build a verified recovery bundle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 tools/OneTime-BranchCleanup.py snapshot
+      - name: Upload recovery archive before branch deletion
+        uses: actions/upload-artifact@v6
+        with:
+          name: LaunchFlow-all-branches-recovery-before-cleanup-${{ github.sha }}
+          path: |
+            launchflow-precleanup-history.bundle
+            launchflow-precleanup-history.sha256
+            launchflow-precleanup-branches.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Delete only snapshotted obsolete branch refs, preserving main and this branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 tools/OneTime-BranchCleanup.py delete
