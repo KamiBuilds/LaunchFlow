@@ -3,6 +3,7 @@
 
 Run: python3 tests/ui/verify_guide.py [--write]
 """
+import copy
 import json
 import re
 import sys
@@ -21,7 +22,7 @@ WINDOWS = {
 }
 ROUTES = {
     "BASIC": ("First website — no saved login", 13, "basic"),
-    "PASS": ("Saved website login — optional", 8, "passwords"),
+    "PASS": ("Saved website login — optional", 9, "passwords"),
     "RECORD": ("Record clicks — optional", 6, "recording"),
     "STARTUP": ("Startup and background — optional", 5, "startup"),
     "HELP": ("Troubleshooting", 5, "recovery"),
@@ -30,17 +31,47 @@ TOKEN = r'"(?:\\.|[^"\\])*"'
 STEP_RE = re.compile(r'\bnew\(\s*((?:' + TOKEN + r'\s*,?\s*){8,10})\)', re.S)
 TOKEN_RE = re.compile(TOKEN)
 
+# Controls without a self-contained label use explicit, source-verified
+# field associations. This must never accept arbitrary labels elsewhere in
+# the same window as proof that a target is correct.
+FIELD_LABELS = {
+    ("NewWorkflowWindow", "NameBox"): "Website name",
+    ("NewWorkflowWindow", "UrlBox"): "Website address (URL)",
+    ("NewWorkflowWindow", "BrowserCombo"): "Browser",
+    ("NewWorkflowWindow", "MonitorCombo"): "Screen (monitor)",
+    ("MainWindow", "LoginModeCombo"): "How should LaunchFlow sign in?",
+    ("MainWindow", "UsernameBox"): "New username or email (leave blank to keep current)",
+    ("MainWindow", "PasswordInput"): "New password (leave blank to keep current)",
+    ("VisualRecorderWindow", "StepList"): "Recorded actions",
+}
 
-def read_steps():
-    source = SOURCE.read_text(encoding="utf-8")
+
+def read_steps(source=None):
+    if source is None:
+        source = SOURCE.read_text(encoding="utf-8")
+    # Refuse unknown/malformed records rather than silently skipping them.
+    start = source.index("private static readonly IReadOnlyDictionary")
+    end = source.index("private readonly HashSet", start)
+    body = source[start:end]
+    parsed = list(STEP_RE.finditer(body))
+    if len(parsed) != len(re.findall(r"\bnew\s*\(", body)):
+        raise ValueError("Malformed or unrecognized GuideStep")
+    markers = list(re.finditer(r'\["([^"]+)"\]\s*=\s*\[', body))
+    expected_route = {details[2]: prefix for prefix, details in ROUTES.items()}
+    if {marker.group(1) for marker in markers} != set(expected_route):
+        raise ValueError("Unknown or missing guide route")
     groups = {key: [] for key in ROUTES}
-    for match in STEP_RE.finditer(source):
+    for match in parsed:
         args = [json.loads(m.group()) for m in TOKEN_RE.finditer(match.group(1))]
         if len(args) not in (8, 10):
             raise ValueError("Invalid GuideStep arguments")
         prefix, _, number = args[0].partition("-")
-        if prefix in groups and number.isdigit():
-            groups[prefix].append(args)
+        if prefix not in groups or not number.isdigit():
+            raise ValueError("Unknown GuideStep ID: " + args[0])
+        route = next((m.group(1) for m in reversed(markers) if m.start() < match.start()), None)
+        if expected_route.get(route) != prefix:
+            raise ValueError("Step in incorrect route: " + args[0])
+        groups[prefix].append(args)
     return groups
 
 
@@ -64,6 +95,13 @@ def markdown(groups):
     ]
     for prefix, (title, count, route) in ROUTES.items():
         out.extend(["## " + title, ""])
+        if prefix == "PASS":
+            out.extend([
+                "After PASS-04, Saved password continues with PASS-05–08. "
+                "No login required and SSO skip password entry and use PASS-09 "
+                "to save only the sign-in preference. The app's mode selection "
+                "is read without accessing credentials.", ""
+            ])
         for number, args in enumerate(groups[prefix], 1):
             step_id, heading, instruction, location, section, control, expected, recovery = args[:8]
             out.extend([
@@ -121,6 +159,10 @@ def verify(groups):
             if attr.split("}")[-1] in ("Text", "Content", "Header", "Title", "Name", "ToolTip", "AutomationProperties.Name")
         )
     credential_code = (ROOT / "LaunchFlow" / "MainWindow.Credentials.cs").read_text(encoding="utf-8")
+    autosave_code = (ROOT / "LaunchFlow" / "MainWindow.AutoSave.cs").read_text(encoding="utf-8")
+    assert 'SaveChangesButton.Content = "Retry save"' in autosave_code
+    assert "CurrentSaveButtonLabel()" in source and "ReadSelectedPasswordMode();" in source
+    assert 'step.Id == "PASS-09"' in source
     seen = set()
     total = 0
     for prefix, (title, expected_count, route) in ROUTES.items():
@@ -140,18 +182,59 @@ def verify(groups):
             if label == "CaptureStatus / TargetStatus":
                 assert "TargetStatus" in named_by_window[kind]
             elif label == "Encrypted credentials saved":
-                assert label in credential_code
+                assert target == "CredentialStatus" and 'CredentialStatus.Text = "Encrypted credentials saved"' in credential_code
+            elif (kind, target) == ("MainWindow", "SaveChangesButton"):
+                assert step_id in ("BASIC-13", "PASS-09", "HELP-04")
+                assert label == "Save changes / Retry save"
+                assert named_by_window[kind][target].get("Content") == "Save changes"
+            elif (kind, target) in FIELD_LABELS:
+                assert label == FIELD_LABELS[(kind, target)], (step_id, "wrong field label", label)
+                assert label in text_by_window[kind], (step_id, "missing source field label", label)
             else:
-                assert label in text_by_window[kind], (step_id, "label drift", label)
-    assert total == 37
+                element = named_by_window[kind][target]
+                own_labels = {
+                    element.get("Content"), element.get("Header"), element.get("Text"),
+                    element.get("AutomationProperties.Name"),
+                    element.get("{http://schemas.microsoft.com/winfx/2006/xaml/presentation}AutomationProperties.Name")
+                }
+                assert label in own_labels, (step_id, "wrong control/label association", target, label)
+    assert total == 38
     assert "Getting started" in text_by_window["MainWindow"]
     assert "Save for selected website" in text_by_window["MainWindow"]
-    print(f"PASS guide parity: {total} steps, {len(WINDOWS)} source windows, control labels and no implicit actions")
+    print(f"PASS guide parity: {total} steps, {len(WINDOWS)} source windows, bound control labels and no implicit actions")
+
+
+def negative_controls(groups):
+    def must_fail(name, transform):
+        mutated = copy.deepcopy(groups)
+        transform(mutated)
+        try:
+            verify(mutated)
+        except (AssertionError, ValueError):
+            print("PASS guide negative control: " + name)
+            return
+        raise AssertionError("Accepted invalid guide mapping: " + name)
+
+    must_fail("Save step targets Remove button", lambda g:
+              g["PASS"][6].__setitem__(9, "ClearCredentialButton"))
+    must_fail("unrelated label elsewhere in window", lambda g:
+              g["PASS"][6].__setitem__(5, "Remove from selected website"))
+    must_fail("unknown target", lambda g:
+              g["PASS"][6].__setitem__(9, "NotARealControl"))
+    bad_source = SOURCE.read_text(encoding="utf-8").replace(
+        'new("PASS-07"', 'new("UNRECOGNIZED-07"', 1)
+    try:
+        read_steps(bad_source)
+    except ValueError:
+        print("PASS guide negative control: unknown step ID")
+    else:
+        raise AssertionError("Unknown GuideStep record was silently skipped")
 
 
 def main():
     groups = read_steps()
     verify(groups)
+    negative_controls(groups)
     expected = markdown(groups)
     if sys.argv[1:] == ["--write"]:
         DOC.parent.mkdir(exist_ok=True)
