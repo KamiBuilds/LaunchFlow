@@ -301,11 +301,18 @@ public partial class TutorialWindow : Window
         {
             ProgressLabel.Text = $"Step {_current + 1} of {pages.Length}";
             StepHeading.Text = step.Heading;
-            StepDetails.Text = step.Instruction;
+            // MainWindow localizes the Settings navigation button to
+            // "Instellingen" in Dutch; most wizard/recorder labels stay English.
+            var visibleLabel = step.TargetName == "SettingsNav"
+                ? LocalizationService.Text("Settings")
+                : step.ControlLabel;
+            StepDetails.Text = step.TargetName == "SettingsNav"
+                ? $"Select {visibleLabel} in the top navigation."
+                : step.Instruction;
             ExpectedResult.Text = step.Expected;
             ExampleTitle.Text = step.Location;
             ExampleWebsite.Text = step.Section;
-            ExampleAction.Text = step.ControlLabel;
+            ExampleAction.Text = visibleLabel;
             ExampleCaption.Text = "Look for this exact control or field label. The picture is a source-based locator, not a screenshot.";
             RecoveryText.Text = step.Recovery;
             RecoveryPanel.Visibility = Visibility.Collapsed;
