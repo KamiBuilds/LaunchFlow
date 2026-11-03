@@ -302,7 +302,7 @@ public sealed partial class AutomationEngine
                           passwords.length > 1) return 0;
                       const signInActions = controls.filter(el => {
                         if (!(el instanceof HTMLButtonElement || el instanceof HTMLInputElement)) return false;
-                        if (el.disabled || el.getClientRects().length === 0) return false;
+                        if (el.getClientRects().length === 0) return false;
                         const label = (el.getAttribute('aria-label') || el.innerText || el.value || '').trim();
                         return /^(log in|login|sign in|signin)$/i.test(label);
                       });
@@ -310,7 +310,7 @@ public sealed partial class AutomationEngine
                         return signInActions.length === 1 || /(?:login|log-in|signin|sign-in|auth)/i.test(purpose) ? 3 : 0;
                       const continuations = controls.filter(el => {
                         if (!(el instanceof HTMLButtonElement || el instanceof HTMLInputElement)) return false;
-                        if (el.disabled || el.getClientRects().length === 0) return false;
+                        if (el.getClientRects().length === 0) return false;
                         const label = (el.getAttribute('aria-label') || el.innerText || el.value || '').trim().toLowerCase();
                         return /^(next|continue|continue to password|log in|login|sign in|signin)$/i.test(label);
                       });
