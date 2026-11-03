@@ -168,8 +168,15 @@ public sealed partial class AutomationEngine
                       const controls = Array.from(form.elements);
                       const passwords = controls.filter(el => el instanceof HTMLInputElement &&
                         el.type === 'password' && !/new-password|one-time-code/.test(el.autocomplete || ''));
-                      if (passwords.length === 1) return 3;
                       if (passwords.length > 1) return 0;
+                      const signInActions = controls.filter(el => {
+                        if (!(el instanceof HTMLButtonElement || el instanceof HTMLInputElement)) return false;
+                        if (el.disabled || el.getClientRects().length === 0) return false;
+                        const label = (el.getAttribute('aria-label') || el.innerText || el.value || '').trim();
+                        return /^(log in|login|sign in|signin)$/i.test(label);
+                      });
+                      if (passwords.length === 1)
+                        return signInActions.length === 1 || /(?:login|log-in|signin|sign-in|auth)/i.test(purpose) ? 3 : 0;
                       const continuations = controls.filter(el => {
                         if (!(el instanceof HTMLButtonElement || el instanceof HTMLInputElement)) return false;
                         if (el.disabled || el.getClientRects().length === 0) return false;
