@@ -9,7 +9,7 @@ public static class LoginHealth
 {
     private static readonly string[] ChallengeHints =
     [
-        "verify", "verification", "authenticate", "authentication", "mfa", "2fa", "two-factor",
+        "verify", "verification", "mfa", "2fa", "two-factor",
         "one-time", "otp", "passcode", "security code", "approve sign-in", "duo", "okta verify",
         "enter code", "check your phone", "stay signed in", "captcha", "unusual activity"
     ];
