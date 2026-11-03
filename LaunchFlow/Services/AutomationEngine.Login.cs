@@ -218,6 +218,7 @@ public sealed partial class AutomationEngine
                 ? autoUsername is not null
                 : await LoginFieldReadyAsync(page, workflow.UsernameSelector, ct).ConfigureAwait(false));
             var submitted = false;
+            var passwordHandledInsideUsername = false;
             try
             {
                 if (requiresUser && (usernameReady || !passwordReady))
@@ -233,7 +234,33 @@ public sealed partial class AutomationEngine
                     var usernameOrigin = await FillCredentialAsync(workflow, page, workflow.UsernameSelector,
                         credential.Username, ct, async owner =>
                         {
-                            if (requiresPassword &&
+                            if (requiresPassword && useDiscovery)
+                            {
+                                // The chosen username form, not a page-wide
+                                // password selector, owns the combined stage.
+                                var (present, field) = await ResolveCombinedPasswordAsync(
+                                    workflow, page, owner, ct).ConfigureAwait(false);
+                                if (present)
+                                {
+                                    if (field is null) { stageReached = false; return; }
+                                    var origin = await FillCredentialAsync(
+                                        workflow, page, workflow.PasswordSelector, credential.Password, ct,
+                                        async passwordOwner =>
+                                        {
+                                            if (string.IsNullOrWhiteSpace(workflow.SubmitSelector)) return;
+                                            submitPageBeforeClick = page.Url;
+                                            submitWasAttempted = true;
+                                            submitted = await ClickLoginSubmitAsync(
+                                                workflow, page, passwordOwner, ct).ConfigureAwait(false);
+                                        }, field, expectedForm: owner.Form).ConfigureAwait(false);
+                                    passwordHandledInsideUsername = origin is not null;
+                                    if (!passwordHandledInsideUsername) stageReached = false;
+                                }
+                                else
+                                    stageReached = await AdvanceToPasswordStageAsync(
+                                        workflow, page, owner, hadPasswordField: false, ct).ConfigureAwait(false);
+                            }
+                            else if (requiresPassword &&
                                 !await PasswordStageReadyAsync(workflow, page, ct).ConfigureAwait(false))
                             {
                                 var hadPasswordField = await PasswordStagePresentAsync(
@@ -263,19 +290,29 @@ public sealed partial class AutomationEngine
                 else if (requiresUser && passwordReady)
                     Log($"Resuming password stage for '{workflow.Name}'.");
 
-                if (requiresPassword)
+                if (requiresPassword && !passwordHandledInsideUsername)
                 {
+                    // A staged or resumed default login must be classified
+                    // again in the current document. Never reuse a global
+                    // first-match password from a registration/other form.
+                    var selectedPassword = useDiscovery
+                        ? await ResolveSupportedResumedPasswordStageAsync(
+                            workflow, page, ct).ConfigureAwait(false)
+                        : null;
+                    if (useDiscovery && selectedPassword is null)
+                    {
+                        Log($"Could not identify the password stage for '{workflow.Name}'. Sign in manually.");
+                        return false;
+                    }
                     var passwordOrigin = await FillCredentialAsync(workflow, page, workflow.PasswordSelector,
                         credential.Password, ct, async owner =>
                         {
-                            // Submit while the password's original document, frame,
-                            // field and browser-computed form owner are still bound.
                             if (string.IsNullOrWhiteSpace(workflow.SubmitSelector)) return;
                             submitPageBeforeClick = page.Url;
                             submitWasAttempted = true;
                             submitted = await ClickLoginSubmitAsync(workflow, page, owner, ct)
                                 .ConfigureAwait(false);
-                        }).ConfigureAwait(false);
+                        }, selectedPassword).ConfigureAwait(false);
                     if (passwordOrigin is null)
                     {
                         Log($"Password field not found for '{workflow.Name}'. Complete sign-in in the browser.");
@@ -592,7 +629,7 @@ public sealed partial class AutomationEngine
     private async Task<string?> FillCredentialAsync(
         WebsiteWorkflow workflow, IPage page, string selector, string value,
         CancellationToken ct, Func<CredentialFieldBinding, Task>? afterFill = null,
-        IElementHandle? selectedElement = null)
+        IElementHandle? selectedElement = null, IJSHandle? expectedForm = null)
     {
         ct.ThrowIfCancellationRequested();
         // Bind a concrete field before inserting a secret. Wait for JS-rendered
@@ -653,6 +690,20 @@ public sealed partial class AutomationEngine
             // reparent the field. form= associations work even outside form ancestry.
             await using var ownerForm = afterFill is null ? null :
                 await element.EvaluateHandleAsync("field => field.form").ConfigureAwait(false);
+            // No awaited owner capture may bridge an authorization change
+            // into a newly dispatched secret fill.
+            if (!OriginsMatch(origin, await VerifyAsync().ConfigureAwait(false)))
+                throw new InvalidOperationException("Credential origin changed. Retry sign-in manually.");
+            if (expectedForm is not null &&
+                !await element.EvaluateAsync<bool>(
+                    "(field, form) => field.isConnected && form?.isConnected && field.form === form",
+                    expectedForm).ConfigureAwait(false))
+                throw new InvalidOperationException("Credential form changed. Retry sign-in manually.");
+            if (!OriginsMatch(origin, await VerifyAsync().ConfigureAwait(false)))
+                throw new InvalidOperationException("Credential origin changed. Retry sign-in manually.");
+            ct.ThrowIfCancellationRequested();
+            RequireCredentialAccess();
+            RequireAutomationUrl(origin);
             await element.FillAsync(value).ConfigureAwait(false);
             if (afterFill is not null && ownerForm is not null)
                 await afterFill(new CredentialFieldBinding(
