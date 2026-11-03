@@ -147,6 +147,7 @@ internal static class StagedLoginTests
         await using var engine = new AutomationEngine(vault);
         EngineBehaviorTests.Track(engine, workflow, context, page);
         var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Console.WriteLine($"STAGED_EXISTING_TWO_PAGE finished={result.FinishedCount} attention={result.LoginNeedsAttention.Count} path={new Uri(page.Url).AbsolutePath} reads={vault.ReadCount}");
         Check(result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
               page.Url.EndsWith("/dashboard") && vault.ReadCount == 1,
               "two-page email -> Log In -> password -> Log In works with NO recorded actions or Continue selector");
