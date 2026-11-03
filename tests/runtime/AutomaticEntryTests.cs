@@ -93,7 +93,12 @@ internal static class AutomaticEntryTests
         await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
         await using var context = await browser.NewContextAsync();
         context.SetDefaultTimeout(3000);
-        var entries = 0;
+        var unrelatedRequests = 0;
+        await context.RouteAsync("https://auto-dialog.test/unrelated", async route =>
+        {
+            Interlocked.Increment(ref unrelatedRequests);
+            await route.FulfillAsync(new() { Status = 204 });
+        });
         await context.RouteAsync("https://auto-dialog.test/**", route => route.FulfillAsync(new()
         {
             ContentType = "text/html",
@@ -103,7 +108,7 @@ internal static class AutomaticEntryTests
                           onclick="document.getElementById('sign-in').hidden=false;window.dialogOpens++">
                       Sign in
                   </button>
-                  <button type="button" onclick="document.body.dataset.unrelated='yes'">Sign in</button>
+                  <button type="button" onclick="fetch('/unrelated',{method:'POST'})">Sign in</button>
                   <div id="sign-in" role="dialog" hidden>
                     <form id="login" onsubmit="event.preventDefault();location.href='/dashboard'">
                       <input autocomplete="username" id="login_field">
@@ -123,7 +128,7 @@ internal static class AutomaticEntryTests
         EngineBehaviorTests.Track(engine, workflow, context, page);
         var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
         Check(result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
-              page.Url.EndsWith("/dashboard") && vault.ReadCount == 1 && entries == 0,
+              page.Url.EndsWith("/dashboard") && vault.ReadCount == 1 && unrelatedRequests == 0,
             "AUTO-01 homepage declared sign-in dialog opens, while unrelated button is ignored");
     }
 
