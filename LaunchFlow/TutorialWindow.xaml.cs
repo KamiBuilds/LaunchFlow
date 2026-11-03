@@ -374,7 +374,7 @@ public partial class TutorialWindow : Window
         if (step.WindowType.Length == 0 || step.TargetName.Length == 0) return;
         // Do not navigate to a different tab or select a different workflow:
         // those operations may trigger validation and unsaved-edit guards.
-        var window = Application.Current.Windows.OfType<Window>()
+        var window = System.Windows.Application.Current.Windows.OfType<Window>()
             .FirstOrDefault(w => w.IsVisible && w.IsEnabled && w.GetType().Name == step.WindowType);
         var target = window?.FindName(step.TargetName) as FrameworkElement;
         if (window is null || target is null || !target.IsVisible || !target.IsEnabled)
@@ -440,7 +440,7 @@ public partial class TutorialWindow : Window
         {
             var rect = new Rect(AdornedElement.RenderSize);
             rect.Inflate(3, 3);
-            var pen = new Pen(new SolidColorBrush(Color.FromRgb(85, 216, 200)), 3);
+            var pen = new System.Windows.Media.Pen(new SolidColorBrush(System.Windows.Media.Color.FromRgb(85, 216, 200)), 3);
             drawingContext.DrawRoundedRectangle(null, pen, rect, 5, 5);
         }
     }
