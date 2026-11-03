@@ -21,7 +21,7 @@ public sealed partial class AutomationEngine
         ct.ThrowIfCancellationRequested();
         if (!Uri.TryCreate(page.Url, UriKind.Absolute, out var current) ||
             current.Scheme != Uri.UriSchemeHttps) return false;
-        if (await PasswordStagePresentAsync(workflow, page, ct).ConfigureAwait(false))
+        if (await PasswordStageReadyAsync(workflow, page, ct).ConfigureAwait(false))
             return false;
 
         // If the current page has an intended identifier form, do not
