@@ -64,8 +64,10 @@ internal static class ReliableStageLoginTests
                 ? "<input type='text' id='email'>"
                 : "<input type='email' id='email'>";
             var first = firstForm + firstInput +
-                "<button id='submit-button' type='button' onclick=\"fetch('/identifier-action',{method:'POST'});location.href='/password'\">" +
-                firstLabel + "</button></form>";
+                "<button id='submit-button' type='button' " + (delayed ? "disabled " : "") +
+                "onclick=\"fetch('/identifier-action',{method:'POST'});location.href='/password'\">" +
+                firstLabel + "</button></form>" +
+                (delayed ? "<script>setTimeout(()=>document.getElementById('submit-button').disabled=false,450)</script>" : "");
             var button = "<button type='button' id='password-next' " +
                 (delayed ? "disabled " : "") +
                 "onclick=\"fetch('/password-action',{method:'POST'});location.href='/application'\">" +
