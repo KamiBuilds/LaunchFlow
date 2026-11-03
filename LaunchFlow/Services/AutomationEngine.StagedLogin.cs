@@ -144,7 +144,11 @@ public sealed partial class AutomationEngine
                 return false;
             try
             {
-                if (await PasswordStageReadyAsync(workflow, page, ct).ConfigureAwait(false))
+                var stageReady = workflow.UsernameSelector == StandardUsernameSelector
+                    ? await HasSupportedResumedPasswordStageAsync(
+                        workflow, page, ct).ConfigureAwait(false)
+                    : await PasswordStageReadyAsync(workflow, page, ct).ConfigureAwait(false);
+                if (stageReady)
                 {
                     Log($"Password stage is ready for '{workflow.Name}'.");
                     return true;
