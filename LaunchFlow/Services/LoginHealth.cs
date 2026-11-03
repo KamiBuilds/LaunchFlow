@@ -25,6 +25,8 @@ public static class LoginHealth
 
         try
         {
+            var interactive = await InspectAsync(page, ct).ConfigureAwait(false);
+            if (interactive.NeedsAttention) return interactive;
             if (!string.IsNullOrWhiteSpace(successSelector))
             {
                 var locator = page.Locator(successSelector).First;
@@ -142,6 +144,61 @@ public static class LoginHealth
         catch (Exception) { return false; }
     }
 
+    private static async Task<bool> HasInteractiveSecurityChallengeAsync(IPage page, CancellationToken ct)
+    {
+        var inputs = page.Locator("input:visible, textarea:visible, [role='textbox']:visible");
+        var count = Math.Min(await inputs.CountAsync().ConfigureAwait(false), 48);
+        for (var i = 0; i < count; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var field = inputs.Nth(i);
+            var interactive = await field.EvaluateAsync<bool>("""
+                el => {
+                    if (!el.isConnected || !el.getClientRects().length) return false;
+                    const metadata = [
+                        el.getAttribute('id'), el.getAttribute('name'),
+                        el.getAttribute('autocomplete'), el.getAttribute('aria-label'),
+                        el.getAttribute('placeholder')
+                    ].filter(Boolean).join(' ').toLowerCase();
+                    const labels = ('labels' in el && el.labels)
+                        ? Array.from(el.labels).map(x => x.innerText || '').join(' ').toLowerCase()
+                        : '';
+                    const root = ('form' in el && el.form) || el.closest('form,[role="dialog"],[role="form"]');
+                    const rootText = root && root.getClientRects().length
+                        ? (root.innerText || '').slice(0, 350).toLowerCase()
+                        : '';
+                    const combined = metadata + ' ' + labels;
+                    const codeIdentity = /(?:otp|one[- ]?time|passcode|security.?code|verif(?:y|ication).?code|auth(?:entication)?.?code|mfa|2fa)/i;
+                    const codePrompt = /(?:enter|type|input|provide|confirm|verification|security|authenticator|one[- ]?time|passcode).{0,40}(?:code|number|token)/i;
+                    const clearlyCode = codeIdentity.test(combined) ||
+                        (/^(?:code|pin|token)$/i.test(labels.trim()) && codePrompt.test(rootText));
+                    const numeric = /^(?:numeric|decimal|tel)$/i.test(el.getAttribute('inputmode') || '') ||
+                        el.getAttribute('type') === 'tel' || el.getAttribute('autocomplete') === 'one-time-code';
+                    return clearlyCode && (numeric || codePrompt.test(rootText) ||
+                        /otp|one[- ]?time|security.?code|verification.?code|passcode/i.test(combined));
+                }
+                """).ConfigureAwait(false);
+            if (interactive) return true;
+        }
+
+        var authenticators = page.Locator(
+            "form:visible button:visible, [role='dialog']:visible button:visible, " +
+            "[role='form']:visible button:visible");
+        count = Math.Min(await authenticators.CountAsync().ConfigureAwait(false), 48);
+        for (var i = 0; i < count; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (await authenticators.Nth(i).EvaluateAsync<bool>("""
+                button => {
+                    if (!button.isConnected || button.disabled) return false;
+                    const label = (button.getAttribute('aria-label') || button.innerText || '').trim();
+                    return /^(?:approve sign[- ]?in|use passkey|verify with security key|enter verification code|complete captcha)$/i.test(label);
+                }
+                """).ConfigureAwait(false)) return true;
+        }
+        return false;
+    }
+
     public static async Task<Report> InspectAsync(IPage page, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
@@ -150,7 +207,8 @@ public static class LoginHealth
             // Only current interactive challenge cues and prominent headings
             // count. Footer/help/marketing text can mention MFA harmlessly.
             if (await page.Locator("input[autocomplete='one-time-code']:visible, input[name='otp' i]:visible")
-                    .CountAsync().ConfigureAwait(false) > 0)
+                    .CountAsync().ConfigureAwait(false) > 0 ||
+                await HasInteractiveSecurityChallengeAsync(page, ct).ConfigureAwait(false))
                 return new Report(true, "Complete verification in the browser.");
 
             var title = await page.TitleAsync().ConfigureAwait(false) ?? "";
