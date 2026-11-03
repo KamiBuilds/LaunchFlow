@@ -318,14 +318,14 @@ public sealed partial class AutomationEngine
                       // Email + Continue is not login intent. Require an
                       // authentication-specific form, identifier, or URL.
                       const explicitIntent = /(?:login|log-in|signin|sign-in|auth|identifier)/i.test(purpose) ||
-                        /(?:^|\\s)username(?:\\s|$)/i.test(field.autocomplete || '') ||
+                        /(?:^|\s)username(?:\s|$)/i.test(field.autocomplete || '') ||
                         /^(?:login|login_field|username)$/i.test(field.id || '') ||
                         /^(?:login|username)$/i.test(field.name || '');
                       if (explicitIntent) return 2;
                       const path = field.ownerDocument.location.pathname;
                       const label = (continuations[0].getAttribute('aria-label') ||
                         continuations[0].innerText || continuations[0].value || '').trim();
-                      return /\\/(?:login|log-in|signin|sign-in|auth)(?:\\/|$)/i.test(path) &&
+                      return /\/(?:login|log-in|signin|sign-in|auth)(?:\/|$)/i.test(path) &&
                         /^(?:next|log in|login|sign in|signin)$/i.test(label) ? 1 : 0;
                     }
                     """).ConfigureAwait(false);
