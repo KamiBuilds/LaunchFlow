@@ -243,6 +243,16 @@ public sealed partial class AutomationEngine
                                     stageReached = await AdvanceToPasswordStageAsync(
                                         workflow, page, owner, hadPasswordField, ct).ConfigureAwait(false);
                             }
+                            else if (!requiresPassword &&
+                                     !string.IsNullOrWhiteSpace(workflow.SubmitSelector))
+                            {
+                                // Legacy username-only explicit submit remains owned by
+                                // that filled identifier's exact document/form.
+                                submitPageBeforeClick = page.Url;
+                                submitWasAttempted = true;
+                                submitted = await ClickLoginSubmitAsync(workflow, page, owner, ct)
+                                    .ConfigureAwait(false);
+                            }
                         }, selected).ConfigureAwait(false);
                     if (usernameOrigin is null || !stageReached)
                     {
