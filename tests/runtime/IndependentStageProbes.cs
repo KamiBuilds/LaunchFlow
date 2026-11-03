@@ -69,7 +69,7 @@ internal static partial class IndependentStageProbes
         await context.RouteAsync("**/*",r=>r.FulfillAsync(new(){ContentType="text/html",Body=r.Request.Url.Contains("identity.test")?
             "<form id='auth-password'><input id='password' type='password' autocomplete='current-password'><button type='button'>Next</button></form>":
             "<form id='login' action='/auth'><input id='email' type='email'><button type='button' onclick=\"location.href='https://identity.test/password'\">Log In</button></form>"}));
-        var page=await context.NewPageAsync();await page.GotoAsync("https://app-review.test/login");var wf=Workflow(page.Url);
+        var page=await context.NewPageAsync();await page.GotoAsync("https://app-review.test/login");var wf=Workflow(page.Url);wf.PasswordCredentialOrigin="https://identity.test";
         var entered=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release=new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var engine=new AutomationEngine(new CredentialVault());EngineBehaviorTests.Track(engine,wf,context,page);
