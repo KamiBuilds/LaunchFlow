@@ -324,8 +324,7 @@ public sealed partial class AutomationEngine
 
                 if (requiresPassword && !passwordHandledInsideUsername)
                 {
-                    if (useDiscovery &&
-                        !OriginsMatch(GetOrigin(page.Url), GetOrigin(workflow.StartUrl)))
+                    if (!OriginsMatch(GetOrigin(page.Url), GetOrigin(workflow.StartUrl)))
                     {
                         var stageOrigin = GetOrigin(page.Url);
                         if (!await IsOriginAllowedAsync(workflow, stageOrigin).ConfigureAwait(false))
