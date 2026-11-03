@@ -159,6 +159,44 @@ var tests = new List<(string Name, Func<Task> Body)>
         await teaching;
         Check(original.Steps.Count == 1 && other.Steps.Count == 0 && ui._store.Saves == 1, "Teach retargeted the selection");
     }),
+    ("LIFE-R01 modeless Teach refuses same-ID imported replacement", async () =>
+    {
+        var ui = new UiFixture();
+        var original = ui._configuration.Workflows[0];
+        var teaching = ui.Teach(original);
+        var replacement = new WebsiteWorkflow { Id = original.Id, Name = "Imported same-ID replacement" };
+        ui._configuration.Workflows[0] = replacement;
+        ui._workspaceRevision++;
+        ui._selected = replacement;
+        ui.RecorderResult.SetResult(true);
+        await teaching;
+        Check(original.Steps.Count == 0 && replacement.Steps.Count == 0 &&
+              ui._store.DurableSaves == 0,
+            "LIFE-R01 a stale recorder wrote to an imported same-ID workflow");
+    }),
+    ("LIFE-R01 changing configuration revision during Teach discards pending actions", async () =>
+    {
+        var ui = new UiFixture();
+        var original = ui._configuration.Workflows[0];
+        var teaching = ui.Teach(original);
+        ui._workspaceRevision++;
+        ui.RecorderResult.SetResult(true);
+        await teaching;
+        Check(original.Steps.Count == 0 && ui._store.DurableSaves == 0,
+            "LIFE-R01 recorder saved under a superseded configuration revision");
+    }),
+    ("LIFE-R01 vault relock/unlock cannot authorize a recorder from previous session", async () =>
+    {
+        var ui = new UiFixture();
+        var original = ui._configuration.Workflows[0];
+        var teaching = ui.Teach(original);
+        VaultDatabase.Current.Lock();
+        VaultDatabase.Current.IsUnlocked = true; // synthetic new successful unlock
+        ui.RecorderResult.SetResult(true);
+        await teaching;
+        Check(original.Steps.Count == 0 && ui._store.DurableSaves == 0,
+            "LIFE-R01 recorder borrowed a new vault session");
+    }),
     ("modeless Teach discards pending clicks when vault authorization disappears", async () =>
     {
         var ui = new UiFixture();
@@ -735,7 +773,18 @@ namespace LaunchFlow.Services
     sealed class VaultDatabase
     {
         public static VaultDatabase Current { get; } = new();
-        public bool IsUnlocked { get; set; } = true;
+        private bool _isUnlocked = true;
+        private long _sessionGeneration = 1;
+        public bool IsUnlocked
+        {
+            get => _isUnlocked;
+            set
+            {
+                if (_isUnlocked != value) _sessionGeneration++;
+                _isUnlocked = value;
+            }
+        }
+        public long SessionGeneration => _sessionGeneration;
         public void Lock() => IsUnlocked = false;
         public readonly Dictionary<Guid, SiteCredential> Credentials = new();
         public bool HasCredential(Guid id) => Credentials.ContainsKey(id);
@@ -757,6 +806,13 @@ namespace LaunchFlow.Services
         public int DurableSaves;
         public void Save(Configuration configuration) { if (!VaultDatabase.Current.IsUnlocked) throw new Exception("fixture vault locked"); Saves++; }
         public void SaveDurable(Configuration configuration) { Save(configuration); DurableSaves++; }
+        public void SaveDurable(Configuration configuration, long expectedSession)
+        {
+            if (!VaultDatabase.Current.IsUnlocked ||
+                VaultDatabase.Current.SessionGeneration != expectedSession)
+                throw new InvalidOperationException("Recorder's captured vault session was revoked");
+            SaveDurable(configuration);
+        }
     }
     static class ProfileVaultService
     {
