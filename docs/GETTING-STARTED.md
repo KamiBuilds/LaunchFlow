@@ -58,12 +58,14 @@ After unlocking, click Getting started. This modeless guide does not click, save
    - **Where:** LaunchFlow → Websites · top toolbar. Look for **All changes saved**.
    - **You should see:** The status reads 'All changes saved' rather than 'Unsaved changes' or 'Save failed'.
    - **Can't find it?** At compact widths this caption can be hidden. Check the Save changes button and its tooltip; never treat a failed save as complete.
-13. **Save pending changes if needed** (BASIC-13): If edits are still pending, click Save changes.
-   - **Where:** LaunchFlow → Websites · top toolbar. Look for **Save changes**.
+13. **Save pending changes if needed** (BASIC-13): If edits are still pending, click Save changes (or Retry save after a failed save).
+   - **Where:** LaunchFlow → Websites · top toolbar. Look for **Save changes / Retry save**.
    - **You should see:** The application acknowledges a successful durable save, or shows a failure to correct.
    - **Can't find it?** Only press this if you have changes to keep. If saving fails or the vault is locked, leave edits pending and retry after resolving the cause.
 
 ## Saved website login — optional
+
+After PASS-04, Saved password continues with PASS-05–08. No login required and SSO skip password entry and use PASS-09 to save only the sign-in preference. The app's mode selection is read without accessing credentials.
 
 1. **Open Settings** (PASS-01): Select Settings in the top navigation.
    - **Where:** LaunchFlow → Top navigation. Look for **Settings**.
@@ -79,8 +81,8 @@ After unlocking, click Getting started. This modeless guide does not click, save
    - **Can't find it?** Check the selected account carefully, even if you selected another website in Websites. Unsaved password edits may require confirmation before switching.
 4. **Choose one sign-in mode** (PASS-04): Choose your preferred option under How should LaunchFlow sign in?
    - **Where:** LaunchFlow → Settings → Passwords. Look for **How should LaunchFlow sign in?**.
-   - **You should see:** One mode is selected: saved password, no login or browser SSO.
-   - **Can't find it?** SSO is for browser-led sign-in and can require manual MFA. Do not enable saved-password mode for HTTP or an untrusted origin.
+   - **You should see:** One mode is selected: saved password, no login or browser SSO. The guide will follow that choice.
+   - **Can't find it?** Saved password has separate credential-entry steps. No login and SSO only need settings saved; SSO/MFA may require manual attention. Never authorize untrusted login origins.
 5. **Enter an account name** (PASS-05): If updating it, enter a username in New username or email (leave blank to keep current).
    - **Where:** LaunchFlow → Settings → Passwords. Look for **New username or email (leave blank to keep current)**.
    - **You should see:** Only the newly entered value is visible; a previously saved value is not prefilled.
@@ -97,6 +99,10 @@ After unlocking, click Getting started. This modeless guide does not click, save
    - **Where:** LaunchFlow → Settings → Passwords. Look for **Encrypted credentials saved**.
    - **You should see:** The status confirms that the selected website's credentials were saved.
    - **Can't find it?** If the status still says 'No password saved' or an error appears, do not assume storage succeeded. A blocked IdP/MFA step needs manual attention.
+9. **Save No login or SSO settings** (PASS-09): Click Save changes (or Retry save if a previous save failed).
+   - **Where:** LaunchFlow → Top toolbar · website settings. Look for **Save changes / Retry save**.
+   - **You should see:** LaunchFlow confirms that the selected sign-in preference was saved, or shows a failure to fix.
+   - **Can't find it?** Do not enter a new password or click Save for selected website for No login/SSO. A mode change does not remove stored credentials. Confirm the save status and retry after resolving failures.
 
 ## Record clicks — optional
 
@@ -162,8 +168,8 @@ After unlocking, click Getting started. This modeless guide does not click, save
    - **Where:** LaunchFlow → Websites · Recorded actions (optional). Look for **Fix sign-in**.
    - **You should see:** LaunchFlow shows a repair or manual-attention path.
    - **Can't find it?** Use human sign-in for MFA/SSO. Do not disable HTTPS checks or guess untrusted login buttons.
-4. **Saving failed** (HELP-04): After fixing the error, click Save changes again.
-   - **Where:** LaunchFlow → Websites · top toolbar. Look for **Save changes**.
+4. **Saving failed** (HELP-04): After fixing the error, click Retry save (or Save changes if that is the current label).
+   - **Where:** LaunchFlow → Websites · top toolbar. Look for **Save changes / Retry save**.
    - **You should see:** A successful durable save is acknowledged.
    - **Can't find it?** Keep pending edits intact. If the vault is locked, unlock it before retrying. A failed write is not a completed save.
 5. **Browser cleanup failed** (HELP-05): After resolving the affected browser session, choose Retry vault lock.
