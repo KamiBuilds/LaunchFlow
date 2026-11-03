@@ -41,6 +41,7 @@ public partial class MainWindow
     {
         _vaultLockInProgress = true;
         _vaultCleanupFailed = false;
+        _profileSealFailed = false;
         _keepassMasterPassword = null;
         bool cleanupComplete = false;
         var pendingRun = _activeRunTask;
@@ -107,17 +108,19 @@ public partial class MainWindow
                     ex.GetType().Name);
                 return;
             }
-            cleanupComplete = true;
             if (_configuration.SealBrowserProfilesOnLock)
             {
                 try { await Task.Run(ProfileVaultService.SealAll); }
                 catch (Exception ex)
                 {
+                    _profileSealFailed = true;
                     if (_installerShutdownInProgress) _installerProfileSealFailed = true;
                     AppendLog("Could not seal browser profiles; source files retained: " + ex.GetType().Name);
                     if (_configuration.DiagnosticsLogEnabled) CrashLog.Write("SealProfiles", ex);
+                    return;
                 }
             }
+            cleanupComplete = true;
         }
         finally
         {
