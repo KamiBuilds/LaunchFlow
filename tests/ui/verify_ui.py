@@ -235,8 +235,13 @@ check('1. Which website?' in wizard_xml and
       all(f'x:Name="{n}"' in wizard_xml for n in
           ('ProtocolCombo','PortBox','UrlBox','NameBox','AutoLoginCheck','UsernameBox','PasswordBox','BrowserCombo','MonitorCombo')),
       "wizard keeps required data fields and hides optional login controls")
-check('Click Add website.' in tutorial_code and 'Run all opens every enabled website.' in tutorial_code,
-      "getting-started tutorial reflects the revised workflow")
+check('new("BASIC-02", "Open website setup"' in tutorial_code and
+      'Click + Add website.' in tutorial_code and
+      'Save for selected website' in tutorial_code and
+      'new("RECORD-02", "Start the recorder"' in tutorial_code and
+      'new("BASIC-10", "Test only that website"' in tutorial_code and
+      'Next does not mark a task complete.' in tutorial_code,
+      "getting-started guide maps real website, credential and recorder controls to one-action steps")
 check('Text="No websites yet"' in main_xml and
       'Choose exactly which website account to edit' in main_xml and
       'How should LaunchFlow sign in?' in main_xml and
