@@ -68,12 +68,12 @@ internal static class ReliableStageLoginTests
                 : "<input type='email' id='email'>";
             var first = firstForm + firstInput +
                 "<button id='submit-button' type='button' " + (delayed ? "disabled " : "") +
-                "onclick=\"fetch('/identifier-action',{method:'POST'});location.href='/password'\">" +
+                "onclick=\"sessionStorage.setItem('identifier-ok',document.getElementById('email').value==='test@example.invalid'?'1':'0');fetch('/identifier-action',{method:'POST'});location.href='/password'\">" +
                 firstLabel + "</button></form>" +
                 (delayed ? "<script>setTimeout(()=>document.getElementById('submit-button').disabled=false,450)</script>" : "");
             var button = "<button type='button' id='password-next' " +
                 (delayed ? "disabled " : "") +
-                "onclick=\"fetch('/password-action',{method:'POST'});location.href='/application'\">" +
+                "onclick=\"sessionStorage.setItem('password-ok',document.getElementById('secret').value==='synthetic-password-never-send-outside-test'?'1':'0');fetch('/password-action',{method:'POST'});location.href='/application'\">" +
                 lastLabel + "</button>";
             var delay = delayed
                 ? "<script>setTimeout(()=>document.getElementById('password-next').disabled=false,450)</script>"
@@ -100,7 +100,10 @@ internal static class ReliableStageLoginTests
         EngineBehaviorTests.Track(engine, workflow, context, page);
         var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
         var followed = await page.GetAttributeAsync("body", "data-followed") == "yes";
-        var ok = result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
+        var identifierMatched = await page.EvaluateAsync<string>("() => sessionStorage.getItem('identifier-ok')") == "1";
+        var passwordMatched = await page.EvaluateAsync<string>("() => sessionStorage.getItem('password-ok')") == "1";
+        var ok = identifierMatched && passwordMatched &&
+            result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
             page.Url == origin + "/application" &&
             firstCount == 1 && lastCount == 1 && vault.ReadCount == 1 && followed;
         Console.WriteLine($"STAGE_LF {scenario} first={firstCount} last={lastCount} path={new Uri(page.Url).AbsolutePath} finished={result.FinishedCount} attention={result.LoginNeedsAttention.Count} followed={followed}");
@@ -155,15 +158,17 @@ internal static class ReliableStageLoginTests
                   </form>
                 </div>
                 <script>
-                let firstCount=0, lastCount=0;
+                let firstCount=0, lastCount=0, identifierMatched=false, passwordMatched=false;
                 function identifierStage() {
                   firstCount++;
+                  identifierMatched = document.getElementById('email').value === 'test@example.invalid';
                   document.getElementById('root').innerHTML =
                     '<form id="auth-password"><input id="secret" type="password" autocomplete="current-password">' +
                     '<button type="button" id="last" onclick="passwordStage()">Next</button></form>';
                 }
                 function passwordStage() {
                   lastCount++;
+                  passwordMatched = document.getElementById('secret').value === 'synthetic-password-never-send-outside-test';
                   document.getElementById('root').innerHTML =
                     '<nav><button aria-label="Account">Account menu</button><a href="/logout">Sign out</a></nav>' +
                     '<button id="followup" onclick="document.body.dataset.followed=\'yes\'">Follow up</button>';
@@ -179,8 +184,9 @@ internal static class ReliableStageLoginTests
         EngineBehaviorTests.Track(engine, workflow, context, page);
         var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
         var counts = await page.EvaluateAsync<int[]>("() => [firstCount,lastCount]");
+        var valuesMatched = await page.EvaluateAsync<bool>("() => identifierMatched && passwordMatched");
         var followed = await page.GetAttributeAsync("body", "data-followed") == "yes";
-        EngineBehaviorTests.Check(counts.SequenceEqual(new[] { 1, 1 }) && followed &&
+        EngineBehaviorTests.Check(counts.SequenceEqual(new[] { 1, 1 }) && valuesMatched && followed &&
             result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
             page.Url == "https://spa-stage.stage-test/login",
             "LF-10/18 same-URL SPA verifies authenticated application and continues once");
