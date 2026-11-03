@@ -54,8 +54,11 @@ public sealed partial class AutomationEngine
         if (destinations.Count != 1)
         {
             if (destinations.Count > 1)
+            {
                 Log($"Could not identify one sign-in entry for '{workflow.Name}'. Continue in the browser.");
-            return false;
+                return false;
+            }
+            return await TryOpenLoginDialogAsync(workflow, page, ct).ConfigureAwait(false);
         }
 
         var destination = destinations.Single();
@@ -71,6 +74,58 @@ public sealed partial class AutomationEngine
         ct.ThrowIfCancellationRequested();
         RequireAutomationUrl(page.Url);
         return true;
+    }
+
+    private async Task<bool> TryOpenLoginDialogAsync(
+        WebsiteWorkflow workflow, IPage page, CancellationToken ct)
+    {
+        var controls = page.Locator("button[aria-haspopup='dialog'], button[aria-controls]");
+        var count = Math.Min(await controls.CountAsync().ConfigureAwait(false), 64);
+        var candidates = new List<IElementHandle>();
+        try
+        {
+            for (var i = 0; i < count; i++)
+            {
+                ct.ThrowIfCancellationRequested();
+                var button = controls.Nth(i);
+                if (!await button.IsVisibleAsync().ConfigureAwait(false) ||
+                    !await button.IsEnabledAsync().ConfigureAwait(false)) continue;
+                var eligible = await button.EvaluateAsync<bool>("""
+                    el => {
+                      const text = (el.getAttribute('aria-label') || el.innerText || '').trim().toLowerCase()
+                        .replace(/\\s+/g, ' ');
+                      if (!['sign in', 'sign-in', 'log in', 'login', 'aanmelden', 'inloggen'].includes(text) ||
+                          el.form || !el.isConnected || el.ownerDocument.defaultView?.document !== el.ownerDocument)
+                        return false;
+                      if (el.getAttribute('aria-haspopup') === 'dialog') return true;
+                      const id = el.getAttribute('aria-controls');
+                      const controlled = id && el.ownerDocument.getElementById(id);
+                      return !!controlled && controlled.matches('dialog, [role=dialog]');
+                    }
+                    """).ConfigureAwait(false);
+                if (!eligible) continue;
+                var element = await button.ElementHandleAsync().ConfigureAwait(false);
+                if (element is not null) candidates.Add(element);
+                if (candidates.Count > 1) break;
+            }
+            if (candidates.Count != 1) return false;
+            var elementToClick = candidates[0];
+            if (!await elementToClick.EvaluateAsync<bool>(
+                "(el, origin) => el.isConnected && el.ownerDocument.defaultView?.document === el.ownerDocument && el.ownerDocument.location.origin === origin",
+                GetOrigin(page.Url)).ConfigureAwait(false)) return false;
+            ct.ThrowIfCancellationRequested();
+            RequireAutomationUrl(page.Url);
+            Log($"Opening sign-in dialog for '{workflow.Name}'…");
+            await elementToClick.ClickAsync().ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            RequireAutomationUrl(page.Url);
+            return true;
+        }
+        finally
+        {
+            foreach (var element in candidates)
+                await element.DisposeAsync().ConfigureAwait(false);
+        }
     }
 
     private static async Task<bool> HasSupportedResumedPasswordStageAsync(
