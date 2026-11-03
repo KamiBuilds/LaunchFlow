@@ -118,7 +118,7 @@ def verify(groups):
         }
         text_by_window[kind] = "\n".join(
             value for node in root.iter() for attr, value in node.attrib.items()
-            if attr.split("}")[-1] in ("Text", "Content", "Header", "Title", "Name", "ToolTip")
+            if attr.split("}")[-1] in ("Text", "Content", "Header", "Title", "Name", "ToolTip", "AutomationProperties.Name")
         )
     credential_code = (ROOT / "LaunchFlow" / "MainWindow.Credentials.cs").read_text(encoding="utf-8")
     seen = set()
