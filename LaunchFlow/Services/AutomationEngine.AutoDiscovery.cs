@@ -165,11 +165,6 @@ public sealed partial class AutomationEngine
                   const otherPassword = Array.from(form.elements).filter(el =>
                     el instanceof HTMLInputElement && el.type === 'password');
                   if (otherPassword.length !== 1) return false;
-                  const hasFinal = Array.from(form.elements).some(el =>
-                    (el instanceof HTMLButtonElement || el instanceof HTMLInputElement) &&
-                    (el.type === 'submit' || /^(log in|login|sign in|signin)$/i.test(
-                      (el.getAttribute('aria-label') || el.innerText || el.value || '').trim())));
-                  if (!hasFinal) return false;
                   const name = [form.id, form.getAttribute('aria-label'), form.getAttribute('action')].join(' ');
                   const path = field.ownerDocument.location.pathname;
                   return /current-password/i.test(field.autocomplete || '') ||
@@ -179,6 +174,11 @@ public sealed partial class AutomationEngine
             if (!valid) continue;
             var element = await field.ElementHandleAsync().ConfigureAwait(false);
             if (element is null) continue;
+            if (!await HasOwnedStageActionAsync(page, element, ct).ConfigureAwait(false))
+            {
+                await element.DisposeAsync().ConfigureAwait(false);
+                continue;
+            }
             if (selected is not null)
             {
                 await element.DisposeAsync().ConfigureAwait(false);
