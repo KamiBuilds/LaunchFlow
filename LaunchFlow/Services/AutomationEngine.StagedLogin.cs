@@ -233,9 +233,27 @@ public sealed partial class AutomationEngine
     }
 
     private static async Task<bool> HasOwnedStageActionAsync(
-        IPage page, IElementHandle passwordField, CancellationToken ct)
+        WebsiteWorkflow workflow, IPage page, IElementHandle passwordField, CancellationToken ct)
     {
         await using var owner = await passwordField.EvaluateHandleAsync("field => field.form").ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(workflow.SubmitSelector) &&
+            workflow.SubmitSelector != StandardSubmitSelector)
+        {
+            var explicitlyConfigured = page.Locator(workflow.SubmitSelector);
+            var configuredCount = Math.Min(await explicitlyConfigured.CountAsync().ConfigureAwait(false), 32);
+            var ownedCount = 0;
+            for (var i = 0; i < configuredCount; i++)
+            {
+                ct.ThrowIfCancellationRequested();
+                var control = explicitlyConfigured.Nth(i);
+                if (!await control.IsVisibleAsync().ConfigureAwait(false)) continue;
+                if (await control.EvaluateAsync<bool>(
+                    "(button, form) => { const owner = 'form' in button ? button.form : button.closest('form'); return form !== null && owner === form; }",
+                    owner).ConfigureAwait(false))
+                    ownedCount++;
+            }
+            return ownedCount == 1;
+        }
         var controls = page.Locator(LoginStageButtonSelector);
         var count = Math.Min(await controls.CountAsync().ConfigureAwait(false), 64);
         for (var i = 0; i < count; i++)
