@@ -9,6 +9,7 @@ internal static class AutomaticEntryTests
         await HomeEntryAndGitHubFieldsAsync(playwright);
         await CombinedWithUnrelatedNewsletterAsync(playwright);
         await IdentifierThenPasswordAsync(playwright);
+        await ResumedPasswordOnlyAsync(playwright);
         await DuplicateAndAmbiguousEntriesAsync(playwright);
         await ExternalFinalFormAssociationAsync(playwright);
         await UnrelatedFinalSubmitAsync(playwright);
@@ -164,6 +165,36 @@ internal static class AutomaticEntryTests
         Check(result.FinishedCount == 1 && page.Url.EndsWith("/dashboard") &&
               continuations == 1 && finalSubmits == 1,
             "AUTO-03 identifier stage must continue once then submit the bound password form exactly once");
+    }
+
+    private static async Task ResumedPasswordOnlyAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(3000);
+        await context.RouteAsync("https://auto-resumed.test/**", route => route.FulfillAsync(new()
+        {
+            ContentType = "text/html",
+            Body = new Uri(route.Request.Url).AbsolutePath == "/password"
+                ? """
+                  <form id="login" onsubmit="event.preventDefault();location.href='/dashboard'">
+                    <input id="readonly-username" readonly value="test@example.invalid">
+                    <input id="password" type="password" autocomplete="current-password">
+                    <button type="submit">Sign in</button>
+                  </form>
+                  """
+                : "<h1 id='signed-in'>Dashboard</h1>"
+        }));
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://auto-resumed.test/password");
+        var workflow = Workflow("https://auto-resumed.test/login");
+        var vault = Vault();
+        await using var engine = new AutomationEngine(vault);
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
+              page.Url.EndsWith("/dashboard") && vault.ReadCount == 1,
+            "AUTO-05 current password-only stage can resume without an editable username field");
     }
 
     private static async Task DuplicateAndAmbiguousEntriesAsync(IPlaywright playwright)
