@@ -59,66 +59,75 @@ public sealed partial class AutomationEngine
         // must not force the user to record a typical "Next"/"Log In" button.
         IElementHandle? target = null;
         var explicitSelector = !string.IsNullOrWhiteSpace(workflow.UsernameContinueSelector);
-        if (explicitSelector)
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(
+            Math.Min(15, Math.Max(3, workflow.LoginWaitSeconds)));
+        do
         {
-            var selected = page.Locator(workflow.UsernameContinueSelector);
-            var count = Math.Min(await selected.CountAsync().ConfigureAwait(false), 24);
-            for (var i = 0; i < count; i++)
+            ct.ThrowIfCancellationRequested();
+            RequireCredentialAccess();
+            RequireAutomationUrl(usernameOwner.Origin);
+            if (explicitSelector)
             {
-                ct.ThrowIfCancellationRequested();
-                if (await selected.Nth(i).IsVisibleAsync().ConfigureAwait(false) &&
-                    await selected.Nth(i).IsEnabledAsync().ConfigureAwait(false))
+                var selected = page.Locator(workflow.UsernameContinueSelector);
+                var count = Math.Min(await selected.CountAsync().ConfigureAwait(false), 24);
+                for (var i = 0; i < count; i++)
                 {
-                    target = await selected.Nth(i).ElementHandleAsync().ConfigureAwait(false);
-                    break;
+                    ct.ThrowIfCancellationRequested();
+                    if (await selected.Nth(i).IsVisibleAsync().ConfigureAwait(false) &&
+                        await selected.Nth(i).IsEnabledAsync().ConfigureAwait(false))
+                    {
+                        target = await selected.Nth(i).ElementHandleAsync().ConfigureAwait(false);
+                        if (target is not null) break;
+                    }
                 }
             }
-        }
-        else
-        {
-            var buttons = page.Locator(LoginStageButtonSelector);
-            var count = Math.Min(await buttons.CountAsync().ConfigureAwait(false), 32);
-            var candidates = new List<IElementHandle>();
-            for (var i = 0; i < count; i++)
+            else
             {
-                ct.ThrowIfCancellationRequested();
-                var button = buttons.Nth(i);
-                if (!await button.IsVisibleAsync().ConfigureAwait(false) ||
-                    !await button.IsEnabledAsync().ConfigureAwait(false)) continue;
-                // Only read the button label, never typed input values, full
-                // document text, credentials, or an authentication response.
-                var label = await button.EvaluateAsync<string>("""
-                    el => (el.getAttribute('aria-label') || el.innerText ||
-                           el.textContent || el.value || '').trim()
-                    """).ConfigureAwait(false);
-                if (!IsUsernameStageSubmitLabel(label) ||
-                    label.Trim().Equals("sign in", StringComparison.OrdinalIgnoreCase) ||
-                    label.Trim().Equals("signin", StringComparison.OrdinalIgnoreCase))
-                    continue;
-                var element = await button.ElementHandleAsync().ConfigureAwait(false);
-                if (element is null) continue;
-                // Only count a candidate that belongs to the actual filled
-                // username field's original HTML form (including form= links).
-                if (!await element.EvaluateAsync<bool>(
-                    "(button, form) => { const owner = 'form' in button ? button.form : button.closest('form'); return form !== null && owner === form; }",
-                    usernameOwner.Form).ConfigureAwait(false))
+                var buttons = page.Locator(LoginStageButtonSelector);
+                var count = Math.Min(await buttons.CountAsync().ConfigureAwait(false), 64);
+                var candidates = new List<IElementHandle>();
+                try
                 {
-                    await element.DisposeAsync().ConfigureAwait(false);
-                    continue;
+                    for (var i = 0; i < count; i++)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        var button = buttons.Nth(i);
+                        if (!await button.IsVisibleAsync().ConfigureAwait(false)) continue;
+                        var label = await button.EvaluateAsync<string>("""
+                            el => (el.getAttribute('aria-label') || el.innerText ||
+                                   el.textContent || el.value || '').trim()
+                            """).ConfigureAwait(false);
+                        if (!IsUsernameStageSubmitLabel(label)) continue;
+                        var element = await button.ElementHandleAsync().ConfigureAwait(false);
+                        if (element is null) continue;
+                        var owned = await element.EvaluateAsync<bool>(
+                            "(button, form) => { const owner = 'form' in button ? button.form : button.closest('form'); return form !== null && owner === form; }",
+                            usernameOwner.Form).ConfigureAwait(false);
+                        if (owned) candidates.Add(element);
+                        else await element.DisposeAsync().ConfigureAwait(false);
+                    }
+                    if (candidates.Count > 1)
+                    {
+                        Log($"Multiple possible first-stage actions for '{workflow.Name}'. Sign in manually.");
+                        return false;
+                    }
+                    if (candidates.Count == 1 && await candidates[0].IsEnabledAsync().ConfigureAwait(false))
+                    {
+                        target = candidates[0];
+                        candidates.Clear();
+                    }
                 }
-                candidates.Add(element);
+                finally
+                {
+                    foreach (var candidate in candidates)
+                        await candidate.DisposeAsync().ConfigureAwait(false);
+                }
             }
 
-            // Ambiguous sign-in buttons require the user's explicit selector;
-            // guessing could unexpectedly initiate an SSO/other-account flow.
-            if (candidates.Count == 1) target = candidates[0];
-            else if (candidates.Count > 1)
-                Log($"Multiple possible first-stage buttons for '{workflow.Name}'. Choose a continuation selector or sign in manually.");
-
-            foreach (var candidate in candidates)
-                if (!ReferenceEquals(candidate, target)) await candidate.DisposeAsync().ConfigureAwait(false);
-        }
-        if (target is null) return false;
+            if (target is not null) break;
+            if (DateTimeOffset.UtcNow >= deadline) return false;
+            await Task.Delay(150, ct).ConfigureAwait(false);
+        } while (true);
 
         await using (target)
         {
@@ -165,53 +174,85 @@ public sealed partial class AutomationEngine
     private async Task<bool> ClickUnambiguousFinalSubmitAsync(
         WebsiteWorkflow workflow, IPage page, CredentialFieldBinding passwordOwner, CancellationToken ct)
     {
-        ct.ThrowIfCancellationRequested();
-        RequireCredentialAccess();
-        RequireAutomationUrl(page.Url);
-        var buttons = page.Locator(LoginStageButtonSelector);
-        var count = Math.Min(await buttons.CountAsync().ConfigureAwait(false), 32);
-        var candidates = new List<IElementHandle>();
-        try
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(
+            Math.Min(15, Math.Max(3, workflow.LoginWaitSeconds)));
+        do
         {
-            for (var i = 0; i < count; i++)
+            ct.ThrowIfCancellationRequested();
+            RequireCredentialAccess();
+            RequireAutomationUrl(passwordOwner.Origin);
+            var buttons = page.Locator(LoginStageButtonSelector);
+            var count = Math.Min(await buttons.CountAsync().ConfigureAwait(false), 64);
+            var candidates = new List<IElementHandle>();
+            try
             {
-                ct.ThrowIfCancellationRequested();
-                var button = buttons.Nth(i);
-                if (!await button.IsVisibleAsync().ConfigureAwait(false) ||
-                    !await button.IsEnabledAsync().ConfigureAwait(false)) continue;
-                var label = await button.EvaluateAsync<string>("""
-                    el => (el.getAttribute('aria-label') || el.innerText ||
-                           el.textContent || el.value || '').trim()
-                    """).ConfigureAwait(false);
-                if (!IsUsernameStageSubmitLabel(label) ||
-                    label.Trim().Equals("continue to password", StringComparison.OrdinalIgnoreCase))
-                    continue;
+                for (var i = 0; i < count; i++)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var button = buttons.Nth(i);
+                    if (!await button.IsVisibleAsync().ConfigureAwait(false)) continue;
+                    var label = await button.EvaluateAsync<string>("""
+                        el => (el.getAttribute('aria-label') || el.innerText ||
+                               el.textContent || el.value || '').trim()
+                        """).ConfigureAwait(false);
+                    if (!IsUsernameStageSubmitLabel(label) ||
+                        label.Trim().Equals("continue to password", StringComparison.OrdinalIgnoreCase))
+                        continue;
 
-                // Confirm the actual password field's original form, including
-                // HTML form= external submit controls, not another password form.
-                var belongsToPasswordForm = await button.EvaluateAsync<bool>(
-                    "(button, form) => { const owner = 'form' in button ? button.form : button.closest('form'); return form !== null && owner === form; }",
-                    passwordOwner.Form).ConfigureAwait(false);
-                if (!belongsToPasswordForm) continue;
+                    var belongs = await button.EvaluateAsync<bool>(
+                        "(button, form) => { const owner = 'form' in button ? button.form : button.closest('form'); return form !== null && owner === form; }",
+                        passwordOwner.Form).ConfigureAwait(false);
+                    if (!belongs) continue;
+                    var element = await button.ElementHandleAsync().ConfigureAwait(false);
+                    if (element is not null) candidates.Add(element);
+                }
 
-                var candidate = await button.ElementHandleAsync().ConfigureAwait(false);
-                if (candidate is not null) candidates.Add(candidate);
-            }
-            if (candidates.Count != 1)
-            {
                 if (candidates.Count > 1)
-                    Log($"Several possible password-stage buttons for '{workflow.Name}'. Choose a submit selector or sign in manually.");
-                return false;
+                {
+                    Log($"Several possible password-stage buttons for '{workflow.Name}'. Sign in manually.");
+                    return false;
+                }
+                if (candidates.Count == 1)
+                {
+                    var actionable = await candidates[0].IsEnabledAsync().ConfigureAwait(false);
+                    if (actionable)
+                        return await ClickApprovedLoginElementAsync(
+                            page, candidates[0], passwordOwner.Origin, ct,
+                            passwordOwner, requireOwnedForm: true).ConfigureAwait(false);
+                }
             }
-            return await ClickApprovedLoginElementAsync(
-                page, candidates[0], passwordOwner.Origin, ct,
-                passwordOwner, requireOwnedForm: true).ConfigureAwait(false);
-        }
-        finally
+            finally
+            {
+                foreach (var candidate in candidates)
+                    await candidate.DisposeAsync().ConfigureAwait(false);
+            }
+
+            if (DateTimeOffset.UtcNow >= deadline) return false;
+            await Task.Delay(150, ct).ConfigureAwait(false);
+        } while (true);
+    }
+
+    private static async Task<bool> HasOwnedStageActionAsync(
+        IPage page, IElementHandle passwordField, CancellationToken ct)
+    {
+        await using var owner = await passwordField.EvaluateHandleAsync("field => field.form").ConfigureAwait(false);
+        var controls = page.Locator(LoginStageButtonSelector);
+        var count = Math.Min(await controls.CountAsync().ConfigureAwait(false), 64);
+        for (var i = 0; i < count; i++)
         {
-            foreach (var candidate in candidates)
-                await candidate.DisposeAsync().ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            var control = controls.Nth(i);
+            if (!await control.IsVisibleAsync().ConfigureAwait(false)) continue;
+            var owned = await control.EvaluateAsync<bool>(
+                "(button, form) => { const owner = 'form' in button ? button.form : button.closest('form'); return form !== null && owner === form; }",
+                owner).ConfigureAwait(false);
+            if (!owned) continue;
+            var label = await control.EvaluateAsync<string>(
+                "el => (el.getAttribute('aria-label') || el.innerText || el.textContent || el.value || '').trim()")
+                .ConfigureAwait(false);
+            if (IsUsernameStageSubmitLabel(label)) return true;
         }
+        return false;
     }
 
     /// <summary>

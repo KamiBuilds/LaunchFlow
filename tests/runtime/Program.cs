@@ -10,6 +10,10 @@ if (!args.Contains("--document-bound-only") && !args.Contains("--profile-only") 
     !args.Contains("--dispatch-only")) await ReviewLoginProbes.RunAsync(playwright);
 if (args.Contains("--auto-login-only")) { await AutomaticEntryTests.RunAsync(playwright); return; }
 if (args.Contains("--staged-login-only")) { await StagedLoginTests.RunAsync(playwright); return; }
+if (args.Contains("--reliable-stage-only")) { await ReliableStageLoginTests.RunAsync(playwright); return; }
+if (!args.Contains("--document-bound-only") && !args.Contains("--profile-only") &&
+    !args.Contains("--monitor-only") && !args.Contains("--policy-only") &&
+    !args.Contains("--dispatch-only")) await ReliableStageLoginTests.RunAsync(playwright);
 if (!args.Contains("--document-bound-only") && !args.Contains("--profile-only") &&
     !args.Contains("--monitor-only") && !args.Contains("--policy-only") &&
     !args.Contains("--dispatch-only"))

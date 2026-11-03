@@ -68,14 +68,19 @@ public sealed partial class AutomationEngine
         {
             var manualConfirmation = await ManuallyConfirmedAsync(workflow, page, ct).ConfigureAwait(false);
             var loginCompleted = manualConfirmation ||
-                string.Equals(workflow.LoginMode, "SSO", StringComparison.OrdinalIgnoreCase) ||
-                await TryAutoLoginAsync(workflow, page, ct, configuration, keepassMasterPassword)
-                    .ConfigureAwait(false);
+                (string.Equals(workflow.LoginMode, "SSO", StringComparison.OrdinalIgnoreCase)
+                    ? await VerifyBrowserLedSsoAsync(workflow, page, ct).ConfigureAwait(false)
+                    : await TryAutoLoginAsync(workflow, page, ct, configuration, keepassMasterPassword)
+                        .ConfigureAwait(false));
             ct.ThrowIfCancellationRequested();
             RequireAutomationUrl(page.Url);
             if (!loginCompleted)
+            {
+                var status = await LoginHealth.InspectAsync(page, ct).ConfigureAwait(false);
                 return new LoginAttention(workflow.Id, workflow.Name,
-                    "Auto-login was interrupted or its credential field was not approved/ready. Retry sign-in manually before continuing.");
+                    status.NeedsAttention ? status.Reason :
+                    "Could not verify the authenticated application or safely finish a sign-in stage.");
+            }
             var health = manualConfirmation
                 ? new LoginHealth.Report(false, "User explicitly confirmed sign-in for the current page.")
                 : await LoginHealth.InspectAsync(page, ct).ConfigureAwait(false);
@@ -135,6 +140,24 @@ public sealed partial class AutomationEngine
         return null;
     }
 
+    private static async Task<bool> VerifyBrowserLedSsoAsync(
+        WebsiteWorkflow workflow, IPage page, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        RequireAutomationUrl(page.Url);
+        if (await LoginHealth.VerifiedApplicationSessionAsync(page, workflow.StartUrl, ct)
+            .ConfigureAwait(false)) return true;
+        if (string.IsNullOrWhiteSpace(workflow.LoginSuccessSelector)) return false;
+        if (!OriginsMatch(GetOrigin(page.Url), GetOrigin(workflow.StartUrl))) return false;
+        if ((await LoginHealth.InspectAsync(page, ct).ConfigureAwait(false)).NeedsAttention) return false;
+        var result = await LoginHealth.VerifySuccessAsync(
+            page, workflow.LoginSuccessSelector, workflow.LoginSuccessUrlContains, ct)
+            .ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+        RequireAutomationUrl(page.Url);
+        return !result.NeedsAttention;
+    }
+
     private async Task<bool> TryAutoLoginAsync(
         WebsiteWorkflow workflow,
         IPage page,
@@ -159,6 +182,15 @@ public sealed partial class AutomationEngine
             Log($"Already signed in for '{workflow.Name}'. Reusing the existing browser session.");
             return true;
         }
+        if (await LoginHealth.VerifiedApplicationSessionAsync(page, workflow.StartUrl, ct)
+            .ConfigureAwait(false))
+        {
+            RequireCredentialAccess();
+            RequireAutomationUrl(page.Url);
+            Log($"Existing authenticated application confirmed for '{workflow.Name}'.");
+            return true;
+        }
+
         // Repeated Run / Windows-unlock should not attempt a second password
         // insertion into the existing dashboard when the configured Start URL
         // is a login path and that same-origin signed-in redirect is still live.
@@ -292,6 +324,21 @@ public sealed partial class AutomationEngine
 
                 if (requiresPassword && !passwordHandledInsideUsername)
                 {
+                    if (!OriginsMatch(GetOrigin(page.Url), GetOrigin(workflow.StartUrl)))
+                    {
+                        var stageOrigin = GetOrigin(page.Url);
+                        if (!await IsOriginAllowedAsync(workflow, stageOrigin).ConfigureAwait(false))
+                        {
+                            Log($"Identity-provider origin was not approved for '{workflow.Name}'.");
+                            return false;
+                        }
+                        if (string.IsNullOrWhiteSpace(workflow.PasswordCredentialOrigin) ||
+                            !OriginsMatch(stageOrigin, GetOrigin(workflow.PasswordCredentialOrigin)))
+                        {
+                            Log($"The identity-provider password is not mapped for '{workflow.Name}'. Choose the correct credential before continuing.");
+                            return false;
+                        }
+                    }
                     // A staged or resumed default login must be classified
                     // again in the current document. Never reuse a global
                     // first-match password from a registration/other form.
@@ -354,8 +401,9 @@ public sealed partial class AutomationEngine
                     return false;
                 }
             }
-            else if (!await ObserveVerifiedRedirectAsync(page, initialLoginUrl,
-                Math.Min(waitMs, 5000), ct).ConfigureAwait(false))
+            else if (!await ObserveVerifiedApplicationOrRedirectAsync(
+                page, workflow.StartUrl, initialLoginUrl,
+                Math.Min(waitMs, 20_000), ct).ConfigureAwait(false))
             {
                 Log($"Sign-in was submitted for '{workflow.Name}', but completion was not verified. Check the browser.");
                 return false;
@@ -371,7 +419,8 @@ public sealed partial class AutomationEngine
             // successful navigation. Admit only a *verified* same-origin signed-in
             // redirect, never an arbitrary failed/blocked/MFA page.
             if (submitWasAttempted && submitPageBeforeClick is not null &&
-                await ObserveVerifiedRedirectAsync(page, submitPageBeforeClick, 2000, ct).ConfigureAwait(false))
+                await ObserveVerifiedApplicationOrRedirectAsync(page, workflow.StartUrl,
+                    submitPageBeforeClick, 2000, ct).ConfigureAwait(false))
             {
                 try
                 {
@@ -387,6 +436,23 @@ public sealed partial class AutomationEngine
                 "Leaving the browser open for manual sign-in / MFA.");
             return false;
         }
+    }
+
+    private static async Task<bool> ObserveVerifiedApplicationOrRedirectAsync(
+        IPage page, string applicationUrl, string submittedFrom, int maxWaitMs, CancellationToken ct)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddMilliseconds(maxWaitMs);
+        do
+        {
+            ct.ThrowIfCancellationRequested();
+            if (await LoginHealth.VerifiedApplicationSessionAsync(page, applicationUrl, ct)
+                .ConfigureAwait(false) ||
+                await LoginHealth.VerifiedRedirectAsync(page, submittedFrom, ct)
+                .ConfigureAwait(false))
+                return true;
+            if (DateTimeOffset.UtcNow >= deadline) return false;
+            await Task.Delay(200, ct).ConfigureAwait(false);
+        } while (true);
     }
 
     private static async Task<bool> ObserveVerifiedRedirectAsync(
@@ -416,7 +482,13 @@ public sealed partial class AutomationEngine
                     await page.Locator(workflow.LoginSuccessSelector).First.IsVisibleAsync().ConfigureAwait(false);
                 bool urlReady = string.IsNullOrWhiteSpace(workflow.LoginSuccessUrlContains) ||
                     page.Url.Contains(workflow.LoginSuccessUrlContains, StringComparison.OrdinalIgnoreCase);
-                if (selectorReady && urlReady) return true;
+                if (selectorReady && urlReady &&
+                    !string.IsNullOrWhiteSpace(workflow.LoginSuccessSelector) &&
+                    !string.Equals(workflow.LoginSuccessSelector.Trim(), "body", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(workflow.LoginSuccessSelector.Trim(), "html", StringComparison.OrdinalIgnoreCase))
+                    return true;
+                if (urlReady && await LoginHealth.VerifiedApplicationSessionAsync(
+                    page, workflow.StartUrl, ct).ConfigureAwait(false)) return true;
                 if (submittedFrom is not null &&
                     await LoginHealth.VerifiedRedirectAsync(page, submittedFrom, ct).ConfigureAwait(false))
                     return true;
@@ -522,6 +594,13 @@ public sealed partial class AutomationEngine
                 var item = locator.Nth(i);
                 if (!await item.IsVisibleAsync().ConfigureAwait(false) ||
                     !await item.IsEnabledAsync().ConfigureAwait(false)) continue;
+                if (workflow.SubmitSelector == StandardSubmitSelector)
+                {
+                    var label = await item.EvaluateAsync<string>(
+                        "el => (el.getAttribute('aria-label') || el.innerText || el.textContent || el.value || '').trim()")
+                        .ConfigureAwait(false);
+                    if (!IsUsernameStageSubmitLabel(label)) continue;
+                }
                 var element = await item.ElementHandleAsync().ConfigureAwait(false);
                 if (element is null) continue;
                 var admitted = false;
