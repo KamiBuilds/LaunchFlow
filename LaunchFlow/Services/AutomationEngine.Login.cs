@@ -258,7 +258,7 @@ public sealed partial class AutomationEngine
                                 }
                                 else
                                     stageReached = await AdvanceToPasswordStageAsync(
-                                        workflow, page, owner, hadPasswordField: false, ct).ConfigureAwait(false);
+                                        workflow, page, owner, false, ct).ConfigureAwait(false);
                             }
                             else if (requiresPassword &&
                                 !await PasswordStageReadyAsync(workflow, page, ct).ConfigureAwait(false))
