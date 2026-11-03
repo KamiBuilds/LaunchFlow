@@ -68,14 +68,19 @@ public sealed partial class AutomationEngine
         {
             var manualConfirmation = await ManuallyConfirmedAsync(workflow, page, ct).ConfigureAwait(false);
             var loginCompleted = manualConfirmation ||
-                string.Equals(workflow.LoginMode, "SSO", StringComparison.OrdinalIgnoreCase) ||
-                await TryAutoLoginAsync(workflow, page, ct, configuration, keepassMasterPassword)
-                    .ConfigureAwait(false);
+                (string.Equals(workflow.LoginMode, "SSO", StringComparison.OrdinalIgnoreCase)
+                    ? await VerifyBrowserLedSsoAsync(workflow, page, ct).ConfigureAwait(false)
+                    : await TryAutoLoginAsync(workflow, page, ct, configuration, keepassMasterPassword)
+                        .ConfigureAwait(false));
             ct.ThrowIfCancellationRequested();
             RequireAutomationUrl(page.Url);
             if (!loginCompleted)
+            {
+                var status = await LoginHealth.InspectAsync(page, ct).ConfigureAwait(false);
                 return new LoginAttention(workflow.Id, workflow.Name,
-                    "Auto-login was interrupted or its credential field was not approved/ready. Retry sign-in manually before continuing.");
+                    status.NeedsAttention ? status.Reason :
+                    "Could not verify the authenticated application or safely finish a sign-in stage.");
+            }
             var health = manualConfirmation
                 ? new LoginHealth.Report(false, "User explicitly confirmed sign-in for the current page.")
                 : await LoginHealth.InspectAsync(page, ct).ConfigureAwait(false);
@@ -133,6 +138,27 @@ public sealed partial class AutomationEngine
         RequireAutomationUrl(page.Url);
         Log($"Finished '{workflow.Name}'.");
         return null;
+    }
+
+    private static async Task<bool> VerifyBrowserLedSsoAsync(
+        WebsiteWorkflow workflow, IPage page, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        RequireCredentialAccess();
+        RequireAutomationUrl(page.Url);
+        if (await LoginHealth.VerifiedApplicationSessionAsync(page, workflow.StartUrl, ct)
+            .ConfigureAwait(false)) return true;
+        if (string.IsNullOrWhiteSpace(workflow.LoginSuccessSelector) &&
+            string.IsNullOrWhiteSpace(workflow.LoginSuccessUrlContains)) return false;
+        if (!OriginsMatch(GetOrigin(page.Url), GetOrigin(workflow.StartUrl))) return false;
+        if ((await LoginHealth.InspectAsync(page, ct).ConfigureAwait(false)).NeedsAttention) return false;
+        var result = await LoginHealth.VerifySuccessAsync(
+            page, workflow.LoginSuccessSelector, workflow.LoginSuccessUrlContains, ct)
+            .ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+        RequireCredentialAccess();
+        RequireAutomationUrl(page.Url);
+        return !result.NeedsAttention;
     }
 
     private async Task<bool> TryAutoLoginAsync(
