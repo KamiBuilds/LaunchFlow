@@ -159,6 +159,39 @@ var tests = new List<(string Name, Func<Task> Body)>
         await teaching;
         Check(original.Steps.Count == 1 && other.Steps.Count == 0 && ui._store.Saves == 1, "Teach retargeted the selection");
     }),
+    ("LIFE-R03 lock closes modeless recorder and waits for whole Teach task", async () =>
+    {
+        var ui = new UiFixture();
+        ui._selected = ui._configuration.Workflows[0];
+        ui._runner.CloseRelease.SetResult();
+        var teaching = AsyncVoidTracker.Run(ui.Record);
+        Check(ui.Recorder is not null && ui._activeTeachTask is { IsCompleted: false },
+            "LIFE-R03 fixture failed to hold full recording operation");
+        var active = ui._activeTeachTask;
+        await ui.Lock().WaitAsync(TimeSpan.FromSeconds(3));
+        await teaching.WaitAsync(TimeSpan.FromSeconds(3));
+        Check(ui.Recorder.ClosedByLock && active!.IsCompleted && !ui._teachingInProgress &&
+              ui._store.DurableSaves == 0 && ProfileVaultService.Seals == 1,
+            "LIFE-R03 lock left live recorder or sealed before its completion");
+    }),
+    ("LIFE-R03 browser cleanup cannot seal profiles until recorder callbacks drain", async () =>
+    {
+        var ui = new UiFixture();
+        ui._selected = ui._configuration.Workflows[0];
+        ui.RecorderDrainRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ui._runner.CloseRelease.SetResult();
+        var recording = AsyncVoidTracker.Run(ui.Record);
+        Check(ui.Recorder is not null, "fixture did not open recorder");
+        var locking = ui.Lock();
+        await ui._runner.CloseEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        Check(!locking.IsCompleted && ProfileVaultService.Seals == 0 &&
+              ui._activeTeachTask is { IsCompleted: false },
+              "LIFE-R03 browser close bypassed pending recorder callback drain");
+        ui.RecorderDrainRelease.TrySetResult();
+        await Task.WhenAll(recording, locking).WaitAsync(TimeSpan.FromSeconds(3));
+        Check(ProfileVaultService.Seals == 1 && !ui._vaultLockInProgress,
+            "LIFE-R03 profiles were not sealed after owned callback drain");
+    }),
     ("LIFE-R03 active Teach represents the entire modeless recorder lifetime", async () =>
     {
         var ui = new UiFixture();
@@ -632,7 +665,8 @@ partial class UiFixture
     public bool _windowsLocked = false, _vaultLockInProgress = false, _runInProgress = false, _teachingInProgress = false, _exiting = false;
     public CancellationTokenSource? _runCancellation;
     public Task<AutomationEngine.RunResult>? _activeRunTask = null;
-    public Task<Microsoft.Playwright.IPage>? _activeTeachTask = null;
+    public Task? _activeTeachTask = null;
+    public VisualRecorderWindow? _activeRecorder;
     public Task _vaultLockTask = Task.CompletedTask;
     public string? _keepassMasterPassword;
     public readonly Control StopButton = new() { IsEnabled = false }, RunAllButton = new(), RunSelectedButton = new(), RunWorkspaceButton = new(), PreviewWorkspaceButton = new(), TeachButton = new(), RepairButton = new(), MainTabs = new();
@@ -650,10 +684,32 @@ partial class UiFixture
     public static readonly TimeSpan PasswordSessionDuration = TimeSpan.FromHours(1);
     public Action? UnlockHook;
     public readonly TaskCompletionSource<bool> RecorderResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource RecorderDrainRelease = CompletedDrain();
+    private static TaskCompletionSource CompletedDrain()
+    {
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        done.SetResult();
+        return done;
+    }
     public VisualRecorderWindow? Recorder;
     public bool PasswordSessionIsValid() => _passwordsUnlocked && VaultDatabase.Current.IsUnlocked;
     public void PasswordSessionTimer_Tick(object? sender, EventArgs e) { }
-    public Task<bool> ShowRecorderAsync(VisualRecorderWindow recorder) { Recorder = recorder; return RecorderResult.Task; }
+    public async Task<bool> ShowRecorderAsync(VisualRecorderWindow recorder)
+    {
+        Recorder = recorder;
+        _activeRecorder = recorder;
+        recorder.CloseHook = () => RecorderResult.TrySetResult(false);
+        try
+        {
+            var saved = await RecorderResult.Task;
+            await RecorderDrainRelease.Task;
+            return saved;
+        }
+        finally
+        {
+            if (ReferenceEquals(_activeRecorder, recorder)) _activeRecorder = null;
+        }
+    }
     public void RefreshSteps() { }
     public bool SaveAll() => true;
     public void RefreshControls() => UpdateRunButtons();
@@ -708,6 +764,17 @@ sealed class VisualRecorderWindow
     public object? Owner { get; init; }
     public VisualRecorderWindow(Microsoft.Playwright.IPage page) { }
     public List<WorkflowStep> RecordedSteps { get; } = new() { new WorkflowStep { Type = "Click", Target = "#synthetic" } };
+    public Action? CloseHook;
+    public bool IsVisible { get; private set; } = true;
+    public bool ClosedByLock { get; private set; }
+    public bool CloseFailure { get; set; }
+    public void Close()
+    {
+        if (CloseFailure) throw new InvalidOperationException("Synthetic recorder Close failure");
+        ClosedByLock = true;
+        IsVisible = false;
+        CloseHook?.Invoke();
+    }
 }
 sealed class SyntheticKeePassDatabase : IDisposable
 {
