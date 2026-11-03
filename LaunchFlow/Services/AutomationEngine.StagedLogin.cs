@@ -159,7 +159,7 @@ public sealed partial class AutomationEngine
     // An explicit submit selector takes precedence. This fallback is used
     // only if that selector has no actionable button on the password page.
     private async Task<bool> ClickUnambiguousFinalSubmitAsync(
-        WebsiteWorkflow workflow, IPage page, string? passwordOrigin, CancellationToken ct)
+        WebsiteWorkflow workflow, IPage page, CredentialFieldBinding passwordOwner, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         RequireCredentialAccess();
@@ -183,15 +183,11 @@ public sealed partial class AutomationEngine
                     label.Trim().Equals("continue to password", StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                // A button owned by another form (e.g. a header log-in action)
-                // must not submit the just-filled password.
-                var belongsToPasswordForm = await button.EvaluateAsync<bool>("""
-                    el => {
-                        const form = el.form || el.closest('form');
-                        return !form || [...form.querySelectorAll('input[type="password"]')]
-                            .some(input => input.getClientRects().length > 0);
-                    }
-                    """).ConfigureAwait(false);
+                // Confirm the actual password field's original form, including
+                // HTML form= external submit controls, not another password form.
+                var belongsToPasswordForm = await button.EvaluateAsync<bool>(
+                    "(button, form) => { const owner = 'form' in button ? button.form : button.closest('form'); return form !== null && owner === form; }",
+                    passwordOwner.Form).ConfigureAwait(false);
                 if (!belongsToPasswordForm) continue;
 
                 var candidate = await button.ElementHandleAsync().ConfigureAwait(false);
@@ -204,7 +200,8 @@ public sealed partial class AutomationEngine
                 return false;
             }
             return await ClickApprovedLoginElementAsync(
-                page, candidates[0], passwordOrigin, ct).ConfigureAwait(false);
+                page, candidates[0], passwordOwner.Origin, ct,
+                passwordOwner, requireOwnedForm: true).ConfigureAwait(false);
         }
         finally
         {
