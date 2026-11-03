@@ -177,6 +177,7 @@ internal static class StagedLoginTests
         var page = await context.NewPageAsync();
         await page.GotoAsync("https://first.test/login");
         var workflow = NewWorkflow(page.Url);
+        workflow.PasswordCredentialOrigin = "https://identity.test";
         var vault = NewVault();
         await using var engine = new AutomationEngine(vault);
         EngineBehaviorTests.Track(engine, workflow, context, page);
@@ -194,6 +195,7 @@ internal static class StagedLoginTests
 
         engine.ApproveLoginOriginAsync = (_, origin) =>
             Task.FromResult(origin == "https://identity.test");
+        workflow.PasswordCredentialOrigin = "";
         var originOnly = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
         Check(originOnly.LoginNeedsAttention.Count == 1 &&
               page.Url.Contains("identity.test/password") &&
