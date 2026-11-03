@@ -99,6 +99,8 @@ internal static class DocumentBoundCredentialTests
             }));
             var page = await context.NewPageAsync();
             var fixture = new Fixture(context, page, field);
+            if (field == "password")
+                fixture.Workflow.PasswordCredentialOrigin = new Uri(url).GetLeftPart(UriPartial.Authority);
             await context.ExposeFunctionAsync("__credentialFixtureInput", (string id) => fixture.Insertions.Enqueue(id));
             await context.AddInitScriptAsync(TrackInputs);
             await page.GotoAsync(url);
@@ -378,6 +380,7 @@ internal static class DocumentBoundCredentialTests
         f.Workflow.UsernameSelector = field == "user" ? "iframe >> internal:control=enter-frame >> #user" : "";
         f.Workflow.PasswordSelector = field == "password" ? "iframe >> internal:control=enter-frame >> #password" : "";
         f.Workflow.SubmitSelector = "";
+        if (field == "password") f.Workflow.PasswordCredentialOrigin = "https://frame.test";
         f.Engine.ApproveLoginOriginAsync = async (_, origin) =>
         {
             f.Prompts.Add(origin);
@@ -398,6 +401,7 @@ internal static class DocumentBoundCredentialTests
         f.Workflow.UsernameSelector = field == "user" ? "iframe >> internal:control=enter-frame >> #user" : "";
         f.Workflow.PasswordSelector = field == "password" ? "iframe >> internal:control=enter-frame >> #password" : "";
         f.Workflow.SubmitSelector = "";
+        if (field == "password") f.Workflow.PasswordCredentialOrigin = "https://frame.test";
         await f.LoginAsync();
         Check(f.Prompts.SequenceEqual(new[] { "https://frame.test" }), "frame " + field + " approval uses its owner document, not the top-level URL");
         Check(await f.Page.FrameLocator("iframe").Locator("#" + field).InputValueAsync() == "", "denied frame " + field + " stays empty");
@@ -413,6 +417,7 @@ internal static class DocumentBoundCredentialTests
         await using var f = await Fixture.CreateAsync(browser, "user", "<input id='user'><button id='next' onclick=\"location.href='https://sso.test/'\">next</button>");
         f.Workflow.UsernameContinueSelector = "#next";
         f.Workflow.PasswordSelector = "#password";
+        f.Workflow.PasswordCredentialOrigin = "https://sso.test";
         f.Engine.ApproveLoginOriginAsync = (_, origin) => { f.Prompts.Add(origin); return Task.FromResult(origin == "https://sso.test"); };
         await f.LoginAsync();
         Check(f.Prompts.SequenceEqual(new[] { "https://sso.test" }), "positive SSO approves the new password document separately");
