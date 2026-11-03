@@ -303,14 +303,14 @@ public partial class TutorialWindow : Window
 
     private void ReadSelectedPasswordMode()
     {
-        if (CurrentMainWindow()?.FindName("LoginModeCombo") is not ComboBox box) return;
+        if (CurrentMainWindow()?.FindName("LoginModeCombo") is not System.Windows.Controls.ComboBox box) return;
         var mode = (box.SelectedItem as ComboBoxItem)?.Tag as string;
         _passwordMode = mode is "None" or "SSO" ? mode : "Auto";
     }
 
     private string CurrentSaveButtonLabel()
     {
-        var button = CurrentMainWindow()?.FindName("SaveChangesButton") as Button;
+        var button = CurrentMainWindow()?.FindName("SaveChangesButton") as System.Windows.Controls.Button;
         var label = button?.Content as string;
         return label is "Save changes" or "Retry save"
             ? label : "Save changes / Retry save";
