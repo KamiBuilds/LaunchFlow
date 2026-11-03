@@ -93,7 +93,7 @@ public sealed partial class AutomationEngine
                 var eligible = await button.EvaluateAsync<bool>("""
                     el => {
                       const text = (el.getAttribute('aria-label') || el.innerText || '').trim().toLowerCase()
-                        .replace(/\\s+/g, ' ');
+                        .replace(/\s+/g, ' ');
                       if (!['sign in', 'sign-in', 'log in', 'login', 'aanmelden', 'inloggen'].includes(text) ||
                           el.form || !el.isConnected || el.ownerDocument.defaultView?.document !== el.ownerDocument)
                         return false;
