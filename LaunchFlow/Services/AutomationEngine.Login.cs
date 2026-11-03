@@ -301,10 +301,20 @@ public sealed partial class AutomationEngine
                                 {
                                     if (string.IsNullOrWhiteSpace(workflow.UsernameContinueSelector) &&
                                         !string.IsNullOrWhiteSpace(workflow.SubmitSelector) &&
-                                        workflow.SubmitSelector != StandardSubmitSelector)
+                                        workflow.SubmitSelector.StartsWith("#", StringComparison.Ordinal))
                                     {
-                                        stageReached = false;
-                                        Log($"A required password field is missing for '{workflow.Name}'. The configured final Submit will not be used as a first-stage continuation.");
+                                        var configuredFinal = page.Locator(workflow.SubmitSelector);
+                                        var finalOwned = await configuredFinal.CountAsync().ConfigureAwait(false) == 1 &&
+                                            await configuredFinal.First.EvaluateAsync<bool>(
+                                                "(button, form) => { const owner = 'form' in button ? button.form : button.closest('form'); return form !== null && owner === form; }",
+                                                owner.Form).ConfigureAwait(false);
+                                        if (!finalOwned)
+                                            stageReached = await AdvanceToPasswordStageAsync(
+                                                workflow, page, owner, hadPasswordField, ct).ConfigureAwait(false);
+                                        else
+                                            stageReached = false;
+                                        if (finalOwned)
+                                            Log($"A required password field is missing for '{workflow.Name}'. The configured final Submit will not be used as a first-stage continuation.");
                                     }
                                     else
                                         stageReached = await AdvanceToPasswordStageAsync(
