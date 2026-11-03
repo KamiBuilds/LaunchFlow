@@ -277,6 +277,7 @@ internal static class EnginePolicyTests
         await fixture.Page.FrameLocator("iframe").Locator("#password").WaitForAsync();
         fixture.Workflow.UsernameSelector = "";
         fixture.Workflow.PasswordSelector = "iframe >> internal:control=enter-frame >> #password";
+        fixture.Workflow.PasswordCredentialOrigin = "https://allowed.test";
         fixture.Engine.ApproveLoginOriginAsync = (_, _) => Task.FromResult(true);
         using var policy = EnterprisePolicy.UseProviderForTesting(() => new Dictionary<string, object?>
         {

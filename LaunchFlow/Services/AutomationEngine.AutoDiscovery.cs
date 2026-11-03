@@ -174,7 +174,7 @@ public sealed partial class AutomationEngine
             if (!valid) continue;
             var element = await field.ElementHandleAsync().ConfigureAwait(false);
             if (element is null) continue;
-            if (!await HasOwnedStageActionAsync(page, element, ct).ConfigureAwait(false))
+            if (!await HasOwnedStageActionAsync(workflow, page, element, ct).ConfigureAwait(false))
             {
                 await element.DisposeAsync().ConfigureAwait(false);
                 continue;

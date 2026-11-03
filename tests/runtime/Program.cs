@@ -4,6 +4,10 @@ using LaunchFlow.Services;
 using Microsoft.Playwright;
 
 using var playwright = await Playwright.CreateAsync();
+if (args.Contains("--independent-stage-probes-only")) { await IndependentStageProbes.RunAsync(playwright); return; }
+if (!args.Contains("--document-bound-only") && !args.Contains("--profile-only") &&
+    !args.Contains("--monitor-only") && !args.Contains("--policy-only") &&
+    !args.Contains("--dispatch-only")) await IndependentStageProbes.RunAsync(playwright);
 if (args.Contains("--review-probes-only")) { await ReviewLoginProbes.RunAsync(playwright); return; }
 if (!args.Contains("--document-bound-only") && !args.Contains("--profile-only") &&
     !args.Contains("--monitor-only") && !args.Contains("--policy-only") &&
@@ -68,8 +72,14 @@ if (!args.Contains("--profile-only"))
     await page.GotoAsync(workflow.StartUrl);
     var login = typeof(AutomationEngine).GetMethod("TryAutoLoginAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
     await (Task)login.Invoke(engine, new object?[] { workflow, page, CancellationToken.None, null, null })!;
-    Assert(prompts.SequenceEqual(new[] { "https://other.test" }), "redirected password origin requires explicit approval even without a configured password origin");
-    Assert(await page.InputValueAsync("#password") == "", "denied redirect never receives the test password");
+    Assert(prompts.Count == 0, "unmapped IdP password is rejected before origin approval");
+    Assert(await page.InputValueAsync("#password") == "", "unmapped redirect never receives the test password");
+
+    workflow.PasswordCredentialOrigin = "https://other.test";
+    await page.GotoAsync(workflow.StartUrl);
+    await (Task)login.Invoke(engine, new object?[] { workflow, page, CancellationToken.None, null, null })!;
+    Assert(prompts.SequenceEqual(new[] { "https://other.test" }), "mapped redirected password origin still requires explicit approval");
+    Assert(await page.InputValueAsync("#password") == "", "denied mapped redirect never receives the test password");
 
     engine.ApproveLoginOriginAsync = (_, origin) => Task.FromResult(origin == "https://other.test");
     await page.GotoAsync(workflow.StartUrl);
