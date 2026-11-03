@@ -165,7 +165,7 @@
           <!-- Creation and save stay together, aligned with the content edge. -->
           <StackPanel Grid.Column="0" Orientation="Horizontal"
                       HorizontalAlignment="Left" VerticalAlignment="Center">
-            <Button Content="+ Add website" Click="AddWorkflow_Click"
+            <Button x:Name="AddWebsiteToolbarButton" Content="+ Add website" Click="AddWorkflow_Click"
                     ToolTip="Choose a website, browser and screen"
                     Height="34" Padding="14,7" Margin="0,0,10,0"/>
             <Button x:Name="SaveChangesButton" Content="Save changes" Click="Save_Click"
@@ -199,7 +199,7 @@
           <!-- Secondary help actions stay at the right edge, never displace Run. -->
           <StackPanel Grid.Column="2" Orientation="Horizontal"
                       HorizontalAlignment="Right" VerticalAlignment="Center">
-            <Button Content="Getting started" Click="Help_Click"
+            <Button x:Name="GettingStartedButton" Content="Getting started" Click="Help_Click"
                     ToolTip="Step-by-step guide" Height="34" Padding="11,7" Margin="0,0,8,0"/>
             <Button Content="About" Click="About_Click"
                     Height="34" Padding="11,7" Margin="0"/>
@@ -401,7 +401,7 @@
             
           </StackPanel>
         </ScrollViewer></TabItem>
-        <TabItem Header="Passwords"><ScrollViewer VerticalScrollBarVisibility="Auto" Background="#111A2A"><StackPanel Margin="28" MaxWidth="840" HorizontalAlignment="Left"><TextBlock Text="Website passwords" FontSize="24" FontWeight="Bold" Margin="0,0,0,8"/><TextBlock Text="One master-password unlock lasts one hour, even if you visit other tabs. The encrypted vault relocks after your configurable Windows-lock timeout (10 minutes by default)." Foreground="#B6C8DD" TextWrapping="Wrap" Margin="0,0,0,7"/>
+        <TabItem x:Name="PasswordsSettingsTab" Header="Passwords"><ScrollViewer VerticalScrollBarVisibility="Auto" Background="#111A2A"><StackPanel Margin="28" MaxWidth="840" HorizontalAlignment="Left"><TextBlock Text="Website passwords" FontSize="24" FontWeight="Bold" Margin="0,0,0,8"/><TextBlock Text="One master-password unlock lasts one hour, even if you visit other tabs. The encrypted vault relocks after your configurable Windows-lock timeout (10 minutes by default)." Foreground="#B6C8DD" TextWrapping="Wrap" Margin="0,0,0,7"/>
 <TextBlock x:Name="PasswordSessionLabel" Text="Locked · unlock to manage saved credentials." Foreground="#7FD9F8" Margin="0,0,0,13" TextWrapping="Wrap"/>
  <TextBlock Text="1. Choose exactly which website account to edit" Foreground="#D9ECFA" FontWeight="SemiBold" Margin="0,0,0,6"/>
  <ComboBox x:Name="PasswordWebsiteCombo" SelectionChanged="PasswordWebsiteCombo_SelectionChanged"
@@ -460,7 +460,7 @@
                 </StackPanel>
             </Border>
             <StackPanel Orientation="Horizontal" Margin="0,12,0,0"><Button Content="Lock encrypted vault" Click="LockPasswords_Click"/><Button Content="Change master password" Click="ChangeMasterPassword_Click"/></StackPanel></StackPanel></ScrollViewer></TabItem>
-        <TabItem Header="Startup"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="26" MaxWidth="760" HorizontalAlignment="Left"><TextBlock Text="Startup and triggers" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,10"/><Border Background="#141B29" CornerRadius="12" Padding="12" Width="640" Margin="0,0,0,10">
+        <TabItem x:Name="StartupSettingsTab" Header="Startup"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="26" MaxWidth="760" HorizontalAlignment="Left"><TextBlock Text="Startup and triggers" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,10"/><Border Background="#141B29" CornerRadius="12" Padding="12" Width="640" Margin="0,0,0,10">
         <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel>
           <TextBlock Text="BACKGROUND &amp; TRIGGERS" FontWeight="SemiBold" Foreground="#A0B4CC" FontSize="11" Margin="0,0,0,7"/>
           <CheckBox x:Name="StartupCheck" Content="Start hidden with Windows (enables Ctrl+M)"/>
