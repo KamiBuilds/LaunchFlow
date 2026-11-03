@@ -12,10 +12,80 @@ internal static class PolicyDispatchTests
             throw new ArgumentException("Unknown policy dispatch group.");
         await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
         var failures = new List<string>();
-        if (group is null or "click") await CredentialContinuationAsync(browser, failures);
+        if (group is null or "click")
+        {
+            await CredentialContinuationAsync(browser, failures);
+            await OwnerCaptureRevocationAsync(browser, failures);
+        }
         if (group is null or "navigation") await InitialNavigationAsync(browser, failures);
         if (group is null or "redirect") await PostLoginRedirectAsync(browser, failures);
         if (failures.Count > 0) throw new Exception(string.Join("; ", failures));
+    }
+
+    private static async Task OwnerCaptureRevocationAsync(IBrowser browser, List<string> failures)
+    {
+        foreach (var caseName in new[] { "control", "policy", "cancel" })
+        {
+            await using var context = await browser.NewContextAsync();
+            context.SetDefaultTimeout(2500);
+            await context.RouteAsync("https://pre-fill.test/**", route => route.FulfillAsync(new()
+            {
+                ContentType = "text/html",
+                Body = """
+                    <form id="login">
+                      <input id="user" oninput="document.body.dataset.filled='yes'">
+                      <button id="submit" type="button"
+                        onclick="document.body.dataset.clicked='yes'">Sign in</button>
+                    </form>
+                    """
+            }));
+            var actual = await context.NewPageAsync();
+            await actual.GotoAsync("https://pre-fill.test/login");
+            var values = new Dictionary<string, object?> { ["AllowedHosts"] = "pre-fill.test" };
+            using var policy = EnterprisePolicy.UseProviderForTesting(() => values);
+            using var cancellation = new CancellationTokenSource();
+            var ownerCaptured = false;
+            async Task<IJSHandle> CaptureAndRevokeAsync(IElementHandle target, string expression)
+            {
+                var original = await target.EvaluateHandleAsync(expression);
+                ownerCaptured = true;
+                if (caseName == "policy") values["DisableAutomation"] = 1;
+                if (caseName == "cancel") cancellation.Cancel();
+                return original;
+            }
+            async Task<IElementHandle?> QueryAsync(string selector)
+            {
+                var target = await actual.QuerySelectorAsync(selector);
+                return target is null ? null : ForwardProxy<IElementHandle>.Create(target, (method, parameters) =>
+                    method.Name == nameof(IElementHandle.EvaluateHandleAsync) &&
+                    parameters is { Length: > 0 } &&
+                    parameters[0] is string expression && expression == "field => field.form"
+                        ? (true, CaptureAndRevokeAsync(target, expression)) : (false, null));
+            }
+            var tracked = ForwardProxy<IPage>.Create(actual, (method, parameters) =>
+                method.Name == nameof(IPage.QuerySelectorAsync)
+                    ? (true, QueryAsync((string)parameters![0]!)) : (false, null));
+            var workflow = new WebsiteWorkflow
+            {
+                StartUrl = actual.Url, AutoLogin = true, UsernameSelector = "#user",
+                PasswordSelector = "", SubmitSelector = "#submit", LoginSuccessSelector = "body"
+            };
+            await using var engine = new AutomationEngine(new CredentialVault());
+            EngineBehaviorTests.Track(engine, workflow, context, tracked);
+            AutomationEngine.RunResult? result = null;
+            var cancelled = false;
+            try { result = await engine.RunAsync(new[] { workflow }, cancellation.Token); }
+            catch (OperationCanceledException) when (caseName == "cancel") { cancelled = true; }
+            var filled = await actual.GetAttributeAsync("body", "data-filled") == "yes";
+            var clicked = await actual.GetAttributeAsync("body", "data-clicked") == "yes";
+            var permitted = caseName == "control";
+            var ok = ownerCaptured && (permitted
+                ? filled && clicked && result?.FinishedCount == 1
+                : !filled && !clicked && (cancelled || result?.FinishedCount == 0));
+            Check(ok,
+                $"LOGIN-L3 form-owner capture {caseName}: no secret dispatch after revocation (captured={ownerCaptured}, filled={filled}, clicked={clicked}, finished={result?.FinishedCount}, cancelled={cancelled})",
+                failures);
+        }
     }
 
     private static async Task CredentialContinuationAsync(IBrowser browser, List<string> failures)
