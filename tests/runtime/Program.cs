@@ -4,7 +4,12 @@ using LaunchFlow.Services;
 using Microsoft.Playwright;
 
 using var playwright = await Playwright.CreateAsync();
+if (args.Contains("--auto-login-only")) { await AutomaticEntryTests.RunAsync(playwright); return; }
 if (args.Contains("--staged-login-only")) { await StagedLoginTests.RunAsync(playwright); return; }
+if (!args.Contains("--document-bound-only") && !args.Contains("--profile-only") &&
+    !args.Contains("--monitor-only") && !args.Contains("--policy-only") &&
+    !args.Contains("--dispatch-only"))
+    await AutomaticEntryTests.RunAsync(playwright);
 if (!args.Contains("--document-bound-only") && !args.Contains("--profile-only") &&
     !args.Contains("--monitor-only") && !args.Contains("--policy-only") &&
     !args.Contains("--dispatch-only"))

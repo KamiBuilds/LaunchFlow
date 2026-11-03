@@ -9,7 +9,7 @@ public static class LoginHealth
 {
     private static readonly string[] ChallengeHints =
     [
-        "verify", "verification", "authenticate", "authentication", "mfa", "2fa", "two-factor",
+        "verify", "verification", "mfa", "2fa", "two-factor",
         "one-time", "otp", "passcode", "security code", "approve sign-in", "duo", "okta verify",
         "enter code", "check your phone", "stay signed in", "captcha", "unusual activity"
     ];
@@ -80,12 +80,17 @@ public static class LoginHealth
                 return false;
             var health = await InspectAsync(page, ct).ConfigureAwait(false);
             if (health.NeedsAttention) return false;
-            var body = page.Locator("body");
-            return await body.CountAsync().ConfigureAwait(false) > 0 &&
-                !string.IsNullOrWhiteSpace(await body.InnerTextAsync(new LocatorInnerTextOptions
-                {
-                    Timeout = 2000
-                }).ConfigureAwait(false));
+            // A changed URL and nonempty body are not authentication proof.
+            // Recognize only current account/navigation evidence; otherwise a
+            // user confirms in the browser before downstream actions execute.
+            var evidence = page.Locator(
+                "#signed-in, [data-authenticated='true'], [data-login-state='authenticated'], " +
+                "[data-testid='user-menu'], [data-testid='account-menu'], " +
+                "a[href*='/logout' i], button[aria-label='Account'], button[aria-label='User menu']");
+            var evidenceCount = Math.Min(await evidence.CountAsync().ConfigureAwait(false), 24);
+            for (var i = 0; i < evidenceCount; i++)
+                if (await evidence.Nth(i).IsVisibleAsync().ConfigureAwait(false)) return true;
+            return false;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception) { return false; }
@@ -96,24 +101,26 @@ public static class LoginHealth
         ct.ThrowIfCancellationRequested();
         try
         {
-            var url = page.Url ?? "";
-            var title = await page.TitleAsync().ConfigureAwait(false) ?? "";
-            var bodyText = "";
-            try
-            {
-                bodyText = await page.Locator("body").InnerTextAsync(new LocatorInnerTextOptions { Timeout = 2000 })
-                    .ConfigureAwait(false) ?? "";
-            }
-            catch { /* ignore */ }
+            // Only current interactive challenge cues and prominent headings
+            // count. Footer/help/marketing text can mention MFA harmlessly.
+            if (await page.Locator("input[autocomplete='one-time-code']:visible, input[name='otp' i]:visible")
+                    .CountAsync().ConfigureAwait(false) > 0)
+                return new Report(true, "Complete verification in the browser.");
 
-            var hay = (title + " " + url + " " + bodyText).ToLowerInvariant();
+            var title = await page.TitleAsync().ConfigureAwait(false) ?? "";
+            var headings = page.Locator("h1, h2, h3, [role='alert'], [role='dialog']");
+            var headingCount = Math.Min(await headings.CountAsync().ConfigureAwait(false), 32);
+            var prominent = title.ToLowerInvariant();
+            for (var i = 0; i < headingCount; i++)
+            {
+                var heading = headings.Nth(i);
+                if (await heading.IsVisibleAsync().ConfigureAwait(false))
+                    prominent += " " + (await heading.InnerTextAsync().ConfigureAwait(false)).ToLowerInvariant();
+            }
             foreach (var hint in ChallengeHints)
             {
-                if (hay.Contains(hint, StringComparison.Ordinal))
-                {
-                    return new Report(true,
-                        $"Sign-in looks incomplete (saw “{hint}”). Finish MFA/SSO in the browser, then use Teach / Repair login if fields moved.");
-                }
+                if (prominent.Contains(hint, StringComparison.Ordinal))
+                    return new Report(true, "Complete sign-in verification in the browser.");
             }
 
             var passwordVisible = await page.Locator("input[type='password']:visible").CountAsync().ConfigureAwait(false) > 0;
