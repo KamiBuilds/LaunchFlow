@@ -159,6 +159,21 @@ var tests = new List<(string Name, Func<Task> Body)>
         await teaching;
         Check(original.Steps.Count == 1 && other.Steps.Count == 0 && ui._store.Saves == 1, "Teach retargeted the selection");
     }),
+    ("LIFE-R01 modeless Teach refuses same-ID imported replacement", async () =>
+    {
+        var ui = new UiFixture();
+        var original = ui._configuration.Workflows[0];
+        var teaching = ui.Teach(original);
+        var replacement = new WebsiteWorkflow { Id = original.Id, Name = "Imported same-ID replacement" };
+        ui._configuration.Workflows[0] = replacement;
+        ui._workspaceRevision++;
+        ui._selected = replacement;
+        ui.RecorderResult.SetResult(true);
+        await teaching;
+        Check(original.Steps.Count == 0 && replacement.Steps.Count == 0 &&
+              ui._store.DurableSaves == 0,
+            "LIFE-R01 a stale recorder wrote to an imported same-ID workflow");
+    }),
     ("modeless Teach discards pending clicks when vault authorization disappears", async () =>
     {
         var ui = new UiFixture();
