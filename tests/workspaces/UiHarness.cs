@@ -484,6 +484,38 @@ var tests = new List<(string Name, Func<Task> Body)>
         }
         finally { File.Delete(database); }
     }),
+    ("A2: retained modeless Repair choice cannot acquire recorder while a newer workflow run owns the UI", async () =>
+    {
+        var ui = new UiFixture();
+        var original = ui._configuration.Workflows[0];
+        var attention = new AutomationEngine.RunResult();
+        attention.LoginNeedsAttention.Add(new(original.Id, original.Name, "Synthetic authentication required"));
+        ui._runner.RunRelease.SetResult(attention);
+        await ui.Run();
+        Check(ui._openSignInDecisions.TryGetValue(original.Id, out var dialog) &&
+              !ui._runInProgress && !ui._runner.IsRunning,
+              "fixture A did not produce an idle modeless sign-in decision");
+
+        ui._runner.RunRelease = new TaskCompletionSource<AutomationEngine.RunResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var runB = ui.Run();
+        try
+        {
+            Check(ui._runInProgress && ui._runner.IsRunning,
+                "fixture B must be a genuinely active production-linked run");
+            var beforeSaves = ui.SaveAllCalls;
+            dialog!.Choose(SignInDecisionWindow.Decision.Repair);
+            Check(ui._runner.TeachCalls == 0 && !ui._teachingInProgress &&
+                  ui._activeTeachTask is null && ui.SaveAllCalls == beforeSaves,
+                "stale modeless Repair acquired a recorder or saved while run B was active");
+        }
+        finally
+        {
+            ui.RecorderResult.TrySetResult(false);
+            ui._runner.RunRelease.TrySetResult(new AutomationEngine.RunResult());
+            await runB;
+        }
+    }),
     ("positive login repair remains bound to the attention workflow ID across a modal selection change", async () =>
     {
         var ui = new UiFixture();
@@ -730,7 +762,8 @@ partial class UiFixture
         }
     }
     public void RefreshSteps() { }
-    public bool SaveAll() => true;
+    public int SaveAllCalls;
+    public bool SaveAll() { SaveAllCalls++; return true; }
     public void RefreshControls() => UpdateRunButtons();
     public Action? KeePassHook;
     public bool EnsureKeePass() => EnsureKeePassPasswordForRun(_configuration.Workflows);
@@ -966,7 +999,7 @@ namespace LaunchFlow.Services
         public List<WebsiteWorkflow> LastRun = new();
         public bool IncludeDisabled;
         public readonly TaskCompletionSource RunEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public readonly TaskCompletionSource<RunResult> RunRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<RunResult> RunRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public readonly TaskCompletionSource CloseEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public readonly TaskCompletionSource CloseRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public async Task<RunResult> RunAsync(IEnumerable<WebsiteWorkflow> workflows, CancellationToken ct, bool includeDisabled, Configuration configuration, string? keepassMasterPassword)
