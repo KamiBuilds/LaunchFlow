@@ -24,7 +24,7 @@
 |---|---|---|---|
 | M0 baseline/control | **In progress** | 231-file recursive manifest; overview and 36-family acceptance matrix drafted; source and artifact identity recorded | Confirm all file ownership/consumers/tests; freeze reviewed M0 doc commit, independent source review |
 | M1 six critical login regressions | **Automated repair verified, native pending** | RED independent run `41645119359`, final GREEN run `41687485233`; retained old L1/L2, L3, 32 document-bound cases | Native/vendor sign-in acceptance and independent final-tree review |
-| M2 durability/lifecycle | **Open** | A1/A2/A3 source-level collision analysis in `architecture/overview.md` | New RED controls and repaired full runtime/Windows build |
+| M2 durability/lifecycle | **In progress; A2 code/automated tests GREEN** | A2 RED [41793237279](https://github.com/KamiBuilds/LaunchFlow/actions/runs/41793237279), GREEN Linux [41794525946](https://github.com/KamiBuilds/LaunchFlow/actions/runs/41794525946): 43/43 UI tests, all 20 Linux stages | A1 and A3 remain open; native Windows Repair/Exit acceptance unexecuted |
 | M3 controlled extraction | **Not started** | Target ownership/direction written | One bounded slice with consumer/link preservation and regression suite |
 | M4 product/native | **Blocked by external acceptance** | CI uses simulated/production-linked browser/seams | Real install/upgrade, WPF lifecycle, accessibility, vendor login, multiday use |
 | M5 final integration/delivery | **Not started** | Unpublished artifact is available for test | Exact-tree independent approval, native evidence, explicit release authorization |
@@ -34,7 +34,7 @@
 | ID | Severity / basis | Exact source condition | Required independent test | Completion state |
 |---|---|---|---|---|
 | A1 / AC27 | Critical lifecycle, source-only | `ExitFromTray` calls `Close`; `OnClosed` is `async void` and drains run/Teach/engine after WPF closure; installer does pre-close await | ordinary/tray Exit with delayed browser cleanup, dirty editor, lock race, failed close; require no premature process/window termination | **Open, not reproduced by an executable RED probe** |
-| A2 / AC23 | High concurrency, source-only | retained modeless `SignInDecisionWindow` can schedule Repair while `RunEnabledAsync` owns a newer run; core Repair admission lacks run check | dialog A retained, new run B active, click Repair A; zero `SaveAll`, recorder acquisition, or mutation | **Open, no RED test yet** |
+| A2 / AC23 | High concurrency, RED reproduced, automated GREEN | Older `RepairLoginCoreAsync` admitted modeless Repair during newer run B | Source-linked `UiHarness` test: dialog A retained, run B active, click Repair A; assert no save/recorder; prior idle Repair control retained | **Repaired in `MainWindow.Execution.cs`: run/engine admission, reserve Teach before SaveAll, revalidate original config/revision/vault; native WPF pending** |
 | A3 / AC07 | High durability, source-only | credential `_vault.Save` precedes independent `_store.SaveDurable` for AutoLogin/KeePass preference; generic catch does not distinguish committed secret | induced preference-commit failure after encrypted secret commit, actual cold reopen, exact partial/atomic result with no unsafe rollback | **Open, no RED test yet** |
 | F1–F6 | Previously independently reproduced | verification proof, password mapping, missing final password, cancellable approval, custom submit, SSO postcondition | retain original probes and mapped synthetic fixture changes; verify both controls and negative outcomes in full gate | **All six synthetic cases GREEN** |
 | Native Windows | External | WPF Exit/Repair/session interaction and installer/upgrade not exercised in controlled CI | real clean installation, upgrade + vault preservation, lock/unlock/tray/recording | **Unexecuted** |
@@ -48,12 +48,12 @@
 - Do not move broad file sets during a behavior fix.
 - Do not claim a source scan replaces actual per-file review.
 
-## Next bounded implementation slice (M2/A2)
+## Bounded M2/A2 completion and next engineering boundary
 
-1. Capture original entrypoints and exact run/Teach admission contract from `MainWindow.Execution.cs`, `MainWindow.xaml.cs` and modeless `SignInDecisionWindow`.
-2. Add one test in the production-linked UI harness, with a real modeless callback schedule and an active run B. Require RED on the existing code; keep healthy idle Repair and no-op Later controls.
-3. Centralize the admission check **before** `SaveAll`, and recheck original workflow/revision/vault generation after awaits. No selector, playback or product behavior change.
-4. Run focused UI + workspace + policy + full real-Chromium gates. Require exact-tree Windows CI build before a checkpoint.
-5. Only then address A1 awaited ordinary Exit and A3 compound save under separate RED/positive controls. Keep external native gates open.
+- A2 test-only RED commit `96bb70ed1bab801cc31a6afe9cf689bbd35cbe53`: [run 41793237279](https://github.com/KamiBuilds/LaunchFlow/actions/runs/41793237279) fails **only the new** source-linked modeless Repair overlap (42/43 UI seam tests). Existing idle Repair remains a positive control.
+- Production repair commit `46c01fd27cb499c29631aef781ae1c8097df1998` reserves the Teach operation before `SaveAll`, checks active run/engine ownership and preserves current workflow/reference/revision/vault checks. [GREEN Linux run 41794525946](https://github.com/KamiBuilds/LaunchFlow/actions/runs/41794525946): 43/43 UI seam cases, independent login probes zero failures, 32/32 document-bound cases and all 20 Linux steps passed. Full Windows + artifact gates for the current documentation head must still be checked separately.
+- **Next high-risk slice A1 / AC27:** characterize ordinary/tray Exit with a stalled close, active Teach/run and failed profile seal in a native-aware test. Require that WPF Closing is deferred until owned cleanup completes; do not claim managed shutdown protects every hard OS kill.
+- **Next A3 / AC07:** cold encrypted SQLite regression for credential commit followed by preference-save failure, then choose a narrow atomic transaction or honest partial-success semantics.
+- Full 231-file method/consumer ownership audit, native Windows, and live vendor login acceptance remain open.
 
 This status is intentionally conservative. It distinguishes what can be built and proven in GitHub CI from what can only be accepted on an authorized Windows machine or live service.
