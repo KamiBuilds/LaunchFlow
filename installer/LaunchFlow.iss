@@ -73,6 +73,13 @@ var
   UpgradeInfoPage: TOutputMsgWizardPage;
   WipeUserData: Boolean;
 
+procedure ReportSetupFailure(const Detail: String);
+begin
+  Log('LaunchFlow Setup: ' + Detail);
+  if not WizardSilent then
+    MsgBox(Detail, mbError, MB_OK);
+end;
+
 function InitializeSetup(): Boolean;
 var
   InstallDir: String;
@@ -95,16 +102,16 @@ begin
 
   if not FileExists(Executable) then
   begin
-    MsgBox('LaunchFlow is running, but Setup cannot find its installed executable. ' +
-      'Exit LaunchFlow from the tray and start Setup again.', mbError, MB_OK);
+    ReportSetupFailure('LaunchFlow is running, but Setup cannot find its installed executable. ' +
+      'Exit LaunchFlow from the tray and start Setup again.');
     Result := False;
     Exit;
   end;
 
   if not Exec(Executable, '--exit-for-install', '', SW_HIDE, ewNoWait, ResultCode) then
   begin
-    MsgBox('LaunchFlow could not receive the installer shutdown request. ' +
-      'Exit it manually, then run Setup again.', mbError, MB_OK);
+    ReportSetupFailure('LaunchFlow could not receive the installer shutdown request. ' +
+      'Exit it manually, then run Setup again.');
     Result := False;
     Exit;
   end;
@@ -117,9 +124,9 @@ begin
     Sleep(250);
   end;
 
-  MsgBox('LaunchFlow did not finish a safe shutdown. Your encrypted data is ' +
+  ReportSetupFailure('LaunchFlow did not finish a safe shutdown. Your encrypted data is ' +
     'untouched by Setup. Check LaunchFlow for a cleanup or save warning, ' +
-    'then exit it and retry the installation.', mbError, MB_OK);
+    'then exit it and retry the installation.');
   Result := False;
 end;
 
@@ -158,6 +165,22 @@ var
 begin
   Result := True;
   WipeUserData := False;
+  // Do not uninstall live program files or profiles; packaging can retry after a clean exit.
+  if CheckForMutexes('LaunchFlow.Windows.SingleInstance') then
+  begin
+    Log('LaunchFlow is running. Exit the app normally before uninstalling.');
+    if not UninstallSilent then
+      MsgBox('Exit LaunchFlow from the tray before uninstalling. Your encrypted data is untouched.',
+        mbError, MB_OK);
+    Result := False;
+    Exit;
+  end;
+  // No unattended job may consent to vault or backup deletion.
+  if UninstallSilent then
+  begin
+    Log('Silent uninstall preserves the LaunchFlow vault, workflows and backups.');
+    Exit;
+  end;
   DataDir := ExpandConstant('{localappdata}\LaunchFlow');
   if not DirExists(DataDir) then
     Exit;
