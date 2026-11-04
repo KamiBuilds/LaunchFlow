@@ -34,7 +34,7 @@ Statuses are intentionally scoped: **Passed — synthetic** is not a native/vend
 | AC20 | Step failure/redirect/cancellation blocks dependent work | Partial — browser regressions | Runtime step policy/redirect tests; full supported-step variant matrix pending |
 | AC21 | Repeated run/session reuse without secret read/duplicate effects | Partial — browser fixtures | Synthetic already-authenticated session no vault read; native multi-monitor/browser reuse pending |
 | AC22 | Teach close/drain/late callbacks/same-ID publication | Partial — production-linked | Recorder/workspace integration coverage; native modeless lifecycle unverified |
-| AC23 | Retained modeless Repair while newer run active | Open — source concern A2 | RepairLoginCoreAsync lacks current-run admission; RED test required |
+| AC23 | Retained modeless Repair while newer run active | Passed — source-linked simulated WPF method; native pending | Test-only RED run 41793237279, repaired GREEN Linux run 41794525946; 43/43 UI seam tests passed. Native WPF modal/reentrancy remains unexecuted |
 | AC24 | Launch/close/unclaimed context/failed close/repeated cleanup | Partial — policy/lifecycle | EngineLifecycleTests and policy seams pass; ordinary WPF exit remains open |
 | AC25 | Partial profile cleanup and recoverable reopen | Partial — simulated/automated | Profile cleanup and encrypted recovery CI gates; native process/profile acceptance pending |
 | AC26 | Windows lock/unlock grace + stale/unlock/Exit races | Partial — simulated | Session lock policy and WPF seams; native event interleavings pending |
