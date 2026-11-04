@@ -57,3 +57,10 @@
 - Full 231-file method/consumer ownership audit, native Windows, and live vendor login acceptance remain open.
 
 This status is intentionally conservative. It distinguishes what can be built and proven in GitHub CI from what can only be accepted on an authorized Windows machine or live service.
+
+## M2/E0 narrow packaging safety slice — 2026-11-04
+
+- **Source-grounded RED at baseline `97753bf0029a6869b1314aa9294f36939542cf5c`:** all three static silent-contract characterizations failed: unguarded setup `MsgBox`, uninstall delete prompt without `UninstallSilent` short-circuit, no running-app uninstall guard. These are source findings, **not** Windows execution results.
+- Changed only `installer/LaunchFlow.iss` to suppress custom errors when Setup/Uninstall is silent, make unattended uninstall explicitly preserve the vault/backups, and refuse uninstall when the same-session app is still running. Retained AppId, per-user path, HKCU registry, and interactive informed data-removal choice.
+- Added source-contract checks in `tests/installer/DeploymentContract.Tests.ps1` to the existing Windows installer gate and a platform-neutral packaging handoff at `docs/DEPLOYMENT-CONTRACT.md`.
+- **Not yet accepted:** Windows native silent/upgrade/uninstall behavior, cross-session coordination, signature/policy trust. **Next critical code slice remains A1/AC27**, followed by A3/AC07. No claim of completed modular rewrite.

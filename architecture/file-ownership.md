@@ -41,7 +41,7 @@
 | `docs/INSTALLER-VERIFICATION.md` | Documentation / governance | Documentation | UNVERIFIED: purpose must be read from source before disposal/relocation | Keep pending review | May be referenced by guide/support | `c9383220e2a4` | Source review pending |
 | `docs/REMAINING-GATES-0.7.34.md` | Documentation / governance | Documentation | UNVERIFIED: purpose must be read from source before disposal/relocation | Keep pending review | May be referenced by guide/support | `d61a2ed0ad76` | Source review pending |
 | `docs/RESCUE-REVIEW.md` | Documentation / governance | Documentation | UNVERIFIED: purpose must be read from source before disposal/relocation | Keep pending review | May be referenced by guide/support | `a8b155c036ad` | Source review pending |
-| `installer/LaunchFlow.iss` | Distribution / update | Distribution | UNVERIFIED: purpose must be read from source before disposal/relocation | Keep pending review | Installer AppId, update trust/signing, file paths | `49dc1eb8587c` | Source review pending |
+| `installer/LaunchFlow.iss` | Distribution / update | Distribution | Per-user Inno install; silent-safe setup abort, nondestructive silent uninstall and same-session running-app denial | Keep existing owner; native acceptance pending | AppId, HKCU/path, safe vault retention, interactive purge consent, Inno compiler | `superseded after 97753bf` | Scoped source review; native behavior unverified |
 | `LaunchFlow/AboutWindow.xaml` | Presentation / WPF | Production candidate | UNVERIFIED: purpose must be read from source before disposal/relocation | Keep pending review | WPF element/handler linkage, localization | `53c1b7819644` | Source review pending |
 | `LaunchFlow/AboutWindow.xaml.cs` | Presentation / WPF | Production candidate | UNVERIFIED: purpose must be read from source before disposal/relocation | Keep pending review | WPF element/handler linkage, localization | `b50353fa064c` | Source review pending |
 | `LaunchFlow/app.manifest` | Cross-cutting / other | Production candidate | UNVERIFIED: purpose must be read from source before disposal/relocation | Keep pending review | Callers, compatibility and packaging | `86e74a10a904` | Source review pending |
@@ -249,3 +249,10 @@
 5. Prioritize deep review of `MainWindow.Credentials.cs`, `MainWindow.Execution.cs`, `MainWindow.xaml.cs`, `VaultDatabase.cs`, `AutomationEngine.Browser.cs` and their test-linked consumers before extraction.
 
 **M0 completion:** This is an accountable manifest with honest review status, **not** the completed file-by-file semantic review requested by the contract. See `architecture/overview.md` and `stabilization/status.md` for currently confirmed contract boundaries and open next steps.
+
+## Scoped deployment changes — 2026-11-04
+
+- `installer/LaunchFlow.iss`: existing install/uninstall entry point; no installer identity or location change; owners remain Inno Setup code/Windows installer team. Added silent error/preservation/active-process guards; acceptance requires native Windows tests.
+- `tests/installer/DeploymentContract.Tests.ps1`: new source-contract checks executed by `Parse.Tests.ps1`; static source semantics only, not native proof.
+- `docs/DEPLOYMENT-CONTRACT.md`: new generic per-user packaging handoff, no SSC-ICT internals or unsupported /ALLUSERS claims.
+- No application classes were moved or renamed in this slice; preserve A1/A3 priority and the existing lifecycle ownership analysis.

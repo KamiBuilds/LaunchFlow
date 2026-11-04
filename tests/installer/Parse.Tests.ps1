@@ -2,7 +2,7 @@
 param()
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
-$files = @('BUILD-INSTALLER.ps1', 'BUILD-UNIVERSAL-INSTALLER.ps1', 'BUILD-PACKAGING-HELPERS.ps1', 'tests/installer/Packaging.Tests.ps1', 'tests/installer/Builder.Tests.ps1', 'tests/installer/Workflow.Tests.ps1', 'tests/installer/Parse.Tests.ps1')
+$files = @('BUILD-INSTALLER.ps1', 'BUILD-UNIVERSAL-INSTALLER.ps1', 'BUILD-PACKAGING-HELPERS.ps1', 'tests/installer/Packaging.Tests.ps1', 'tests/installer/Builder.Tests.ps1', 'tests/installer/Workflow.Tests.ps1', 'tests/installer/Parse.Tests.ps1', 'tests/installer/DeploymentContract.Tests.ps1')
 foreach ($file in $files) {
     $tokens = $null
     $errors = $null
@@ -20,4 +20,5 @@ foreach ($script in (Get-LaunchFlowWorkflowScripts)) {
     $index++
     Write-Host "PASS parses Windows workflow script $index"
 }
+. (Join-Path $PSScriptRoot 'DeploymentContract.Tests.ps1')
 @{ files = $files.Count; workflow_scripts = $index; failed = 0 } | ConvertTo-Json -Compress
