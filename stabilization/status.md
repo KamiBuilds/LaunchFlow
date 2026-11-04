@@ -64,3 +64,9 @@ This status is intentionally conservative. It distinguishes what can be built an
 - Changed only `installer/LaunchFlow.iss` to suppress custom errors when Setup/Uninstall is silent, make unattended uninstall explicitly preserve the vault/backups, and refuse uninstall when the same-session app is still running. Retained AppId, per-user path, HKCU registry, and interactive informed data-removal choice.
 - Added source-contract checks in `tests/installer/DeploymentContract.Tests.ps1` to the existing Windows installer gate and a platform-neutral packaging handoff at `docs/DEPLOYMENT-CONTRACT.md`.
 - **Not yet accepted:** Windows native silent/upgrade/uninstall behavior, cross-session coordination, signature/policy trust. **Next critical code slice remains A1/AC27**, followed by A3/AC07. No claim of completed modular rewrite.
+
+## A1/AC27 implementation — source-linked, native acceptance open
+- Source-grounded pre-change issue: tray and ordinary exit call `Close()` ahead of `OnClosed async void` engine disposal; cleanup could extend beyond window destruction.
+- A single `ExitCompletionGate` and `MainWindow.Lifecycle.cs` defer normal closure until vault lock, browser closure, run/Teach drain, profile handling and engine disposal complete. The installer request delegates to the same operation; the existing dirty-editor save checks remain in the invoking surfaces.
+- Test additions: actual gate implementation tests and WPF source delegation checks; native Windows event timing, OS shutdown and installed user/session behavior remain unexecuted until a controlled Windows run.
+- Installer-request error notifications are nonmodal at this entry point, but nested save errors still require native unattended acceptance. A3/AC07 transactional credential+preference save remains open; login and Teach behavior are intentionally unchanged.

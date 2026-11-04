@@ -11,6 +11,8 @@
     <Compile Include="../../LaunchFlow/Services/WorkflowEditGuard.cs" Link="WorkflowEditGuard.cs" />
     <Compile Include="../../LaunchFlow/Services/ExitSafety.cs" Link="ExitSafety.cs" />
     <Compile Include="ExitSafetyTests.cs" />
+    <Compile Include="../../LaunchFlow/Services/ExitCompletionGate.cs" Link="ExitCompletionGate.cs" />
+    <Compile Include="ExitCompletionGateTests.cs" />
     <Compile Include="../../LaunchFlow/Services/CredentialDeleteGuard.cs" Link="CredentialDeleteGuard.cs" />
     <Compile Include="../../LaunchFlow/Services/ImportConfigurationProjection.cs" Link="ImportConfigurationProjection.cs" />
     <Compile Include="SafetyIntegrationTests.cs" />

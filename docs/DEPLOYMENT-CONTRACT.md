@@ -1,6 +1,6 @@
 # LaunchFlow — generic Windows deployment contract (candidate)
 
-This is a **platform-independent packaging input**, not an SSC-ICT-specific procedure or a claim of enterprise approval. Product version: **0.7.46**. The versioned, self-contained **offline** `LaunchFlow-Setup-v0.7.46-x64.exe` is the packaging endpoint. `LaunchFlow-Universal-Installer.exe` is an optional interactive download bootstrapper, **not** an approved headless deployment endpoint.
+This is a **platform-independent packaging input**, not an organization-specific procedure or a claim of enterprise approval. Product version: **0.7.46**. The versioned, self-contained **offline** `LaunchFlow-Setup-v0.7.46-x64.exe` is the packaging endpoint. `LaunchFlow-Universal-Installer.exe` is an optional interactive download bootstrapper, **not** an approved headless deployment endpoint.
 
 ## Supported scope and identity
 

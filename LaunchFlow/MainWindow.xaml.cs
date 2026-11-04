@@ -434,9 +434,7 @@ public partial class MainWindow : Window
     private void ExitFromTray()
     {
         if (_installerShutdownInProgress || _exiting || !TryCloseWithSavedChanges()) return;
-        _exiting = true;
-        UpdateRunButtons();
-        Close();
+        _ = CompleteOwnedExitAsync(installer: false);
     }
 
     internal void RequestCrashCleanup()
@@ -454,51 +452,29 @@ public partial class MainWindow : Window
         _installerProfileSealFailed = false;
         try
         {
-            // A modeless wizard or modal action editor can hold uncommitted data
-            // that has not reached the main window's dirty flag yet.
             if (HasPendingEditorDialog)
-                throw new InvalidOperationException(
-                    "Finish or cancel the open website editor or Teach recording before updating.");
-            // Do not allow the installer to replace running binaries until configuration,
-            // browser sessions and profile ownership have been handled by the application.
+                throw new InvalidOperationException("Finish or cancel the open editor or Teach recording before updating.");
             _unlockCancellation?.Cancel();
             _runCancellation?.Cancel();
             UpdateRunButtons();
-            // Do not turn an installer request into consent to discard edits.
-            // A clean, already-locked vault can exit; a dirty locked vault cannot.
             if (_hasUnsavedChanges && !VaultDatabase.Current.IsUnlocked)
-                throw new InvalidOperationException(
-                    "Unsaved changes cannot be preserved while the vault is locked. Unlock LaunchFlow and click Save before updating.");
+                throw new InvalidOperationException("Unlock LaunchFlow and save your edits before updating.");
             if (VaultDatabase.Current.IsUnlocked && !SaveAll())
-                throw new InvalidOperationException("Save your unsaved changes before upgrading.");
+                throw new InvalidOperationException("Save your unsaved edits before updating.");
             if (_hasUnsavedChanges)
-                throw new InvalidOperationException("Unsaved changes remain. Save them before updating.");
-            await SecureVaultLockAsync("Installer requested shutdown; vault locked before replacing application files.");
-            // Do not collapse unrelated conditions into one message: this used
-            // to tell users to Save even after a successful durable save when
-            // only browser/profile cleanup failed.
-            if (_hasUnsavedChanges)
-                throw new InvalidOperationException(
-                    "New unsaved changes appeared during shutdown. LaunchFlow remains open; unlock and save before retrying.");
-            if (_installerProfileSealFailed)
-                throw new InvalidOperationException(
-                    "Encrypted browser-profile sealing failed. LaunchFlow remains open and the original profile files are retained. Retry Lock vault before updating.");
-            if (_vaultCleanupFailed || _vaultLockInProgress)
-                throw new InvalidOperationException(
-                    "A browser session could not be closed safely. LaunchFlow is still open. Close the affected browser windows, then use Lock vault and retry Setup. Profiles were retained.");
-            _exiting = true;
-            UpdateRunButtons();
-            Close();
+                throw new InvalidOperationException("Unsaved changes remain; the update cannot replace running files.");
+            await CompleteOwnedExitAsync(installer: true);
         }
         catch (Exception ex)
         {
-            ShowFromTray();
-            MessageBox.Show(this, ex.Message,
-                "LaunchFlow update paused", MessageBoxButton.OK, MessageBoxImage.Warning);
+            AppendLog("Update exit refused: " + ex.GetType().Name);
+            NotifyTray("LaunchFlow update paused",
+                "Finish open editors, save changes or retry browser cleanup before updating.",
+                Forms.ToolTipIcon.Warning);
         }
         finally
         {
-            if (!_exiting)
+            if (!_exitDrain.Permitted)
             {
                 _installerShutdownInProgress = false;
                 UpdateRunButtons();
@@ -789,27 +765,31 @@ public partial class MainWindow : Window
 
     private void OnClosing(object sender, CancelEventArgs e)
     {
-        // Installer/tray explicit exits already passed the durability gate.
-        // A newly dirty editor must still cancel instead of silently closing.
-        if (_exiting)
+        // Explicit exits wait for an owned cleanup permit before WPF can close.
+        if (_exitDrain.Permitted)
         {
             if (_hasUnsavedChanges || HasPendingEditorDialog)
             {
                 e.Cancel = true;
+                _exitDrain.RevokePermit();
                 _exiting = false;
+                IsEnabled = true;
                 UpdateRunButtons();
                 ShowFromTray();
             }
             return;
         }
-        // Do not open modal windows once WPF has begun OS shutdown.
-        // A forced Windows termination remains a separate native acceptance gate.
+        // Forced Windows shutdown remains a separate native acceptance boundary.
         if (System.Windows.Application.Current.Dispatcher.HasShutdownStarted)
         {
             if (VaultDatabase.Current.IsUnlocked) SaveAll();
             return;
         }
-
+        if (_exiting)
+        {
+            e.Cancel = true;
+            return;
+        }
         var choice = new CloseChoiceWindow { Owner = this };
         choice.ShowDialog();
         if (choice.Choice == CloseChoice.Cancel)
@@ -817,9 +797,6 @@ public partial class MainWindow : Window
             e.Cancel = true;
             return;
         }
-
-        // Hiding the process preserves edits in memory; explicit exit must
-        // additionally pass the cold-storage durability gate.
         if (choice.Choice == CloseChoice.Background)
         {
             if (VaultDatabase.Current.IsUnlocked && !SaveAll())
@@ -829,17 +806,16 @@ public partial class MainWindow : Window
             }
             e.Cancel = true;
             Hide();
-            AppendLog("Running in the system tray. Reopen from its icon or the desktop shortcut; choose Exit in the tray menu to stop LaunchFlow.");
+            AppendLog("Running in the system tray. Use Exit in the tray menu to stop LaunchFlow.");
             return;
         }
-
-        // Exit completely only after the same durable-save gate as tray Exit.
         if (!TryCloseWithSavedChanges())
         {
             e.Cancel = true;
             return;
         }
-        _exiting = true;
+        e.Cancel = true;
+        Dispatcher.BeginInvoke(new Action(() => _ = CompleteOwnedExitAsync(installer: false)));
     }
 
     private IntPtr HotkeyHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -858,7 +834,7 @@ public partial class MainWindow : Window
         return IntPtr.Zero;
     }
 
-    private async void OnClosed(object sender, EventArgs e)
+    private void OnClosed(object sender, EventArgs e)
     {
         var handle = new WindowInteropHelper(this).Handle;
         if (handle != IntPtr.Zero) UnregisterHotKey(handle, HotkeyId);
@@ -866,22 +842,23 @@ public partial class MainWindow : Window
         SystemEvents.SessionSwitch -= HandleSessionSwitch;
         _passwordSessionTimer.Stop();
         _passwordSessionTimer.Tick -= PasswordSessionTimer_Tick;
-        ClearCredentialEditor();
+        _autoSaveTimer.Stop();
         _runCancellation?.Cancel();
         _unlockCancellation?.Cancel();
         _lockTimeoutCancellation?.Cancel();
         _lockTimeoutCancellation?.Dispose();
         _tray.Visible = false;
         _tray.Dispose();
-        try
+        if (_exitDrain.Permitted)
         {
-            await _vaultLockTask;
-            if (_activeRunTask is not null) await _activeRunTask;
-            if (_activeTeachTask is not null) await _activeTeachTask;
+            _runCancellation?.Dispose();
+            _unlockCancellation?.Dispose();
         }
-        catch { /* cancelled or failed during shutdown */ }
-        try { await _runner.DisposeAsync(); } catch { /* closed during shutdown */ }
-        _runCancellation?.Dispose();
-        _unlockCancellation?.Dispose();
+        else
+        {
+            // An unexpected/OS close has no orderly permit; cleanup is best effort.
+            try { VaultDatabase.Current.Lock(); } catch { }
+            _ = DisposeAfterUnexpectedCloseAsync();
+        }
     }
 }

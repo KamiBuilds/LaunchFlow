@@ -254,5 +254,11 @@
 
 - `installer/LaunchFlow.iss`: existing install/uninstall entry point; no installer identity or location change; owners remain Inno Setup code/Windows installer team. Added silent error/preservation/active-process guards; acceptance requires native Windows tests.
 - `tests/installer/DeploymentContract.Tests.ps1`: new source-contract checks executed by `Parse.Tests.ps1`; static source semantics only, not native proof.
-- `docs/DEPLOYMENT-CONTRACT.md`: new generic per-user packaging handoff, no SSC-ICT internals or unsupported /ALLUSERS claims.
+- `docs/DEPLOYMENT-CONTRACT.md`: new generic per-user packaging handoff, no organization internals or unsupported /ALLUSERS claims.
 - No application classes were moved or renamed in this slice; preserve A1/A3 priority and the existing lifecycle ownership analysis.
+
+## A1/AC27 coordinated exit ownership
+- `LaunchFlow/MainWindow.xaml.cs` remains WPF event entry points and tray menu; Closing now defers until the shared gate permits closure, and Closed only finalizes UI resources. Forced OS termination remains best-effort and is not a supported orderly-shutdown proof.
+- `LaunchFlow/MainWindow.Lifecycle.cs` (new) coordinates existing vault/session/profile cleanup, awaits engine disposal, and invokes WPF close only after permit. Both ordinary and installer exits call this operation. Failed cleanup keeps the window alive without deleting profile sources.
+- `LaunchFlow/Services/ExitCompletionGate.cs` (new) provides narrow async singleflight and typed permit state without WPF, credentials or browser I/O. Linked tests `tests/workspaces/ExitCompletionGateTests.cs` cover stalled/failed/cancelled/revoked cleanup.
+- `tests/workspaces/verify-exit-contract.py` (new) validates production WPF handler wiring. Existing workspace build/run consumers are updated. No data schema, installer AppId, workflow ID or namespace migration occurred.
