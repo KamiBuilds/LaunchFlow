@@ -209,21 +209,32 @@ public partial class MainWindow
     private async Task RepairLoginCoreAsync(WebsiteWorkflow? target = null)
     {
         var workflow = target ?? _selected;
-        if (_teachingInProgress || _vaultLockInProgress || _windowsLocked || _exiting ||
-            workflow is null || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow) ||
-            !SaveAll()) return;
+        if (_teachingInProgress || _runInProgress || _runner.IsRunning ||
+            _vaultLockInProgress || _windowsLocked || _exiting ||
+            workflow is null || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow)) return;
+
         var admittedConfiguration = _configuration;
         var admittedRevision = _workspaceRevision;
         var admittedVaultSession = VaultDatabase.Current.SessionGeneration;
         _teachingInProgress = true;
         UpdateRunButtons();
-        var operation = RunRepairOperationAsync(workflow, admittedConfiguration,
-            admittedRevision, admittedVaultSession);
-        _activeTeachTask = operation;
-        try { await operation; }
+        try
+        {
+            if (!SaveAll() || _runInProgress || _runner.IsRunning ||
+                !RecorderOwnerIsCurrent(workflow, admittedConfiguration, admittedRevision,
+                    admittedVaultSession)) return;
+
+            var operation = RunRepairOperationAsync(workflow, admittedConfiguration,
+                admittedRevision, admittedVaultSession);
+            _activeTeachTask = operation;
+            try { await operation; }
+            finally
+            {
+                if (ReferenceEquals(_activeTeachTask, operation)) _activeTeachTask = null;
+            }
+        }
         finally
         {
-            if (ReferenceEquals(_activeTeachTask, operation)) _activeTeachTask = null;
             _teachingInProgress = false;
             UpdateRunButtons();
         }
@@ -421,7 +432,8 @@ public partial class MainWindow
             return;
         }
 
-        if (!TeachAllowed(workflow)) return;
+        if (_runInProgress || _runner.IsRunning || _teachingInProgress ||
+            !TeachAllowed(workflow)) return;
         try { await RepairLoginCoreAsync(workflow); }
         catch (Exception ex)
         {
