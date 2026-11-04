@@ -26,10 +26,15 @@ public partial class MainWindow
                     ? "Installer requested safe shutdown."
                     : "User requested safe exit.");
 
-                if (_vaultLockInProgress || _vaultCleanupFailed || _profileSealFailed ||
-                    (installer && _installerProfileSealFailed))
+                if (installer && _installerProfileSealFailed)
                     throw new InvalidOperationException(
-                        "Browser or encrypted-profile cleanup failed. Original files are retained; retry Lock vault.");
+                        "Encrypted-profile sealing failed. The original files were retained; retry Lock vault.");
+                if (_profileSealFailed)
+                    throw new InvalidOperationException(
+                        "Browser profiles could not be sealed. The original files were retained.");
+                if (_vaultCleanupFailed || _vaultLockInProgress)
+                    throw new InvalidOperationException(
+                        "Browser session cleanup did not finish safely. Profiles are retained; retry Lock vault.");
                 if (_hasUnsavedChanges || HasPendingEditorDialog)
                     throw new InvalidOperationException(
                         "New unsaved changes appeared. Unlock and save them before exiting.");

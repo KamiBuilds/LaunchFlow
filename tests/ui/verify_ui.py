@@ -316,11 +316,16 @@ check('ExitSafety.TryPersistForExit(' in source and
       'MarkUnsavedChanges();\n        AppendLog("Workflow duplicated' in source and
       '_store.SaveDurable(_configuration);\n            ClearCredentialEditor();' in source,
       "explicit tray/window exits refuse dirty locked saves, credential preference writes are durable and duplicates become dirty")
+lifecycle_source = (root / "LaunchFlow/MainWindow.Lifecycle.cs").read_text(encoding="utf-8")
 check('if (_hasUnsavedChanges && !VaultDatabase.Current.IsUnlocked)' in source and
-      'if (_vaultCleanupFailed || _vaultLockInProgress)' in source and
-      'if (_installerProfileSealFailed)' in source and
-      'Unlock LaunchFlow and click Save before updating.' in source and
-      'if (VaultDatabase.Current.IsUnlocked && !SaveAll())' in source,
+      'if (_vaultCleanupFailed || _vaultLockInProgress)' in lifecycle_source and
+      'if (installer && _installerProfileSealFailed)' in lifecycle_source and
+      'if (_profileSealFailed)' in lifecycle_source and
+      'Encrypted-profile sealing failed.' in lifecycle_source and
+      'Browser session cleanup did not finish safely.' in lifecycle_source and
+      'Unlock LaunchFlow and save your edits before updating.' in source and
+      'if (VaultDatabase.Current.IsUnlocked && !SaveAll())' in source and
+      'await CompleteOwnedExitAsync(installer: true)' in source,
       "installer refuses dirty locked-vault edits and distinguishes browser/profile cleanup failures")
 check('IsCurrentStepEditorOwner(WebsiteWorkflow workflow, long revision)' in source and
       'WorkflowEditGuard.IsCurrent(_configuration, _selected, workflow, current,' in source and
