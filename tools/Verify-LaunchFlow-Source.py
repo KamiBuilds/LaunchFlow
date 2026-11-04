@@ -119,8 +119,12 @@ check(not (root/'LaunchFlow/Services/VaultBackupService.cs').exists(),
 check('if (_installerShutdownInProgress)' in main_code and
       'await _runner.CloseSessionsAsync();' in main_code and
       'var wasLoading = _loadingEditor;' in main_code and
-      'A browser session could not be closed safely' in main_code,
-      'installer exit distinguishes dirty edits from cleanup failure and retries transient close errors')
+      'await CompleteOwnedExitAsync(installer: true)' in main_code and
+      'if (_vaultCleanupFailed || _vaultLockInProgress)' in main_code and
+      'if (installer && _installerProfileSealFailed)' in main_code and
+      'Browser session cleanup did not finish safely.' in main_code and
+      'Encrypted-profile sealing failed.' in main_code,
+      'installer exit retains dirty-edit, browser-close retry and profile-seal failure boundaries')
 check('VerifiedRedirectAsync' in auto and
       'ObserveLoginCompletionAsync' in auto and
       'LoginHealth.VerifiedRedirectAsync' in auto,
