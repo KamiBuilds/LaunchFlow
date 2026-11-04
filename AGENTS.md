@@ -1,6 +1,6 @@
 # LaunchFlow rescue contract
 
-LaunchFlow is the user's active engineering priority. Work on `hermes`, based on the user's latest `chatgpt` snapshot (`0df5185`, v0.7.19), not on `chatgpt` or `main`. Earlier rescue work from `feature/kiss-rule-sol` (`5645305`) remains isolated in sibling worktrees and may be integrated only after compatibility review. Preserve original product identity and licensing; do not invent a license or new product.
+LaunchFlow is the user's active engineering priority. The user-approved surviving working branch is `validated/v0.7.46-three-checks-20261103`; `main` is deliberately untouched. The previous `hermes`, `chatgpt`, `both` and other historical branches were removed in the authorized cleanup after Git history and branch refs were archived in [run 41685214053](https://github.com/KamiBuilds/LaunchFlow/actions/runs/41685214053). Do not assume those refs still exist or silently restore or merge them. Preserve product identity, existing installer AppId, encrypted data locations/formats, workflow IDs and licensing; do not invent a license or a new product.
 
 ## Acceptance gates
 
@@ -16,6 +16,6 @@ LaunchFlow is the user's active engineering priority. Work on `hermes`, based on
 
 ## Continuity
 
-Main checkout: `/root/projects/LaunchFlow-rescue`. Pre-change backup: `/root/projects/LaunchFlow-before-rescue.bundle`. Disposable development .NET SDK: `/root/.cache/launchflow/dotnet/dotnet`. Small RED/GREEN/build evidence: `/root/projects/launchflow-evidence`.
+The authoritative remote development baseline is the validated branch above. A previously documented rescue machine used `/root/projects/LaunchFlow-rescue` and `/root/projects/launchflow-evidence`; those are historical paths, **not** assumed present in current tooling. Current architecture, inventory and acceptance ownership are tracked in `architecture/` and `stabilization/`; all CI claims must be tied to an exact commit/tree and GitHub run.
 
 Other project automation is intentionally paused by the user's exclusive-focus instruction. Do not resume it until the user changes that instruction. Keep existing servers/services running. Project focus state and paused IDs are recorded outside the public repo at `/root/projects/launchflow-evidence/focus-state.json`.
