@@ -365,17 +365,26 @@ Test("recovery inspection recognizes complete encrypted vault without decryption
         "Inspection broke normal cold unlock");
     cold.Lock();
 });
-void CreateLegacyFixture(string path, bool singleBlob)
+void CreateLegacyFixture(string path, bool singleBlob, int credentialCount = 1)
 {
     var config = new Configuration { UiLanguage = "en", Workflows = new()
     {
         new WebsiteWorkflow { Id = Guid.Parse("11111111-1111-4111-8111-111111111111"),
             Name = "Original A", StartUrl = "https://a.example.invalid", Enabled = true }
     } };
-    var secrets = new Dictionary<Guid, SiteCredential>
+    var secrets = new Dictionary<Guid, SiteCredential>();
+    if (credentialCount > 0) secrets[config.Workflows[0].Id] = VaultFixture.ACredential;
+    if (credentialCount > 1)
     {
-        [config.Workflows[0].Id] = VaultFixture.ACredential
-    };
+        var another = new WebsiteWorkflow {
+            Id = Guid.Parse("22222222-2222-4222-8222-222222222222"),
+            Name = "Original B", StartUrl = "https://b.example.invalid", Enabled = true
+        };
+        config.Workflows.Add(another);
+        secrets[another.Id] = VaultFixture.BCredential;
+    }
+    if (credentialCount < 0 || credentialCount > 2)
+        throw new ArgumentOutOfRangeException(nameof(credentialCount));
     var type = typeof(VaultDatabase);
     var derive = type.GetMethod("DeriveKey", System.Reflection.BindingFlags.NonPublic |
         System.Reflection.BindingFlags.Static) ?? throw new Exception("Missing legacy derivation");
@@ -625,6 +634,101 @@ Test("consented upgrade retains v1 and v2 credentials, disables auto-run and kee
             Directory.Delete(root, true);
         }
     }
+});
+Test("legacy upgrade preserves zero and multiple credentials for both historical layouts", () =>
+{
+    foreach (var blob in new[] { true, false })
+    foreach (var count in new[] { 0, 2 })
+    {
+        var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+            "launchflow-count-upgrade-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var path = System.IO.Path.Combine(root, "legacy.db");
+        try
+        {
+            CreateLegacyFixture(path, blob, count);
+            var vault = new VaultDatabase(path);
+            var backup = vault.UpgradeLegacyVault(OldMaster);
+            Require(File.Exists(backup) && vault.IsUnlocked,
+                "Legacy zero/multiple upgrade did not complete with a recovery copy");
+            vault.Lock();
+            var cold = new VaultDatabase(path);
+            Require(cold.Unlock(OldMaster), "Converted vault did not cold-open");
+            var config = cold.LoadConfiguration();
+            Require(config.Workflows.Count == (count == 2 ? 2 : 1) &&
+                config.Workflows.All(w => !w.Enabled),
+                "Migrated workflow state or disabled execution did not persist");
+            var idA = Guid.Parse("11111111-1111-4111-8111-111111111111");
+            var idB = Guid.Parse("22222222-2222-4222-8222-222222222222");
+            Require(cold.ReadCredential(idA) ==
+                (count == 0 ? null : VaultFixture.ACredential) &&
+                cold.ReadCredential(idB) ==
+                (count == 2 ? VaultFixture.BCredential : null),
+                "Legacy credential count or workflow binding changed");
+            cold.Lock();
+        }
+        finally { SqliteConnection.ClearAllPools(); Directory.Delete(root, true); }
+    }
+});
+Test("legacy WAL-active backup includes committed WAL state", () =>
+{
+    var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+        "launchflow-wal-upgrade-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    var path = System.IO.Path.Combine(root, "legacy.db");
+    try
+    {
+        CreateLegacyFixture(path, singleBlob: false);
+        using (var keeper = new SqliteConnection("Data Source=" + path))
+        {
+            keeper.Open();
+            using (var pragma = keeper.CreateCommand())
+            {
+                pragma.CommandText = "PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0;";
+                pragma.ExecuteNonQuery();
+            }
+            using (var writer = keeper.CreateCommand())
+            {
+                writer.CommandText = "CREATE TABLE wal_proof(value TEXT);" +
+                    "INSERT INTO wal_proof(value) VALUES('committed-wal-marker');";
+                writer.ExecuteNonQuery();
+            }
+            Require(File.Exists(path + "-wal"), "Fixture did not retain a live WAL file");
+            var vault = new VaultDatabase(path);
+            var backup = vault.UpgradeLegacyVault(OldMaster);
+            vault.Lock();
+            using var restored = new SqliteConnection("Data Source=" + backup);
+            restored.Open();
+            using var read = restored.CreateCommand();
+            read.CommandText = "SELECT value FROM wal_proof LIMIT 1;";
+            Require((string?)read.ExecuteScalar() == "committed-wal-marker",
+                "Verified backup did not include committed data in active WAL");
+        }
+    }
+    finally { SqliteConnection.ClearAllPools(); Directory.Delete(root, true); }
+});
+Test("failed recovery destination creation leaves legacy vault and bytes unchanged", () =>
+{
+    var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+        "launchflow-backup-refusal-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    var path = System.IO.Path.Combine(root, "legacy.db");
+    try
+    {
+        CreateLegacyFixture(path, singleBlob: false);
+        var prior = ReadDatabaseBytes(path);
+        File.WriteAllText(System.IO.Path.Combine(root, "recovery"),
+            "synthetic-blocker-prevents-directory-creation");
+        var vault = new VaultDatabase(path);
+        bool refused = false;
+        try { vault.UpgradeLegacyVault(OldMaster); }
+        catch (IOException) { refused = true; }
+        Require(refused && !vault.IsUnlocked &&
+            vault.InspectStorage() == VaultStorageState.LegacyUpgradeRequired &&
+            ReadDatabaseBytes(path).SequenceEqual(prior),
+            "Failed recovery-copy preparation unexpectedly changed the legacy vault");
+    }
+    finally { SqliteConnection.ClearAllPools(); Directory.Delete(root, true); }
 });
 Console.WriteLine($"STORAGE_INTEGRITY_SUMMARY passed={total - failures} failed={failures}");
 return failures == 0 ? 0 : 1;
