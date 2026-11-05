@@ -147,6 +147,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows setup compilation failed' }
           $setup = Join-Path $PWD "dist/LaunchFlow-Setup-v$env:LF_VERSION-x64.exe"
           if (-not (Test-Path -LiteralPath $setup -PathType Leaf)) { throw "Expected setup not found: $setup" }
+      - name: Exercise actual Windows silent installation and safe removal
+        shell: pwsh
+        run: |
+          ./tests/native/InstallerSmoke.Tests.ps1 -SetupPath "dist/LaunchFlow-Setup-v$env:LF_VERSION-x64.exe" -Version $env:LF_VERSION
+          if ($LASTEXITCODE -ne 0) { throw 'Native silent installer smoke failed' }
       - name: Build self-contained universal installer
         shell: pwsh
         run: |
