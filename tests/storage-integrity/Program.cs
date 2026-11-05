@@ -131,6 +131,51 @@ Test("S2 successful rotation revokes old credentials and old session", () =>
     catch (InvalidOperationException) { rejected = true; }
     Require(rejected, "stale session accepted a write on the original vault instance");
 });
+Test("A3 second statement rejection rolls credentials and settings back together", () =>
+{
+    using var f = new VaultFixture();
+    var original = f.Vault.LoadConfiguration();
+    var initial = original.Workflows.Single(w => w.Id == f.A).AutoLogin;
+    var candidate = f.Vault.LoadConfiguration();
+    candidate.Workflows.Single(w => w.Id == f.A).AutoLogin = !initial;
+    Sql(f.Path, "CREATE TRIGGER reject_combined_config BEFORE UPDATE ON objects WHEN NEW.id='config' " +
+        "BEGIN SELECT RAISE(ABORT,'synthetic-config-rejection'); END;");
+    bool rejected = false;
+    try { f.Vault.SaveCredentialAndConfiguration(f.A,
+        new SiteCredential("replacement@example.invalid", "synthetic-rejected-password"),
+        candidate, f.Vault.SessionGeneration); }
+    catch (SqliteException) { rejected = true; }
+    Require(rejected && f.Vault.ReadCredential(f.A) == VaultFixture.ACredential &&
+        f.Vault.LoadConfiguration().Workflows.Single(w => w.Id == f.A).AutoLogin == initial,
+        "A3 failure changed live credential or settings");
+    f.Vault.Lock();
+    using var cold = new ColdVault(f.Path);
+    Require(cold.Vault.Unlock(OldMaster) && cold.Vault.ReadCredential(f.A) == VaultFixture.ACredential &&
+        cold.Vault.LoadConfiguration().Workflows.Single(w => w.Id == f.A).AutoLogin == initial,
+        "A3 failure changed durable credential or settings");
+});
+Test("A3 valid combined save publishes both parts and rejects stale generation", () =>
+{
+    using var f = new VaultFixture();
+    var candidate = f.Vault.LoadConfiguration();
+    var site = candidate.Workflows.Single(w => w.Id == f.A);
+    site.KeepassEntryPath = "synthetic-entry";
+    site.AutoLogin = !site.AutoLogin;
+    var replacement = new SiteCredential("replacement@example.invalid", "synthetic-replacement");
+    var oldSession = f.Vault.SessionGeneration;
+    f.Vault.SaveCredentialAndConfiguration(f.A, replacement, candidate, oldSession);
+    f.Vault.Lock();
+    using var cold = new ColdVault(f.Path);
+    Require(cold.Vault.Unlock(OldMaster), "A3 cold unlock failed");
+    Require(cold.Vault.ReadCredential(f.A) == replacement &&
+        cold.Vault.ReadCredential(f.B) == VaultFixture.BCredential &&
+        cold.Vault.LoadConfiguration().Workflows.Single(w => w.Id == f.A).KeepassEntryPath == "synthetic-entry",
+        "A3 cold combined update did not preserve its parts");
+    bool refused = false;
+    try { f.Vault.SaveCredentialAndConfiguration(f.A, replacement, candidate, oldSession); }
+    catch (InvalidOperationException) { refused = true; }
+    Require(refused, "A3 stale vault session accepted another write");
+});
 Console.WriteLine($"STORAGE_INTEGRITY_SUMMARY passed={total - failures} failed={failures}");
 return failures == 0 ? 0 : 1;
 

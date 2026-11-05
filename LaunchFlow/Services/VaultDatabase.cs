@@ -262,6 +262,34 @@ public sealed class VaultDatabase
         }
     }
 
+    public void SaveCredentialAndConfiguration(Guid id, SiteCredential credential,
+        Configuration configuration, long expectedSession)
+    {
+        ArgumentNullException.ThrowIfNull(credential);
+        ArgumentNullException.ThrowIfNull(configuration);
+        if (id == Guid.Empty || configuration.Workflows.Count(w => w.Id == id) != 1)
+            throw new InvalidOperationException("The selected workflow is not uniquely present.");
+
+        lock (_gate)
+        {
+            EnterprisePolicy.Current.RequireCredentialStorage();
+            if (_key is null || _sessionGeneration != expectedSession)
+                throw new InvalidOperationException("Vault authorization changed before saving credentials.");
+
+            var candidateConfig = CloneConfig(configuration);
+            var candidateSecrets = CloneSecrets(LoadSecretsUnlocked());
+            candidateSecrets[id] = credential;
+
+            using var connection = OpenConnection();
+            using var transaction = connection.BeginTransaction();
+            PersistCredentials(connection, candidateSecrets);
+            WriteSealed(connection, "config", Serialize(candidateConfig));
+            transaction.Commit();
+            _configCache = candidateConfig;
+            _secretsCache = candidateSecrets;
+        }
+    }
+
     public void DeleteCredential(Guid id)
     {
         lock (_gate)

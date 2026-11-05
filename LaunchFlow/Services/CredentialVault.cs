@@ -61,6 +61,10 @@ public sealed class CredentialVault
         VaultDatabase.Current.SaveCredential(workflowId, credential);
     }
 
+    public void SaveWithConfiguration(Guid workflowId, SiteCredential credential,
+        Configuration configuration, long expectedSession) =>
+        VaultDatabase.Current.SaveCredentialAndConfiguration(workflowId, credential, configuration, expectedSession);
+
     public void Delete(Guid workflowId)
     {
         if (!VaultDatabase.Current.IsUnlocked) return;

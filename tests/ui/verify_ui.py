@@ -314,7 +314,9 @@ check('ExitSafety.TryPersistForExit(' in source and
       'if (!TryCloseWithSavedChanges())' in source and
       'if (_hasUnsavedChanges)' in source and
       'MarkUnsavedChanges();\n        AppendLog("Workflow duplicated' in source and
-      '_store.SaveDurable(_configuration);\n            ClearCredentialEditor();' in source,
+      '_vault.SaveWithConfiguration(workflow.Id, new SiteCredential(username, password),' in source and
+      '_store.NoteCommittedExternally();' in source and
+      'candidateConfig.Workflows[index].AutoLogin = autoLogin;' in source,
       "explicit tray/window exits refuse dirty locked saves, credential preference writes are durable and duplicates become dirty")
 lifecycle_source = (root / "LaunchFlow/MainWindow.Lifecycle.cs").read_text(encoding="utf-8")
 check('if (_hasUnsavedChanges && !VaultDatabase.Current.IsUnlocked)' in source and

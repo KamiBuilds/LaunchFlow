@@ -930,6 +930,12 @@ namespace LaunchFlow.Services
         public bool HasCredential(Guid id) => Credentials.ContainsKey(id);
         public SiteCredential? ReadCredential(Guid id) => Credentials.GetValueOrDefault(id);
         public void SaveCredential(Guid id, SiteCredential credential) { EnterprisePolicy.Current.RequireCredentialStorage(); Credentials[id] = credential; }
+        public void SaveCredentialAndConfiguration(Guid id, SiteCredential credential, Configuration config, long session)
+        {
+            if (!IsUnlocked || SessionGeneration != session || !config.Workflows.Any(w => w.Id == id))
+                throw new InvalidOperationException("Synthetic vault ownership changed.");
+            SaveCredential(id, credential);
+        }
         public void DeleteCredential(Guid id) => Credentials.Remove(id);
         public Dictionary<Guid, SiteCredential> ExportCredentials() => new(Credentials);
         public Configuration LoadConfiguration() => new();
@@ -946,6 +952,7 @@ namespace LaunchFlow.Services
         public int DurableSaves;
         public void Save(Configuration configuration) { if (!VaultDatabase.Current.IsUnlocked) throw new Exception("fixture vault locked"); Saves++; }
         public void SaveDurable(Configuration configuration) { Save(configuration); DurableSaves++; }
+        public void NoteCommittedExternally() { DurableSaves++; }
         public void SaveDurable(Configuration configuration, long expectedSession)
         {
             if (!VaultDatabase.Current.IsUnlocked ||

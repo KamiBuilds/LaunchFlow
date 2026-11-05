@@ -88,9 +88,13 @@ public partial class MainWindow
                 "Credentials unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
+        var workflow = _selected;
+        var ownedConfig = _configuration;
+        var ownedRevision = _workspaceRevision;
+        var ownedVaultSession = VaultDatabase.Current.SessionGeneration;
         try
         {
-            var existing = _vault.Read(_selected.Id);
+            var existing = _vault.Read(workflow.Id);
             // Only explicitly entered, nonempty values overwrite what is already saved.
             // Saved identities are never reloaded into the editor or exposed on screen.
             var newUsername = UsernameBox.Text.Trim();
@@ -107,18 +111,41 @@ public partial class MainWindow
                 return;
             }
 
-            _vault.Save(_selected.Id, new SiteCredential(username, password));
-            // Login preference is not a secret; persist it with workflow settings.
-            _selected.AutoLogin = AutoLoginCheck.IsChecked == true;
-            _selected.KeepassEntryPath = KeepassEntryBox.Text.Trim();
-            // Credential writes must never report success for a transient,
-            // locked-vault configuration fallback.
-            _store.SaveDurable(_configuration);
+            var index = ownedConfig.Workflows.FindIndex(w => ReferenceEquals(w, workflow));
+            if (index < 0) throw new InvalidOperationException("The selected workflow changed.");
+            var candidateConfig = System.Text.Json.JsonSerializer.Deserialize<Configuration>(
+                System.Text.Json.JsonSerializer.Serialize(ownedConfig))
+                ?? throw new InvalidOperationException("Unable to prepare the configuration snapshot.");
+            if (candidateConfig.Workflows[index].Id != workflow.Id)
+                throw new InvalidOperationException("The selected workflow changed.");
+            var autoLogin = AutoLoginCheck.IsChecked == true;
+            var keepassPath = KeepassEntryBox.Text.Trim();
+            candidateConfig.Workflows[index].AutoLogin = autoLogin;
+            candidateConfig.Workflows[index].KeepassEntryPath = keepassPath;
+            if (!ReferenceEquals(_configuration, ownedConfig) || !ReferenceEquals(_selected, workflow) ||
+                !ReferenceEquals(PasswordWebsiteCombo.SelectedItem, workflow) ||
+                ownedRevision != _workspaceRevision ||
+                !VaultDatabase.Current.IsUnlocked ||
+                ownedVaultSession != VaultDatabase.Current.SessionGeneration ||
+                _windowsLocked || _vaultLockInProgress || _exiting || !CredentialReadAllowed())
+                throw new InvalidOperationException("The workflow or vault changed. Reopen the editor and retry.");
+
+            _vault.SaveWithConfiguration(workflow.Id, new SiteCredential(username, password),
+                candidateConfig, ownedVaultSession);
+            _store.NoteCommittedExternally();
+            if (!ReferenceEquals(_configuration, ownedConfig) || !ReferenceEquals(_selected, workflow) ||
+                ownedRevision != _workspaceRevision)
+            {
+                AppendLog("Credential update committed, but website ownership changed before the editor refreshed.");
+                return;
+            }
+            workflow.AutoLogin = autoLogin;
+            workflow.KeepassEntryPath = keepassPath;
             ClearCredentialEditor();
-            _loadedCredentialWorkflowId = _selected.Id;
+            _loadedCredentialWorkflowId = workflow.Id;
             CredentialStatus.Text = "Encrypted credentials saved";
-            AppendLog($"Credentials securely updated for workflow '{_selected.Name}'.");
-            MessageBox.Show(this, $"Credentials for '{_selected.Name}' saved in the encrypted vault. " +
+            AppendLog($"Credentials securely updated for workflow '{workflow.Name}'.");
+            MessageBox.Show(this, $"Credentials for '{workflow.Name}' saved in the encrypted vault. " +
                 "Other websites and the master password were not changed.",
                 "Credentials saved", MessageBoxButton.OK, MessageBoxImage.Information);
         }

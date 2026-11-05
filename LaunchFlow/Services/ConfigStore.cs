@@ -69,6 +69,8 @@ public sealed class ConfigStore
         _temp = null;
     }
 
+    public void NoteCommittedExternally() => _temp = null;
+
     private static Configuration Clone(Configuration source) =>
         JsonSerializer.Deserialize<Configuration>(
             JsonSerializer.Serialize(source, JsonOptions), JsonOptions)!;
