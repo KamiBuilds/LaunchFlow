@@ -53,7 +53,7 @@ void Preserved(VaultFixture f)
 Test("S1 rejected first insert preserves existing credentials and cache", () =>
 {
     using var f = new VaultFixture();
-    Sql(f.Path, "CREATE TRIGGER reject_first BEFORE INSERT ON credentials WHEN NEW.workflow_id='" +
+    Sql(f.Path, "CREATE TRIGGER reject_first BEFORE INSERT ON secure_credentials WHEN NEW.workflow_id='" +
         f.A.ToString("N") + "' BEGIN SELECT RAISE(ABORT,'synthetic-rejection'); END;");
     var rejected = false;
     var target = Guid.NewGuid();
@@ -65,7 +65,7 @@ Test("S1 rejected first insert preserves existing credentials and cache", () =>
 Test("S1 rejected later insert rolls back every rewrite", () =>
 {
     using var f = new VaultFixture();
-    Sql(f.Path, "CREATE TRIGGER reject_later BEFORE INSERT ON credentials WHEN NEW.workflow_id='" +
+    Sql(f.Path, "CREATE TRIGGER reject_later BEFORE INSERT ON secure_credentials WHEN NEW.workflow_id='" +
         f.B.ToString("N") + "' BEGIN SELECT RAISE(ABORT,'synthetic-rejection'); END;");
     bool rejected = false;
     try { f.Vault.SaveCredential(Guid.NewGuid(), new("late@example.invalid", "synthetic-secret")); }
@@ -76,7 +76,7 @@ Test("S1 rejected later insert rolls back every rewrite", () =>
 Test("S1 rejected delete restores target and unrelated credentials", () =>
 {
     using var f = new VaultFixture();
-    Sql(f.Path, "CREATE TRIGGER reject_delete_rewrite BEFORE INSERT ON credentials WHEN NEW.workflow_id='" +
+    Sql(f.Path, "CREATE TRIGGER reject_delete_rewrite BEFORE INSERT ON secure_credentials WHEN NEW.workflow_id='" +
         f.B.ToString("N") + "' BEGIN SELECT RAISE(ABORT,'synthetic-rejection'); END;");
     bool rejected = false;
     try { f.Vault.DeleteCredential(f.A); }
@@ -101,7 +101,7 @@ Test("S1 successful update and delete are durable and identity-specific", () =>
 Test("S2 failed rotation cannot create a mixed-key later write", () =>
 {
     using var f = new VaultFixture();
-    Sql(f.Path, "CREATE TRIGGER reject_rekey BEFORE UPDATE ON objects WHEN NEW.id='config' " +
+    Sql(f.Path, "CREATE TRIGGER reject_rekey BEFORE UPDATE ON secure_objects WHEN NEW.id='config' " +
         "BEGIN SELECT RAISE(ABORT,'synthetic-rekey-rejection'); END;");
     bool rejected = false;
     try { f.Vault.ChangeMasterPassword(OldMaster, NewMaster); }
@@ -150,7 +150,7 @@ Test("A3 second statement rejection rolls credentials and settings back together
     var initial = original.Workflows.Single(w => w.Id == f.A).AutoLogin;
     var candidate = f.Vault.LoadConfiguration();
     candidate.Workflows.Single(w => w.Id == f.A).AutoLogin = !initial;
-    Sql(f.Path, "CREATE TRIGGER reject_combined_config BEFORE UPDATE ON objects WHEN NEW.id='config' " +
+    Sql(f.Path, "CREATE TRIGGER reject_combined_config BEFORE UPDATE ON secure_objects WHEN NEW.id='config' " +
         "BEGIN SELECT RAISE(ABORT,'synthetic-config-rejection'); END;");
     bool rejected = false;
     try { f.Vault.SaveCredentialAndConfiguration(f.A,
@@ -193,7 +193,7 @@ Test("A3 valid combined save publishes both parts and rejects stale generation",
     using var connection = new SqliteConnection("Data Source=" + path);
     connection.Open();
     using var cmd = connection.CreateCommand();
-    cmd.CommandText = "SELECT salt,argon_memory_kb,argon_iterations,argon_lanes FROM vault_meta WHERE id=1";
+    cmd.CommandText = "SELECT salt,argon_memory_kb,argon_iterations,argon_lanes FROM secure_meta WHERE id=1";
     using var reader = cmd.ExecuteReader();
     if (!reader.Read()) throw new Exception("Vault key-derivation metadata was missing");
     return ((byte[])reader[0], reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3));
@@ -326,18 +326,18 @@ Test("initialization failure cannot publish a live or cold authorized vault", ()
         Directory.Delete(root, recursive: true);
     }
 });
-Test("failed legacy credential migration does not publish an unlocked session", () =>
+Test("corrupted strict credential blocks cold unlock and session publication", () =>
 {
     using var f = new VaultFixture();
     f.Vault.Lock();
-    Sql(f.Path, "DELETE FROM credentials; " +
-        "INSERT OR REPLACE INTO objects(id,sealed) VALUES('credentials',X'000102030405060708090a0b0c0d0e0f');");
+    Sql(f.Path, "UPDATE secure_credentials SET sealed=X'000102030405060708090a0b0c0d0e0f' " +
+        "WHERE workflow_id='" + f.A.ToString("N") + "';");
     var cold = new VaultDatabase(f.Path);
     var previousGeneration = cold.SessionGeneration;
     var admitted = cold.Unlock(OldMaster);
     Require(!admitted && !cold.IsUnlocked &&
         cold.SessionGeneration == previousGeneration,
-        "failed legacy migration published a new vault authorization");
+        "Tampered v3 credentials authorized a vault session");
     cold.Lock();
 });
 Test("recovery inspection distinguishes an absent file without creating storage", () =>
@@ -365,19 +365,88 @@ Test("recovery inspection recognizes complete encrypted vault without decryption
         "Inspection broke normal cold unlock");
     cold.Lock();
 });
-Test("recovery inspection recognizes a schema-v1 vault without rewriting metadata", () =>
+void CreateLegacyFixture(string path, bool singleBlob)
 {
-    using var f = new VaultFixture();
-    f.Vault.Lock();
-    Sql(f.Path, "UPDATE vault_meta SET schema_version=1 WHERE id=1;");
-    Require(f.Vault.InspectStorage() == VaultStorageState.PresentNeedsAuthentication,
-        "Supported v1 metadata was incorrectly rejected");
-    using var reader = new SqliteConnection("Data Source=" + f.Path);
-    reader.Open();
-    using var cmd = reader.CreateCommand();
-    cmd.CommandText = "SELECT schema_version FROM vault_meta WHERE id=1;";
-    Require(Convert.ToInt64(cmd.ExecuteScalar()) == 1L,
-        "Read-only inspection rewrote the legacy schema version");
+    var config = new Configuration { UiLanguage = "en", Workflows = new()
+    {
+        new WebsiteWorkflow { Id = Guid.Parse("11111111-1111-4111-8111-111111111111"),
+            Name = "Original A", StartUrl = "https://a.example.invalid", Enabled = true }
+    } };
+    var secrets = new Dictionary<Guid, SiteCredential>
+    {
+        [config.Workflows[0].Id] = VaultFixture.ACredential
+    };
+    var type = typeof(VaultDatabase);
+    var derive = type.GetMethod("DeriveKey", System.Reflection.BindingFlags.NonPublic |
+        System.Reflection.BindingFlags.Static) ?? throw new Exception("Missing legacy derivation");
+    var seal = type.GetMethod("Encrypt", System.Reflection.BindingFlags.NonPublic |
+        System.Reflection.BindingFlags.Static) ?? throw new Exception("Missing legacy codec");
+    var salt = System.Security.Cryptography.RandomNumberGenerator.GetBytes(16);
+    var key = (byte[])derive.Invoke(null, new object[] { OldMaster, salt, 128 * 1024, 4, 2 })!;
+    byte[] LegacySeal(byte[] plain) => (byte[])seal.Invoke(null, new object[] { plain, key })!;
+    try
+    {
+        using var connection = new SqliteConnection("Data Source=" + path); connection.Open();
+        using var schema = connection.CreateCommand();
+        schema.CommandText =
+            "CREATE TABLE vault_meta (id INTEGER PRIMARY KEY,salt BLOB,verifier BLOB," +
+            "argon_memory_kb INTEGER,argon_iterations INTEGER,argon_lanes INTEGER,schema_version INTEGER);" +
+            "CREATE TABLE objects(id TEXT PRIMARY KEY,sealed BLOB NOT NULL);" +
+            (singleBlob ? "" : "CREATE TABLE credentials(workflow_id TEXT PRIMARY KEY,sealed BLOB NOT NULL);");
+        schema.ExecuteNonQuery();
+        using var meta = connection.CreateCommand();
+        meta.CommandText = "INSERT INTO vault_meta VALUES(1,$salt,$v,131072,4,2,$version);";
+        meta.Parameters.AddWithValue("$salt", salt);
+        meta.Parameters.AddWithValue("$v", LegacySeal(System.Text.Encoding.UTF8.GetBytes("LaunchFlow.Vault.v1")));
+        meta.Parameters.AddWithValue("$version", singleBlob ? 1 : 2);
+        meta.ExecuteNonQuery();
+        using var c = connection.CreateCommand();
+        c.CommandText = "INSERT INTO objects VALUES('config',$s);";
+        c.Parameters.AddWithValue("$s", LegacySeal(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(config)));
+        c.ExecuteNonQuery();
+        if (singleBlob)
+        {
+            using var b = connection.CreateCommand();
+            b.CommandText = "INSERT INTO objects VALUES('credentials',$s);";
+            b.Parameters.AddWithValue("$s", LegacySeal(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(secrets)));
+            b.ExecuteNonQuery();
+        }
+        else
+        {
+            foreach (var pair in secrets)
+            {
+                using var row = connection.CreateCommand();
+                row.CommandText = "INSERT INTO credentials VALUES($id,$s);";
+                row.Parameters.AddWithValue("$id", pair.Key.ToString("N"));
+                row.Parameters.AddWithValue("$s", LegacySeal(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(pair.Value)));
+                row.ExecuteNonQuery();
+            }
+        }
+    }
+    finally { System.Security.Cryptography.CryptographicOperations.ZeroMemory(key); }
+}
+
+Test("recovery inspection recognizes a legacy v1 vault without altering metadata", () =>
+{
+    var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+        "launchflow-legacy-v1-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    var path = System.IO.Path.Combine(root, "legacy.db");
+    try
+    {
+        CreateLegacyFixture(path, singleBlob: true);
+        var before = ReadDatabaseBytes(path);
+        var db = new VaultDatabase(path);
+        Require(db.InspectStorage() == VaultStorageState.LegacyUpgradeRequired &&
+            ReadDatabaseBytes(path).SequenceEqual(before) && !db.Unlock(OldMaster),
+            "A legacy v1 vault was modified or allowed normal unconsented unlock");
+        using var connection = new SqliteConnection("Data Source=" + path); connection.Open();
+        using var query = connection.CreateCommand();
+        query.CommandText = "SELECT schema_version FROM vault_meta WHERE id=1;";
+        Require(Convert.ToInt64(query.ExecuteScalar()) == 1L,
+            "Read-only inspection rewrote the legacy schema version");
+    }
+    finally { SqliteConnection.ClearAllPools(); Directory.Delete(root, true); }
 });
 Test("recovery inspection flags a truncated SQLite file without deletion", () =>
 {
@@ -429,7 +498,7 @@ Test("recovery inspection flags malformed KDF metadata without changing it", () 
 {
     using var f = new VaultFixture();
     f.Vault.Lock();
-    Sql(f.Path, "UPDATE vault_meta SET salt=X'01',argon_memory_kb=0 WHERE id=1;");
+    Sql(f.Path, "UPDATE secure_meta SET salt=X'01',argon_memory_kb=0 WHERE id=1;");
     var prior = ReadDatabaseBytes(f.Path);
     Require(f.Vault.InspectStorage() == VaultStorageState.IncompleteOrUnsupported &&
         ReadDatabaseBytes(f.Path).SequenceEqual(prior),
@@ -439,13 +508,13 @@ Test("recovery inspection flags unsupported future schema without downgrade", ()
 {
     using var f = new VaultFixture();
     f.Vault.Lock();
-    Sql(f.Path, "UPDATE vault_meta SET schema_version=999 WHERE id=1;");
+    Sql(f.Path, "PRAGMA ignore_check_constraints=ON; UPDATE secure_meta SET schema_version=999 WHERE id=1;");
     Require(f.Vault.InspectStorage() == VaultStorageState.IncompleteOrUnsupported,
         "Unsupported future format was presented as authorized");
     using var c = new SqliteConnection("Data Source=" + f.Path);
     c.Open();
     using var cmd = c.CreateCommand();
-    cmd.CommandText = "SELECT schema_version FROM vault_meta WHERE id=1;";
+    cmd.CommandText = "SELECT schema_version FROM secure_meta WHERE id=1;";
     Require(Convert.ToInt64(cmd.ExecuteScalar()) == 999L,
         "Unsupported metadata was silently downgraded");
 });
@@ -453,7 +522,7 @@ Test("recovery inspection flags missing sealed configuration without reset", () 
 {
     using var f = new VaultFixture();
     f.Vault.Lock();
-    Sql(f.Path, "DELETE FROM objects WHERE id='config';");
+    Sql(f.Path, "DELETE FROM secure_objects WHERE id='config';");
     Require(f.Vault.InspectStorage() == VaultStorageState.IncompleteOrUnsupported,
         "Missing configuration was treated as a valid setup");
     var cold = new VaultDatabase(f.Path);
@@ -491,17 +560,71 @@ Test("recovery inspection rejects a schema-v2 vault missing the credentials tabl
 {
     using var f = new VaultFixture();
     f.Vault.Lock();
-    Sql(f.Path, "DROP TABLE credentials;");
+    Sql(f.Path, "DROP TABLE secure_credentials;");
     Require(f.Vault.InspectStorage() == VaultStorageState.IncompleteOrUnsupported,
         "Incomplete schema-v2 storage was misclassified as a recognized vault");
 });
-Test("recovery inspection accepts legacy v1 blob-layout without a row table", () =>
+Test("legacy v1 layout remains recognizable and needs explicit upgrade", () =>
 {
-    using var f = new VaultFixture();
-    f.Vault.Lock();
-    Sql(f.Path, "UPDATE vault_meta SET schema_version=1 WHERE id=1; DROP TABLE credentials;");
-    Require(f.Vault.InspectStorage() == VaultStorageState.PresentNeedsAuthentication,
-        "Legacy v1 layout without dedicated credential rows was rejected");
+    var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+        "launchflow-legacy-blob-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    var path = System.IO.Path.Combine(root, "legacy.db");
+    try
+    {
+        CreateLegacyFixture(path, singleBlob: true);
+        Require(new VaultDatabase(path).InspectStorage() == VaultStorageState.LegacyUpgradeRequired,
+            "Legacy v1 single-blob credential layout was misclassified");
+    }
+    finally { SqliteConnection.ClearAllPools(); Directory.Delete(root, true); }
+});
+Test("consented upgrade retains v1 and v2 credentials, disables auto-run and keeps recovery copies", () =>
+{
+    foreach (var blob in new[] { true, false })
+    {
+        var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+            "launchflow-legacy-upgrade-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var path = System.IO.Path.Combine(root, "legacy.db");
+        try
+        {
+            CreateLegacyFixture(path, blob);
+            var vault = new VaultDatabase(path);
+            var before = ReadDatabaseBytes(path);
+            Require(vault.InspectStorage() == VaultStorageState.LegacyUpgradeRequired &&
+                !vault.Unlock(OldMaster) && !vault.IsUnlocked &&
+                before.SequenceEqual(ReadDatabaseBytes(path)),
+                "Unconsented legacy read changed or authorized storage");
+            bool wrongDenied = false;
+            try { vault.UpgradeLegacyVault("Synthetic!Wrong-Master8"); }
+            catch (UnauthorizedAccessException) { wrongDenied = true; }
+            Require(wrongDenied && before.SequenceEqual(ReadDatabaseBytes(path)),
+                "Wrong-password upgrade modified the legacy database");
+            var backup = vault.UpgradeLegacyVault(OldMaster);
+            Require(File.Exists(backup) && vault.IsUnlocked &&
+                vault.ReadCredential(Guid.Parse("11111111-1111-4111-8111-111111111111")) ==
+                    VaultFixture.ACredential &&
+                vault.LoadConfiguration().Workflows.Single().Enabled == false,
+                "Upgrade did not preserve the credential or disable automatic execution");
+            vault.Lock();
+            var cold = new VaultDatabase(path);
+            Require(cold.InspectStorage() == VaultStorageState.PresentNeedsAuthentication &&
+                cold.Unlock(OldMaster) && cold.ReadCredential(
+                    Guid.Parse("11111111-1111-4111-8111-111111111111")) ==
+                    VaultFixture.ACredential,
+                "Strict cold unlock lost migrated data");
+            cold.Lock();
+            var oldBackup = new VaultDatabase(backup);
+            Require(oldBackup.InspectStorage() == VaultStorageState.LegacyUpgradeRequired &&
+                !oldBackup.Unlock(OldMaster),
+                "Recovery copy was changed or allowed unconsented runtime use");
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(root, true);
+        }
+    }
 });
 Console.WriteLine($"STORAGE_INTEGRITY_SUMMARY passed={total - failures} failed={failures}");
 return failures == 0 ? 0 : 1;
