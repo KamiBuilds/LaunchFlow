@@ -284,3 +284,12 @@
 - `tests/storage-integrity/Program.cs`: adds session-bound import replacement plus controlled invalid-initialization and corrupt-legacy-migration probes; the latter do not simulate power loss or physical storage faults.
 - `tests/ui/verify_ui.py` and `tools/Verify-LaunchFlow-Source.py`: maintained source assertions now enforce the captured session parameter rather than the old unbound import call.
 - `.github/workflows/windows.yml`, `.github/workflows/windows-ui-build.yml`, `AGENTS.md`: active branch/authoring guidance cleaned without touching protected refs, historical commits, installer identities or actual runtime providers.
+
+## Strict encrypted storage v3 ownership
+
+- `VaultRecordCodec.cs`: fixed version/purpose/vault-ID/expected-owner AES-GCM AAD; strict envelope parsing, no legacy fallback.
+- `VaultDatabase.Strict.cs`: strict schema, metadata, atomic new-vault initialization, complete unlock authorization and master-key rotation.
+- `VaultDatabase.Upgrade.cs`: read-only legacy authenticated snapshot, WAL-consistent verified recovery copy and one-way transactional conversion. No ordinary startup/reading path invokes the legacy decoder.
+- `VaultDatabase.cs`: public session and transaction gates, strict credential read/write, cache publication and read-only format classification. Retired implicit v1/v2 migration/schema mutation helpers are no longer available in normal runtime.
+- `App.xaml.cs`: explicit legacy upgrade consent, password prompt, incomplete/unsupported error path, profile unseal only after authorized vault publication.
+- `tests/s3-binding`, `tests/storage-integrity` and `tests/policy/run-compatibility.sh`: authentic v3 row reassignment/codec attacks, synthetic v1/v2 conversion and real pinned old-reader plus warmed-old-writer controls.

@@ -41,3 +41,7 @@ Use a fresh disposable Windows user and copy the exact tested installer artifact
 Keep three synthetic workflows/accounts: A and B with distinct values, and an import-only C. Use a separate encrypted backup and a separate disposable installation for restore. For each modal scenario, use a controlled lock event and compare both live values and a fresh reopened encrypted vault. Preserve any unexpectedly altered test vault before retrying. Never enter real passwords or access unrelated networks.
 
 Native checks must be reported as not run unless their exact observed results are attached to the build under test.
+
+## Additional strict v3 Windows acceptance — NOT RUN
+
+The separate security-format upgrade requires explicit interactive acceptance before beta. On a disposable Windows account, install a supported previous v1/v2 version, create synthetic workflows with distinct passwords, retain a WAL-active encrypted fixture and verify old-version cold access. Exercise upgrade cancellation, wrong password, failed backup and successful consent through actual WPF dialogs. Verify retained original plus recovery copy, disabled automatic execution, exact cold v3 credential mapping, old-client refusal and old-reader use of a separately restored recovery snapshot. Exercise lock/exit during prompts, backup/uninstall permissions and an attempted warmed older writer. Preserve and compare the exact selected installer SHA-256. These tests are **NOT RUN** until actually executed and recorded on the final source artifact.

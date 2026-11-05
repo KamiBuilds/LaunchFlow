@@ -68,7 +68,7 @@ jobs:
         run: |
           mkdir -p "$XDG_DATA_HOME/LaunchFlow"
           dotnet run --project tests/backup-integrity/BackupIntegrity.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
-      - name: Verify baseline-to-new-to-baseline encrypted data compatibility
+      - name: Verify pinned legacy conversion and old-reader refusal
         run: DOTNET=dotnet bash tests/policy/run-compatibility.sh
       - name: Exercise production WPF autosave methods through encrypted SQLite
         run: |

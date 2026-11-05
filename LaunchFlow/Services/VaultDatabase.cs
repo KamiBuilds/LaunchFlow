@@ -475,50 +475,6 @@ public sealed partial class VaultDatabase
         }
     }
 
-    private void MigrateLegacyCredentialBlobIfNeeded(SqliteConnection? existing = null,
-        byte[]? operationKey = null)
-    {
-        var key = operationKey ?? _key;
-        if (key is null) return;
-        var owns = existing is null;
-        var connection = existing ?? OpenConnection();
-        try
-        {
-            using (var countCmd = connection.CreateCommand())
-            {
-                countCmd.CommandText = "SELECT COUNT(*) FROM credentials;";
-                var count = Convert.ToInt64(countCmd.ExecuteScalar() ?? 0L);
-                if (count > 0) return;
-            }
-
-            using var blobCmd = connection.CreateCommand();
-            blobCmd.CommandText = "SELECT sealed FROM objects WHERE id='credentials';";
-            var blob = blobCmd.ExecuteScalar() as byte[];
-            if (blob is null) return;
-
-            if (!TryDecrypt(blob, key, out var plain))
-                throw new CryptographicException("Unable to migrate legacy credential blob.");
-            var secrets = Deserialize<Dictionary<Guid, SiteCredential>>(plain)
-                ?? throw new InvalidDataException("Legacy credential data was empty.");
-            var candidateCache = CloneSecrets(secrets);
-            using var tx = connection.BeginTransaction();
-            PersistCredentials(connection, secrets, key);
-            using (var ver = connection.CreateCommand())
-            {
-                ver.CommandText = "UPDATE vault_meta SET schema_version=$ver WHERE id=1;";
-                ver.Parameters.AddWithValue("$ver", SchemaVersion);
-                ver.ExecuteNonQuery();
-            }
-            tx.Commit();
-            if (operationKey is null)
-                _secretsCache = candidateCache;
-        }
-        finally
-        {
-            if (owns) connection.Dispose();
-        }
-    }
-
     private void RequireUnlocked()
     {
         if (!IsUnlocked)
@@ -550,79 +506,6 @@ public sealed partial class VaultDatabase
             pragma.ExecuteNonQuery();
         }
         return connection;
-    }
-
-    private void EnsureSchema(SqliteConnection? existing = null)
-    {
-        var owns = existing is null;
-        var connection = existing ?? OpenConnection(create: true);
-        try
-        {
-            using (var cmd = connection.CreateCommand())
-            {
-                cmd.CommandText = """
-                    CREATE TABLE IF NOT EXISTS vault_meta (
-                      id INTEGER PRIMARY KEY CHECK (id = 1),
-                      salt BLOB NOT NULL,
-                      verifier BLOB NOT NULL,
-                      argon_memory_kb INTEGER NOT NULL,
-                      argon_iterations INTEGER NOT NULL,
-                      argon_lanes INTEGER NOT NULL,
-                      schema_version INTEGER NOT NULL DEFAULT 1
-                    );
-                    CREATE TABLE IF NOT EXISTS objects (
-                      id TEXT PRIMARY KEY NOT NULL,
-                      sealed BLOB NOT NULL
-                    );
-                    CREATE TABLE IF NOT EXISTS credentials (
-                      workflow_id TEXT PRIMARY KEY NOT NULL,
-                      sealed BLOB NOT NULL
-                    );
-                    """;
-                cmd.ExecuteNonQuery();
-            }
-
-            EnsureColumn(connection, "vault_meta", "schema_version", "INTEGER NOT NULL DEFAULT 1");
-        }
-        finally
-        {
-            if (owns) connection.Dispose();
-        }
-    }
-
-    private static void EnsureColumn(SqliteConnection connection, string table, string column, string decl)
-    {
-        using var info = connection.CreateCommand();
-        info.CommandText = $"PRAGMA table_info({table});";
-        using var reader = info.ExecuteReader();
-        while (reader.Read())
-        {
-            if (string.Equals(reader["name"]?.ToString(), column, StringComparison.OrdinalIgnoreCase))
-                return;
-        }
-        reader.Close();
-        using var alter = connection.CreateCommand();
-        alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {decl};";
-        alter.ExecuteNonQuery();
-    }
-
-    private sealed record VaultMeta(byte[] Salt, byte[] Verifier, int MemoryKb, int Iterations, int Lanes);
-
-    private VaultMeta ReadMeta()
-    {
-        using var connection = OpenConnection();
-        using var cmd = connection.CreateCommand();
-        cmd.CommandText =
-            "SELECT salt, verifier, argon_memory_kb, argon_iterations, argon_lanes FROM vault_meta WHERE id=1;";
-        using var reader = cmd.ExecuteReader();
-        if (!reader.Read())
-            throw new InvalidOperationException("Vault metadata is missing.");
-        return new VaultMeta(
-            (byte[])reader["salt"],
-            (byte[])reader["verifier"],
-            Convert.ToInt32(reader["argon_memory_kb"]),
-            Convert.ToInt32(reader["argon_iterations"]),
-            Convert.ToInt32(reader["argon_lanes"]));
     }
 
     private void WriteSealed(SqliteConnection connection, string id, byte[] plaintext,
