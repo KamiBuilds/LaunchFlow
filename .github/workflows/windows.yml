@@ -51,6 +51,14 @@ jobs:
         run: python3 tools/Verify-LaunchFlow-Source.py
       - name: Verify credential transactions and master-key rotation
         run: dotnet run --project tests/storage-integrity/StorageIntegrity.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
+      - name: Verify modal import authorization against real encrypted SQLite
+        env:
+          XDG_DATA_HOME: ${{ runner.temp }}/launchflow-import-fixture/home
+          LAUNCHFLOW_FIXTURE_DATA_ROOT: ${{ runner.temp }}/launchflow-import-fixture
+        run: |
+          mkdir -p "$XDG_DATA_HOME/LaunchFlow"
+          python3 tests/import-integrity/extract.py
+          dotnet run --project tests/import-integrity/ImportIntegrity.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
       - name: Verify encrypted backups and session-bound exports
         env:
           XDG_DATA_HOME: ${{ runner.temp }}/launchflow-backup-fixture/home
