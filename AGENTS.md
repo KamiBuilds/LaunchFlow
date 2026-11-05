@@ -1,6 +1,6 @@
 # LaunchFlow rescue contract
 
-LaunchFlow is the user's active engineering priority. The user-approved surviving working branch is `validated/v0.7.46-three-checks-20261103`; `main` is deliberately untouched. The previous `hermes`, `chatgpt`, `both` and other historical branches were removed in the authorized cleanup after Git history and branch refs were archived in [run 41685214053](https://github.com/KamiBuilds/LaunchFlow/actions/runs/41685214053). Do not assume those refs still exist or silently restore or merge them. Preserve product identity, existing installer AppId, encrypted data locations/formats, workflow IDs and licensing; do not invent a license or a new product.
+LaunchFlow is the active engineering priority. The retained validated baseline is `validated/v0.7.46-three-checks-20261103`, while `repair/vault-backup-integrity-20261105` is the isolated repair branch; `main` remains protected and untouched. Historical branch references were archived in [run 41685214053](https://github.com/KamiBuilds/LaunchFlow/actions/runs/41685214053). Do not restore, merge or recreate deleted refs without approval. Preserve installer identity, encrypted data locations/formats, workflow IDs, product identity and required licensing.
 
 ## Acceptance gates
 
@@ -11,7 +11,7 @@ LaunchFlow is the user's active engineering priority. The user-approved survivin
 - Remove redundant narration, obsolete TODOs and comments that merely repeat code; retain rationale, safety boundaries, compatibility warnings and useful API summaries. Do not mechanically strip every comment or weaken security to simplify code.
 - Keep a clearly documented native Windows verification gate: Linux cross-compilation and behavioral helper tests are NOT WPF/installer runtime verification. Never label a stable public release tested without the actual native gate.
 - Use separate Git worktrees for independent writers. Do not edit a sibling's files or integrate while they are still writing. Independently review final frozen bytes, then rerun gates in the integrated tree.
-- Only the connected ChatGPT Plus provider is authorized for LLM inference. Never use Copilot or API-key inference providers.
+- Use only an explicitly authorized inference connection when necessary. Do not introduce new external providers, inference accounts, credential sharing or API-key dependencies.
 - No automatic stable release, force push, main/develop merge, vault migration, service restart or signing-certificate purchase. Save passing work on a recovery branch and verify its remote commit; expose blockers plainly.
 
 ## Continuity

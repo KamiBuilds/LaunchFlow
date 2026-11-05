@@ -275,3 +275,12 @@
 - `tests/storage-integrity/*` and `tests/backup-integrity/*`: linked-production tests with isolated disposable SQLite; no production code depends on fixtures. `tests/workspaces/UiHarness.cs` remains simulated WPF and validates handler ownership; `tests/ui/verify_ui.py` checks actual current paths.
 - `tests/policy/LegacyCompatibilityTests.csproj` and `tests/policy/run-compatibility.sh`: compile the exact pinned historical vault plus its matching historical facade/transfer sources. The old reader/writer compatibility exercise is retained; no fake legacy APIs or production session-check bypasses.
 - `.github/workflows/windows.yml`: isolated branch CI runs storage/backup assertions before the original browser, profile, Windows build and artifact checks. No manual publication permission was added.
+
+## Import and initialization ownership — 2026-11-05
+
+- `LaunchFlow/MainWindow.Transfer.cs`: WPF import approval captures the configuration reference, revision and vault session before its two modal boundaries. Continuation checks guard the original owner and delegates a session-bound atomic replacement, rather than relying on an unlocked Boolean alone.
+- `LaunchFlow/Services/VaultDatabase.cs`: both the legacy-compatible two-argument snapshot API and the new expected-generation overload use the same private gated transaction. `Initialize` and `Unlock` stage key/cache state until SQL commit and legacy conversion succeed, without changing stored encryption envelopes or schema. No public key accessor was added.
+- `tests/import-integrity/*`: production import-handler extraction linked to actual encrypted SQLite and scripted modal callbacks. Includes lock→unlock during password and confirmation modals, continuously locked refusal, valid import and independent cold reads.
+- `tests/storage-integrity/Program.cs`: adds session-bound import replacement plus controlled invalid-initialization and corrupt-legacy-migration probes; the latter do not simulate power loss or physical storage faults.
+- `tests/ui/verify_ui.py` and `tools/Verify-LaunchFlow-Source.py`: maintained source assertions now enforce the captured session parameter rather than the old unbound import call.
+- `.github/workflows/windows.yml`, `.github/workflows/windows-ui-build.yml`, `AGENTS.md`: active branch/authoring guidance cleaned without touching protected refs, historical commits, installer identities or actual runtime providers.
