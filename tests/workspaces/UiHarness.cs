@@ -938,6 +938,15 @@ namespace LaunchFlow.Services
         }
         public void DeleteCredential(Guid id) => Credentials.Remove(id);
         public Dictionary<Guid, SiteCredential> ExportCredentials() => new(Credentials);
+        public (Configuration Config, Dictionary<Guid, SiteCredential> Credentials) CaptureExportSnapshot(
+            bool includePasswords, long expectedSession)
+        {
+            if (!IsUnlocked || expectedSession != SessionGeneration)
+                throw new InvalidOperationException("Synthetic export authorization changed.");
+            return (new Configuration(), includePasswords
+                ? new Dictionary<Guid, SiteCredential>(Credentials)
+                : new Dictionary<Guid, SiteCredential>());
+        }
         public Configuration LoadConfiguration() => new();
     }
     sealed class MasterPasswordService
