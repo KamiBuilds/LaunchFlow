@@ -176,6 +176,60 @@ Test("A3 valid combined save publishes both parts and rejects stale generation",
     catch (InvalidOperationException) { refused = true; }
     Require(refused, "A3 stale vault session accepted another write");
 });
+(byte[] Salt, int Memory, int Passes, int Lanes) SaltMetadata(string path)
+{
+    using var connection = new SqliteConnection("Data Source=" + path);
+    connection.Open();
+    using var cmd = connection.CreateCommand();
+    cmd.CommandText = "SELECT salt,argon_memory_kb,argon_iterations,argon_lanes FROM vault_meta WHERE id=1";
+    using var reader = cmd.ExecuteReader();
+    if (!reader.Read()) throw new Exception("Vault key-derivation metadata was missing");
+    return ((byte[])reader[0], reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3));
+}
+using (var first = new VaultFixture())
+using (var second = new VaultFixture())
+{
+    var a = SaltMetadata(first.Path);
+    var b = SaltMetadata(second.Path);
+    var type = typeof(VaultDatabase);
+    var method = type.GetMethod("DeriveKey",
+        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+        ?? throw new InvalidOperationException("Production master-key derivation was missing");
+    byte[] Derive(string password, (byte[] Salt, int Memory, int Passes, int Lanes) m) =>
+        (byte[])method.Invoke(null, new object[] { password, m.Salt, m.Memory, m.Passes, m.Lanes })!;
+    Test("KDF new vault salt and recorded Argon2id parameters", () =>
+        Require(a.Salt.Length == 16 && a.Memory == 128 * 1024 && a.Passes == 4 && a.Lanes == 2,
+            "new-vault salt or parameters unexpectedly changed"));
+    Test("KDF random salts differ across new vaults", () =>
+        Require(!a.Salt.AsSpan().SequenceEqual(b.Salt), "two fixture vaults reused a salt"));
+    var derived = new List<byte[]>();
+    try
+    {
+        var k1 = Derive(OldMaster, a); derived.Add(k1);
+        var k2 = Derive(OldMaster, a); derived.Add(k2);
+        var ks = Derive(OldMaster, b); derived.Add(ks);
+        var kw = Derive("Synthetic!Wrong-Master8", a); derived.Add(kw);
+        Test("KDF same password and salt reproduce the same key", () =>
+            Require(k1.AsSpan().SequenceEqual(k2), "Argon2id derivation was inconsistent"));
+        Test("KDF changing salt changes the derived key", () =>
+            Require(!k1.AsSpan().SequenceEqual(ks), "salt was not included in key derivation"));
+        Test("KDF changing password changes the derived key", () =>
+            Require(!k1.AsSpan().SequenceEqual(kw), "password was not included in key derivation"));
+    }
+    finally
+    {
+        foreach (var key in derived) System.Security.Cryptography.CryptographicOperations.ZeroMemory(key);
+    }
+    first.Vault.Lock();
+    using var cold = new ColdVault(first.Path);
+    Test("KDF wrong password refuses a cold locked vault", () =>
+        Require(!cold.Vault.Unlock("Synthetic!Wrong-Master8") && !cold.Vault.IsUnlocked,
+            "incorrect password authorized a new session"));
+    Test("KDF correct password recovers the encrypted credential", () =>
+        Require(cold.Vault.Unlock(OldMaster) &&
+            cold.Vault.ReadCredential(first.A) == VaultFixture.ACredential,
+            "correct password failed to recover the original credential"));
+}
 Console.WriteLine($"STORAGE_INTEGRITY_SUMMARY passed={total - failures} failed={failures}");
 return failures == 0 ? 0 : 1;
 

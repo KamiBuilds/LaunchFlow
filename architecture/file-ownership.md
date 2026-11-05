@@ -262,3 +262,16 @@
 - `LaunchFlow/MainWindow.Lifecycle.cs` (new) coordinates existing vault/session/profile cleanup, awaits engine disposal, and invokes WPF close only after permit. Both ordinary and installer exits call this operation. Failed cleanup keeps the window alive without deleting profile sources.
 - `LaunchFlow/Services/ExitCompletionGate.cs` (new) provides narrow async singleflight and typed permit state without WPF, credentials or browser I/O. Linked tests `tests/workspaces/ExitCompletionGateTests.cs` cover stalled/failed/cancelled/revoked cleanup.
 - `tests/workspaces/verify-exit-contract.py` (new) validates production WPF handler wiring. Existing workspace build/run consumers are updated. No data schema, installer AppId, workflow ID or namespace migration occurred.
+
+## Vault and backup integrity ownership — isolated 2026-11-05 candidate
+
+- `LaunchFlow/Services/VaultDatabase.cs`: canonical encrypted SQLite transaction/key/cache owner. Existing `SaveCredential`, `DeleteCredential`, `ChangeMasterPassword`, `WriteSealed` and `PersistCredentials` retained their public roles; new `SaveCredentialAndConfiguration` and `CaptureExportSnapshot` join formerly disconnected operations under the same gate. No SQL schema or serialized envelope changes.
+- `LaunchFlow/Services/CredentialVault.cs`: narrow facade for current credential and captured export operations; no key access or independent commit decisions. Existing optional external credential provider remains unchanged.
+- `LaunchFlow/Services/ConfigStore.cs`: retains normal durable configuration writes, and clears the transient fallback after a confirmed external combined commit.
+- `LaunchFlow/Services/SecureTransferService.cs`: composes one authorized detached backup package without independently reading mutable configuration/secrets across sessions.
+- `LaunchFlow/Services/PortableExport.cs`: still owns the existing LFLW1 encrypted container and KDF. New same-directory ciphertext staging and replacement prevents premature truncation.
+- `LaunchFlow/MainWindow.Transfer.cs`: UI owner captures selected configuration/reference/revision and vault session before modal export prompts and refuses stale publication.
+- `LaunchFlow/MainWindow.Credentials.cs`: UI owner captures a matching workflow and vault generation, prepares a detached configuration candidate, delegates combined persistence to the vault and publishes current object fields after confirmed commit.
+- `tests/storage-integrity/*` and `tests/backup-integrity/*`: linked-production tests with isolated disposable SQLite; no production code depends on fixtures. `tests/workspaces/UiHarness.cs` remains simulated WPF and validates handler ownership; `tests/ui/verify_ui.py` checks actual current paths.
+- `tests/policy/LegacyCompatibilityTests.csproj` and `tests/policy/run-compatibility.sh`: compile the exact pinned historical vault plus its matching historical facade/transfer sources. The old reader/writer compatibility exercise is retained; no fake legacy APIs or production session-check bypasses.
+- `.github/workflows/windows.yml`: isolated branch CI runs storage/backup assertions before the original browser, profile, Windows build and artifact checks. No manual publication permission was added.
