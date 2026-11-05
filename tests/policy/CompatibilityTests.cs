@@ -45,6 +45,41 @@ internal static class CompatibilityTests
             VaultTests.Check(portable.Credentials[id] == secret,
                 "Historical portable backup did not retain credential.");
         }
+        else if (mode == "--compat-warm")
+        {
+#if !LEGACY_COMPAT
+            throw new InvalidOperationException("Only the pinned historical process can hold a warm old session.");
+#else
+            VaultTests.Check(db.Unlock(password) &&
+                db.ReadCredential(id) == secret &&
+                db.LoadConfiguration().Workflows.Single().Id == id,
+                "Historical warm process could not obtain its original verified cache.");
+            File.WriteAllText(Path.Combine(root, "legacy-warm-ready"), "ready");
+            var permission = Path.Combine(root, "legacy-warm-continue");
+            var deadline = DateTime.UtcNow.AddMinutes(5);
+            while (!File.Exists(permission) && DateTime.UtcNow < deadline)
+                Thread.Sleep(150);
+            VaultTests.Check(File.Exists(permission), "Historical warm process was not resumed.");
+
+            // These are actual historical SQL write paths operating after v3
+            // conversion, not a mock that voluntarily respects v3 flags.
+            try { db.SaveCredential(id, new SiteCredential("inert@example.invalid", "inert-value")); }
+            catch (Exception ex) when (ex is InvalidOperationException or
+                Microsoft.Data.Sqlite.SqliteException) { }
+            try
+            {
+                var stale = db.LoadConfiguration();
+                stale.UiLanguage = "de";
+                db.SaveConfiguration(stale);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or
+                Microsoft.Data.Sqlite.SqliteException) { }
+            try { db.ChangeMasterPassword(password, "HistoricalAttempt!24"); }
+            catch (Exception ex) when (ex is InvalidOperationException or
+                Microsoft.Data.Sqlite.SqliteException) { }
+            File.WriteAllText(Path.Combine(root, "legacy-warm-tested"), "attempted");
+#endif
+        }
         else if (mode == "--compat-deny")
         {
 #if !LEGACY_COMPAT

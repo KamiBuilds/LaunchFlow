@@ -39,9 +39,32 @@ if [[ ! -f "$legacy_dll" ]]; then
   exit 1
 fi
 "$SDK" "$legacy_dll" --compat-create
+# Hold the real pinned older implementation unlocked with warm caches while
+# the consented strict converter runs. Its later SQL writes must be inert.
+"$SDK" "$legacy_dll" --compat-warm > "$ROOT/warm-process.log" 2>&1 &
+warm_pid=$!
+ready=0
+for attempt in $(seq 1 120); do
+  if [[ -e "$ROOT/legacy-warm-ready" ]]; then ready=1; break; fi
+  if ! kill -0 "$warm_pid" 2>/dev/null; then break; fi
+  sleep 0.2
+done
+if [[ "$ready" -ne 1 ]]; then
+  cat "$ROOT/warm-process.log" >&2
+  echo "Historical warmed reader failed to initialize." >&2
+  exit 1
+fi
 "$SDK" run "${current[@]}" -- --compat-update
+touch "$ROOT/legacy-warm-continue"
+wait "$warm_pid"
+test -f "$ROOT/legacy-warm-tested"
+echo "PASS: warmed pinned historical process exercised its own writes after strict upgrade."
+
 "$SDK" run "${current[@]}" -- --compat-verify
 "$SDK" "$legacy_dll" --compat-deny
+# Verify again AFTER the warmed historical process attempted save, config
+# update and key rotation. None may alter the authoritative strict tables.
+"$SDK" run "${current[@]}" -- --compat-verify
 OLD_ROOT="$ROOT/recovery-old"
 mkdir -p "$OLD_ROOT/LaunchFlow"
 backup="$(find "$ROOT/LaunchFlow/recovery" -maxdepth 1 -name 'launchflow-legacy-*.db' -type f | head -n 1)"
