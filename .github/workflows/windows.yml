@@ -135,6 +135,11 @@ jobs:
           ./tests/installer/Packaging.Tests.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Packaging behavior tests failed' }
           ./tests/installer/Parse.Tests.ps1
+      - name: Exercise encrypted SQLite storage and recovery on native Windows
+        shell: pwsh
+        run: |
+          dotnet run --project ./tests/storage-integrity/StorageIntegrity.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
+          if ($LASTEXITCODE -ne 0) { throw 'Windows encrypted SQLite/recovery regression tests failed' }
       - name: Install Inno Setup (builder only)
         shell: pwsh
         run: |
