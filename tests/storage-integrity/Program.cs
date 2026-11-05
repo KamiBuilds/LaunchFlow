@@ -730,6 +730,30 @@ Test("failed recovery destination creation leaves legacy vault and bytes unchang
     }
     finally { SqliteConnection.ClearAllPools(); Directory.Delete(root, true); }
 });
+Test("credential storage restriction refuses conversion without silently dropping legacy secrets", () =>
+{
+    var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+        "launchflow-policy-upgrade-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    var path = System.IO.Path.Combine(root, "legacy.db");
+    try
+    {
+        CreateLegacyFixture(path, singleBlob: false, credentialCount: 2);
+        var before = ReadDatabaseBytes(path);
+        using var restriction = EnterprisePolicy.UseProviderForTesting(() =>
+            new Dictionary<string, object?> { ["DisableCredentialStorage"] = 1 });
+        var vault = new VaultDatabase(path);
+        bool blocked = false;
+        try { vault.UpgradeLegacyVault(OldMaster); }
+        catch (InvalidOperationException) { blocked = true; }
+        Require(blocked && !vault.IsUnlocked &&
+            vault.InspectStorage() == VaultStorageState.LegacyUpgradeRequired &&
+            ReadDatabaseBytes(path).SequenceEqual(before) &&
+            !Directory.Exists(System.IO.Path.Combine(root, "recovery")),
+            "Credential storage restriction discarded or rewrote legacy data");
+    }
+    finally { SqliteConnection.ClearAllPools(); Directory.Delete(root, true); }
+});
 Console.WriteLine($"STORAGE_INTEGRITY_SUMMARY passed={total - failures} failed={failures}");
 return failures == 0 ? 0 : 1;
 
