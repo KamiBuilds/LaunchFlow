@@ -20,6 +20,18 @@ void Require(bool condition, string message)
 {
     if (!condition) throw new Exception(message);
 }
+byte[] ReadDatabaseBytes(string path)
+{
+    // SQLite may retain a read/write handle in its native pool on Windows.
+    // Sharing read and write access lets the test compare physical bytes
+    // without trying to acquire an exclusive Windows file lock.
+    using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+        FileShare.ReadWrite | FileShare.Delete);
+    using var memory = new MemoryStream();
+    stream.CopyTo(memory);
+    return memory.ToArray();
+}
+
 void Sql(string path, string statement)
 {
     using var c = new SqliteConnection("Data Source=" + path);
@@ -342,9 +354,9 @@ Test("recovery inspection recognizes complete encrypted vault without decryption
 {
     using var f = new VaultFixture();
     f.Vault.Lock();
-    var before = File.ReadAllBytes(f.Path);
+    var before = ReadDatabaseBytes(f.Path);
     var state = f.Vault.InspectStorage();
-    var after = File.ReadAllBytes(f.Path);
+    var after = ReadDatabaseBytes(f.Path);
     Require(state == VaultStorageState.PresentNeedsAuthentication &&
         before.SequenceEqual(after) && !f.Vault.IsUnlocked,
         "Inspecting a completed locked vault changed storage or unlocked it");
@@ -380,7 +392,7 @@ Test("recovery inspection flags a truncated SQLite file without deletion", () =>
         var recovery = new VaultDatabase(path);
         Require(recovery.Exists &&
             recovery.InspectStorage() == VaultStorageState.IncompleteOrUnsupported &&
-            File.ReadAllBytes(path).SequenceEqual(bytes),
+            ReadDatabaseBytes(path).SequenceEqual(bytes),
             "Malformed database was modified or treated as absent/usable");
     }
     finally
@@ -402,9 +414,9 @@ Test("recovery inspection flags metadata-only interrupted creation", () =>
             "argon_iterations INTEGER,argon_lanes INTEGER,schema_version INTEGER);" +
             "INSERT INTO vault_meta VALUES(1,zeroblob(16),zeroblob(28),131072,4,2,2);" +
             "CREATE TABLE objects (id TEXT PRIMARY KEY,sealed BLOB NOT NULL);");
-        var before = File.ReadAllBytes(path);
+        var before = ReadDatabaseBytes(path);
         Require(new VaultDatabase(path).InspectStorage() == VaultStorageState.IncompleteOrUnsupported &&
-            File.ReadAllBytes(path).SequenceEqual(before),
+            ReadDatabaseBytes(path).SequenceEqual(before),
             "Partial initialization was not detected or its bytes were altered");
     }
     finally
@@ -418,9 +430,9 @@ Test("recovery inspection flags malformed KDF metadata without changing it", () 
     using var f = new VaultFixture();
     f.Vault.Lock();
     Sql(f.Path, "UPDATE vault_meta SET salt=X'01',argon_memory_kb=0 WHERE id=1;");
-    var prior = File.ReadAllBytes(f.Path);
+    var prior = ReadDatabaseBytes(f.Path);
     Require(f.Vault.InspectStorage() == VaultStorageState.IncompleteOrUnsupported &&
-        File.ReadAllBytes(f.Path).SequenceEqual(prior),
+        ReadDatabaseBytes(f.Path).SequenceEqual(prior),
         "Malformed KDF metadata was accepted or rewritten");
 });
 Test("recovery inspection flags unsupported future schema without downgrade", () =>
