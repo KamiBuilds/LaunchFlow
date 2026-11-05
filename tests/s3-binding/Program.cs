@@ -72,7 +72,7 @@ sealed class Fixture : IDisposable
     public const string Master = "Disposable!Fixture-Only98";
     public static readonly SiteCredential Alpha = new("sample-a@example.invalid", "sample-a-test-value");
     public static readonly SiteCredential Beta = new("sample-b@example.invalid", "sample-b-test-value");
-    public string Root { get; } = Path.Combine(Path.GetTempPath(), "launchflow-s3-" + Guid.NewGuid().ToString("N"));
+    public string Root { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "launchflow-s3-" + Guid.NewGuid().ToString("N"));
     public string Path { get; }
     public Guid A { get; } = Guid.NewGuid();
     public Guid B { get; } = Guid.NewGuid();
