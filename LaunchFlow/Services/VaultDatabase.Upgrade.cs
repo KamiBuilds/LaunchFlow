@@ -145,8 +145,14 @@ public sealed partial class VaultDatabase
         var candidateConfig = CloneConfig(source.Configuration);
         foreach (var workflow in candidateConfig.Workflows)
             workflow.Enabled = false;
-        var config = VaultRecordCodec.Seal(Serialize(candidateConfig), passwordKey, vaultId,
-            "config", "config");
+        var serializedConfig = Serialize(candidateConfig);
+        byte[] config;
+        try
+        {
+            config = VaultRecordCodec.Seal(serializedConfig, passwordKey, vaultId,
+                "config", "config");
+        }
+        finally { CryptographicOperations.ZeroMemory(serializedConfig); }
         using (var cmd = connection.CreateCommand())
         {
             cmd.CommandText = "INSERT INTO secure_objects(id,sealed) VALUES('config',$s);";
@@ -156,8 +162,14 @@ public sealed partial class VaultDatabase
         foreach (var pair in source.Credentials)
         {
             var owner = pair.Key.ToString("N");
-            var value = VaultRecordCodec.Seal(Serialize(pair.Value), passwordKey, vaultId,
-                "credential", owner);
+            var serializedCredential = Serialize(pair.Value);
+            byte[] value;
+            try
+            {
+                value = VaultRecordCodec.Seal(serializedCredential, passwordKey, vaultId,
+                    "credential", owner);
+            }
+            finally { CryptographicOperations.ZeroMemory(serializedCredential); }
             using var cmd = connection.CreateCommand();
             cmd.CommandText = "INSERT INTO secure_credentials(workflow_id,sealed) VALUES($id,$s);";
             cmd.Parameters.AddWithValue("$id", owner);
@@ -240,6 +252,26 @@ public sealed partial class VaultDatabase
 
                 // Commit is already durable; a late lock revokes access but
                 // cannot turn an upgraded database back into a legacy file.
+                if (System.Threading.Volatile.Read(ref _upgradeCancelEpoch) != cancelEpoch)
+                    return backup;
+
+                // An independent cold reader must verify the committed strict
+                // verifier, configuration and every credential before a normal
+                // runtime key/session is published.
+                var cold = new VaultDatabase(DatabasePath);
+                try
+                {
+                    if (!cold.UnlockStrict(password))
+                        throw new InvalidDataException("Committed strict vault could not be reopened.");
+                    var accepted = new LegacySnapshot(cold.LoadConfiguration(),
+                        CloneSecrets(cold.LoadSecretsUnlocked()));
+                    var expected = CloneConfig(current.Configuration);
+                    foreach (var workflow in expected.Workflows) workflow.Enabled = false;
+                    if (!SameLegacySnapshot(new LegacySnapshot(expected, current.Credentials), accepted))
+                        throw new InvalidDataException("Strict cold recovery did not retain the accepted data.");
+                }
+                finally { cold.Lock(); }
+
                 if (System.Threading.Volatile.Read(ref _upgradeCancelEpoch) != cancelEpoch)
                     return backup;
                 _key = candidateKey;

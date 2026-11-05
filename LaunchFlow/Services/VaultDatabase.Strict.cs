@@ -186,6 +186,7 @@ public sealed partial class VaultDatabase
             }
             finally
             {
+                CryptographicOperations.ZeroMemory(serial);
                 if (key is not null) CryptographicOperations.ZeroMemory(key);
             }
         }
@@ -238,7 +239,7 @@ public sealed partial class VaultDatabase
                     if (cmd.ExecuteNonQuery() != 1)
                         throw new InvalidDataException("Missing strict metadata.");
                 }
-                WriteSealed(connection, "config", Serialize(config), key, oldMeta.VaultId);
+                WriteConfigurationSealed(connection, config, key, oldMeta.VaultId);
                 PersistCredentials(connection, credentials, key, oldMeta.VaultId);
                 try { transaction.Commit(); }
                 catch

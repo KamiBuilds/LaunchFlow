@@ -236,7 +236,7 @@ public sealed partial class VaultDatabase
 
             using var connection = OpenConnection();
             using var transaction = connection.BeginTransaction();
-            WriteSealed(connection, "config", Serialize(candidateConfig));
+            WriteConfigurationSealed(connection, candidateConfig);
             PersistCredentials(connection, candidateCredentials);
             transaction.Commit();
 
@@ -255,10 +255,14 @@ public sealed partial class VaultDatabase
             if (_configCache is not null) return CloneConfig(_configCache);
             using var connection = OpenConnection();
             var bytes = ReadSealed(connection, "config");
-            var config = Deserialize<Configuration>(bytes)
-            ?? throw new InvalidDataException("Vault configuration is empty.");
-            _configCache = CloneConfig(config);
-            return CloneConfig(config);
+            try
+            {
+                var config = Deserialize<Configuration>(bytes)
+                    ?? throw new InvalidDataException("Vault configuration is empty.");
+                _configCache = CloneConfig(config);
+                return CloneConfig(config);
+            }
+            finally { CryptographicOperations.ZeroMemory(bytes); }
         }
     }
 
@@ -283,7 +287,7 @@ public sealed partial class VaultDatabase
         if (_key is null || (expectedSession.HasValue && _sessionGeneration != expectedSession))
             throw new InvalidOperationException("Vault authorization changed; configuration was not saved.");
         using var connection = OpenConnection();
-        WriteSealed(connection, "config", Serialize(config));
+        WriteConfigurationSealed(connection, config);
         _configCache = CloneConfig(config);
     }
 
@@ -348,7 +352,7 @@ public sealed partial class VaultDatabase
             using var connection = OpenConnection();
             using var transaction = connection.BeginTransaction();
             PersistCredentials(connection, candidateSecrets);
-            WriteSealed(connection, "config", Serialize(candidateConfig));
+            WriteConfigurationSealed(connection, candidateConfig);
             transaction.Commit();
             _configCache = candidateConfig;
             _secretsCache = candidateSecrets;
@@ -408,9 +412,14 @@ public sealed partial class VaultDatabase
         if (_configCache is not null) return CloneConfig(_configCache);
         using var connection = OpenConnection();
         var bytes = ReadSealed(connection, "config");
-        var config = Deserialize<Configuration>(bytes) ?? new Configuration();
-        _configCache = CloneConfig(config);
-        return CloneConfig(config);
+        try
+        {
+            var config = Deserialize<Configuration>(bytes)
+                ?? throw new InvalidDataException("Vault configuration is empty.");
+            _configCache = CloneConfig(config);
+            return CloneConfig(config);
+        }
+        finally { CryptographicOperations.ZeroMemory(bytes); }
     }
 
     private Dictionary<Guid, SiteCredential> LoadSecretsUnlocked()
@@ -465,8 +474,14 @@ public sealed partial class VaultDatabase
             if (id == Guid.Empty)
                 throw new InvalidDataException("Empty credential workflow identity.");
             var owner = id.ToString("N");
-            var envelope = VaultRecordCodec.Seal(Serialize(credential), key, vaultId,
-                "credential", owner);
+            var serialized = Serialize(credential);
+            byte[] envelope;
+            try
+            {
+                envelope = VaultRecordCodec.Seal(serialized, key, vaultId,
+                    "credential", owner);
+            }
+            finally { CryptographicOperations.ZeroMemory(serialized); }
             using var cmd = connection.CreateCommand();
             cmd.CommandText = "INSERT INTO secure_credentials (workflow_id,sealed) VALUES ($id,$s);";
             cmd.Parameters.AddWithValue("$id", owner);
@@ -506,6 +521,14 @@ public sealed partial class VaultDatabase
             pragma.ExecuteNonQuery();
         }
         return connection;
+    }
+
+    private void WriteConfigurationSealed(SqliteConnection connection, Configuration config,
+        byte[]? operationKey = null, byte[]? operationVaultId = null)
+    {
+        var serialized = Serialize(config);
+        try { WriteSealed(connection, "config", serialized, operationKey, operationVaultId); }
+        finally { CryptographicOperations.ZeroMemory(serialized); }
     }
 
     private void WriteSealed(SqliteConnection connection, string id, byte[] plaintext,
