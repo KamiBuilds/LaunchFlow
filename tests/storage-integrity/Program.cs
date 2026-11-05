@@ -127,9 +127,9 @@ Test("S2 successful rotation revokes old credentials and old session", () =>
     Require(newer.Vault.ReadCredential(f.A) == VaultFixture.ACredential &&
         newer.Vault.ReadCredential(f.B) == VaultFixture.BCredential, "new key did not recover records");
     bool rejected = false;
-    try { newer.Vault.SaveConfiguration(newer.Vault.LoadConfiguration(), captured); }
+    try { f.Vault.SaveConfiguration(newer.Vault.LoadConfiguration(), captured); }
     catch (InvalidOperationException) { rejected = true; }
-    Require(rejected, "stale session accepted a write");
+    Require(rejected, "stale session accepted a write on the original vault instance");
 });
 Console.WriteLine($"STORAGE_INTEGRITY_SUMMARY passed={total - failures} failed={failures}");
 return failures == 0 ? 0 : 1;
