@@ -18,80 +18,105 @@ internal static class CompatibilityTests
         const string password = "FixtureOnly-Compat-73!";
         var config = new Configuration
         {
-            Workflows = new() { new() { Id = id, Name = "Fixture compatibility", Enabled = false } },
+            Workflows = new() { new() { Id = id, Name = "Fixture compatibility", Enabled = true } },
             GlobalShortcut = "Ctrl+M",
             UiLanguage = "auto"
         };
-
         if (mode == "--compat-create")
         {
-            VaultTests.Check(!db.Exists, "Legacy producer must begin with a new synthetic vault.");
+#if !LEGACY_COMPAT
+            throw new InvalidOperationException("The legacy producer must use pinned historical sources.");
+#else
+            VaultTests.Check(!db.Exists, "Legacy producer must begin with a new fixture.");
             db.Initialize(password, config, new() { [id] = secret });
             SecureTransferService.Export(Path.Combine(root, "baseline.launchflow"),
                 password, config, new CredentialVault(), true);
-        }
-        else
-        {
-            VaultTests.Check(db.Unlock(password), "Cannot unlock baseline/updated synthetic vault.");
-            var initial = db.LoadConfiguration();
-            VaultTests.Check(db.ReadCredential(id) == secret &&
-                initial.Workflows.Single().Id == id, "Baseline identity/credential mismatch.");
-            var baselinePackage = SecureTransferService.Read(
-                Path.Combine(root, "baseline.launchflow"), password);
-            VaultTests.Check(baselinePackage.Credentials[id] == secret &&
-                baselinePackage.Config.Workflows.Single().Id == id,
-                "Baseline portable export mismatch.");
-            if (mode == "--compat-update")
-            {
-#if LEGACY_COMPAT
-                throw new InvalidOperationException("The current writer must not run with legacy sources.");
-#else
-                var changed = db.LoadConfiguration();
-                changed.Workflows.Single().Name = "Updated by current writer";
-                changed.UiLanguage = "nl";
-                changed.GlobalShortcut = "Ctrl+Shift+M";
-                changed.Workspaces.Add(new WorkspaceProfile
-                {
-                    Name = "Compatibility workspace",
-                    WorkflowIds = new() { id }
-                });
-                var generation = db.SessionGeneration;
-                new ConfigStore().SaveDurable(changed, generation);
-                db.SaveCredential(second, secret);
-                var committed = db.LoadConfiguration();
-                VaultTests.Check(committed.Workflows.Single().Name == "Updated by current writer" &&
-                    committed.UiLanguage == "nl" &&
-                    committed.Workspaces.Single().WorkflowIds.SequenceEqual(new[] { id }),
-                    "Current durable configuration write did not commit.");
-                SecureTransferService.Export(Path.Combine(root, "updated.launchflow"),
-                    password, committed, new CredentialVault(), true);
 #endif
-            }
-            else if (mode == "--compat-read")
-            {
-                var updated = db.LoadConfiguration();
-                VaultTests.Check(db.ReadCredential(second) == secret,
-                    "Legacy reader could not decrypt current credential update.");
-                VaultTests.Check(updated.Workflows.Single().Id == id &&
-                    updated.Workflows.Single().Name == "Updated by current writer" &&
-                    updated.UiLanguage == "nl" &&
-                    updated.GlobalShortcut == "Ctrl+Shift+M" &&
-                    updated.Workspaces.Single().Name == "Compatibility workspace" &&
-                    updated.Workspaces.Single().WorkflowIds.SequenceEqual(new[] { id }),
-                    "Legacy reader could not read current durable configuration.");
-                var updatedPackage = SecureTransferService.Read(
-                    Path.Combine(root, "updated.launchflow"), password);
-                VaultTests.Check(updatedPackage.Credentials[second] == secret &&
-                    updatedPackage.Config.Workflows.Single().Name == "Updated by current writer" &&
-                    updatedPackage.Config.Workspaces.Single().WorkflowIds.SequenceEqual(new[] { id }),
-                    "Legacy reader could not read current portable export.");
-            }
-            else throw new InvalidOperationException("Unknown compatibility mode.");
         }
+        else if (mode == "--compat-read")
+        {
+            VaultTests.Check(db.Unlock(password),
+                "Retained legacy reader could not authorize its original recovery copy.");
+            VaultTests.Check(db.ReadCredential(id) == secret &&
+                db.LoadConfiguration().Workflows.Single().Id == id,
+                "Original historical credential/identity changed.");
+            var portable = SecureTransferService.Read(
+                Path.Combine(root, "baseline.launchflow"), password);
+            VaultTests.Check(portable.Credentials[id] == secret,
+                "Historical portable backup did not retain credential.");
+        }
+        else if (mode == "--compat-deny")
+        {
+#if !LEGACY_COMPAT
+            throw new InvalidOperationException("Only the actual retained reader may assert old-reader denial.");
+#else
+            VaultTests.Check(!db.Unlock(password) && !db.IsUnlocked,
+                "Old reader unexpectedly authorized strict v3 storage.");
+            bool rejected = false;
+            try { db.ChangeMasterPassword(password, "UpdatedSyntheticMaster73!"); }
+            catch { rejected = true; }
+            VaultTests.Check(rejected && !db.IsUnlocked,
+                "Old reader unexpectedly changed the strict vault master key.");
+#endif
+        }
+        else if (mode == "--compat-update")
+        {
+#if LEGACY_COMPAT
+            throw new InvalidOperationException("Only the strict writer may perform a legacy upgrade.");
+#else
+            VaultTests.Check(db.InspectStorage() == VaultStorageState.LegacyUpgradeRequired,
+                "Legacy vault was not classified as requiring explicit upgrade.");
+            VaultTests.Check(!db.Unlock(password) && !db.IsUnlocked,
+                "Legacy vault was admitted without an explicit conversion.");
+            var backup = db.UpgradeLegacyVault(password);
+            VaultTests.Check(File.Exists(backup) && db.IsUnlocked,
+                "Verified legacy recovery snapshot was not produced.");
+            var initial = db.LoadConfiguration();
+            VaultTests.Check(!initial.Workflows.Single().Enabled &&
+                db.ReadCredential(id) == secret, "Upgrade lost data or enabled automatic login.");
+            var changed = db.LoadConfiguration();
+            changed.Workflows.Single().Name = "Updated by current writer";
+            changed.UiLanguage = "nl";
+            changed.GlobalShortcut = "Ctrl+Shift+M";
+            changed.Workspaces.Add(new WorkspaceProfile
+            {
+                Name = "Compatibility workspace",
+                WorkflowIds = new() { id }
+            });
+            var generation = db.SessionGeneration;
+            new ConfigStore().SaveDurable(changed, generation);
+            db.SaveCredential(second, secret);
+            SecureTransferService.Export(Path.Combine(root, "updated.launchflow"),
+                password, changed, new CredentialVault(), true);
+#endif
+        }
+        else if (mode == "--compat-verify")
+        {
+#if LEGACY_COMPAT
+            throw new InvalidOperationException("Only the new strict reader can verify converted data.");
+#else
+            VaultTests.Check(db.Unlock(password), "Strict writer cannot cold-open converted data.");
+            var updated = db.LoadConfiguration();
+            VaultTests.Check(db.ReadCredential(id) == secret &&
+                db.ReadCredential(second) == secret &&
+                updated.Workflows.Single().Id == id &&
+                updated.Workflows.Single().Name == "Updated by current writer" &&
+                updated.UiLanguage == "nl" &&
+                updated.GlobalShortcut == "Ctrl+Shift+M" &&
+                !updated.Workflows.Single().Enabled &&
+                updated.Workspaces.Single().Name == "Compatibility workspace",
+                "Strict v3 conversion/write/read did not retain logical state.");
+            var portable = SecureTransferService.Read(
+                Path.Combine(root, "updated.launchflow"), password);
+            VaultTests.Check(portable.Credentials[id] == secret &&
+                portable.Credentials[second] == secret,
+                "Existing LFLW1 encrypted export changed during upgrade.");
+#endif
+        }
+        else throw new InvalidOperationException("Unknown compatibility mode.");
 
         db.Lock();
-        Console.WriteLine("PASS: " + mode +
-            " actual encrypted SQLite, durable configuration and LFLW1 export.");
+        Console.WriteLine("PASS: " + mode + " pinned legacy and strict v3 compatibility contract.");
         return 0;
     }
 }
