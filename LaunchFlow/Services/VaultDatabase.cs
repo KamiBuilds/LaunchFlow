@@ -197,6 +197,9 @@ public sealed partial class VaultDatabase
 
     public void Lock()
     {
+        // Revoke an in-flight private legacy-upgrade candidate even before it
+        // has published a normal session key.
+        System.Threading.Interlocked.Increment(ref _upgradeCancelEpoch);
         lock (_gate)
         {
             ZeroKey();

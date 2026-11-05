@@ -222,6 +222,54 @@ public partial class App : Application
                     "Vault recovery required", MessageBoxButton.OK, MessageBoxImage.Error);
                 return false;
             }
+            if (diskState == VaultStorageState.LegacyUpgradeRequired)
+            {
+                var choice = MessageBox.Show(
+                    "Your existing encrypted vault requires a security-format upgrade before LaunchFlow can open it. " +
+                    "A verified recovery copy will be made before conversion. Older LaunchFlow versions will not " +
+                    "open the upgraded vault. Existing automatic website launches will be disabled until you review " +
+                    "their saved credentials. This upgrade cannot be undone in place.\\n\\n" +
+                    "Keep the recovery copy and use an older compatible version only with a separate restored copy. " +
+                    "Do you want to proceed?",
+                    "Security upgrade required", MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning);
+                if (choice != MessageBoxResult.Yes) return false;
+
+                var prompt = new SecretPromptWindow("Upgrade encrypted vault",
+                    "Enter your existing vault master password. LaunchFlow will verify your complete encrypted recovery copy before changing the vault.");
+                if (prompt.ShowDialog() != true) return false;
+                try
+                {
+                    var backup = db.UpgradeLegacyVault(prompt.Secret);
+                    if (!db.IsUnlocked)
+                        throw new InvalidOperationException("Vault upgrade completed but the session was revoked.");
+                    MessageBox.Show(
+                        "Vault security upgrade completed. A verified legacy recovery copy was retained at:\\n" +
+                        backup + "\\n\\nReview saved website credentials before enabling automatic launches.",
+                        "Security upgrade completed", MessageBoxButton.OK, MessageBoxImage.Information);
+                    try { ProfileVaultService.UnsealAll(); }
+                    catch (Exception ex)
+                    {
+                        CrashLog.Write("ProfileUnseal", ex);
+                        MessageBox.Show("Some browser sessions could not be restored; encrypted files were retained.",
+                            "Browser sessions need attention", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    CrashLog.Write("VaultUpgrade", ex);
+                    MessageBox.Show(
+                        ex is UnauthorizedAccessException
+                            ? "The existing master password was not accepted. Your vault is unchanged."
+                            : "The security upgrade could not be completed. Do not delete the existing vault or any " +
+                              "recovery snapshots. No automatic reset will be attempted. Check local diagnostics " +
+                              "and retain the encrypted files before retrying.",
+                        "Security upgrade not completed", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return false;
+                }
+            }
+
             if (diskState == VaultStorageState.PresentNeedsAuthentication)
             {
                 for (int attempt = 0; attempt < 5; attempt++)

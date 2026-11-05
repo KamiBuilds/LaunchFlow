@@ -14,6 +14,7 @@
     <Compile Include="../../LaunchFlow/Services/CrashLog.cs" Link="CrashLog.cs" />
     <Compile Include="$(VaultDatabaseSource)" Link="VaultDatabase.cs" />
     <Compile Include="../../LaunchFlow/Services/VaultDatabase.Strict.cs" Link="Services/VaultDatabase.Strict.cs" />
+    <Compile Include="../../LaunchFlow/Services/VaultDatabase.Upgrade.cs" Link="Services/VaultDatabase.Upgrade.cs" />
     <Compile Include="../../LaunchFlow/Services/VaultRecordCodec.cs" Link="Services/VaultRecordCodec.cs" />
     <Compile Include="../../LaunchFlow/Services/CredentialVault.cs" Link="CredentialVault.cs" />
     <Compile Include="../../LaunchFlow/Services/ConfigStore.cs" Link="ConfigStore.cs" />

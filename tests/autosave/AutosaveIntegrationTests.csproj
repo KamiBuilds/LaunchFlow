@@ -15,6 +15,7 @@
     <Compile Include="../../LaunchFlow/Services/EnterprisePolicy.cs" Link="Services/EnterprisePolicy.cs" />
     <Compile Include="../../LaunchFlow/Services/VaultDatabase.cs" Link="Services/VaultDatabase.cs" />
     <Compile Include="../../LaunchFlow/Services/VaultDatabase.Strict.cs" Link="Services/VaultDatabase.Strict.cs" />
+    <Compile Include="../../LaunchFlow/Services/VaultDatabase.Upgrade.cs" Link="Services/VaultDatabase.Upgrade.cs" />
     <Compile Include="../../LaunchFlow/Services/VaultRecordCodec.cs" Link="Services/VaultRecordCodec.cs" />
     <Compile Include="../../LaunchFlow/Services/ConfigStore.cs" Link="Services/ConfigStore.cs" />
     <Compile Include="../../LaunchFlow/Services/PasswordStrength.cs" Link="Services/PasswordStrength.cs" />
