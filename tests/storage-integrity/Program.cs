@@ -328,6 +328,153 @@ Test("failed legacy credential migration does not publish an unlocked session", 
         "failed legacy migration published a new vault authorization");
     cold.Lock();
 });
+Test("recovery inspection distinguishes an absent file without creating storage", () =>
+{
+    var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+        "launchflow-absent-recovery-" + Guid.NewGuid().ToString("N"));
+    var path = System.IO.Path.Combine(root, "launchflow.db");
+    var recovery = new VaultDatabase(path);
+    Require(recovery.InspectStorage() == VaultStorageState.Absent &&
+        !recovery.Exists && !File.Exists(path) && !Directory.Exists(root),
+        "Inspecting absent storage created data or advertised a vault");
+});
+Test("recovery inspection recognizes complete encrypted vault without decryption", () =>
+{
+    using var f = new VaultFixture();
+    f.Vault.Lock();
+    var before = File.ReadAllBytes(f.Path);
+    var state = f.Vault.InspectStorage();
+    var after = File.ReadAllBytes(f.Path);
+    Require(state == VaultStorageState.PresentNeedsAuthentication &&
+        before.SequenceEqual(after) && !f.Vault.IsUnlocked,
+        "Inspecting a completed locked vault changed storage or unlocked it");
+    var cold = new VaultDatabase(f.Path);
+    Require(cold.Unlock(OldMaster) && cold.ReadCredential(f.A) == VaultFixture.ACredential,
+        "Inspection broke normal cold unlock");
+    cold.Lock();
+});
+Test("recovery inspection recognizes a schema-v1 vault without rewriting metadata", () =>
+{
+    using var f = new VaultFixture();
+    f.Vault.Lock();
+    Sql(f.Path, "UPDATE vault_meta SET schema_version=1 WHERE id=1;");
+    Require(f.Vault.InspectStorage() == VaultStorageState.PresentNeedsAuthentication,
+        "Supported v1 metadata was incorrectly rejected");
+    using var reader = new SqliteConnection("Data Source=" + f.Path);
+    reader.Open();
+    using var cmd = reader.CreateCommand();
+    cmd.CommandText = "SELECT schema_version FROM vault_meta WHERE id=1;";
+    Require(Convert.ToInt64(cmd.ExecuteScalar()) == 1L,
+        "Read-only inspection rewrote the legacy schema version");
+});
+Test("recovery inspection flags a truncated SQLite file without deletion", () =>
+{
+    var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+        "launchflow-truncated-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    var path = System.IO.Path.Combine(root, "launchflow.db");
+    var bytes = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7 };
+    try
+    {
+        File.WriteAllBytes(path, bytes);
+        var recovery = new VaultDatabase(path);
+        Require(recovery.Exists &&
+            recovery.InspectStorage() == VaultStorageState.IncompleteOrUnsupported &&
+            File.ReadAllBytes(path).SequenceEqual(bytes),
+            "Malformed database was modified or treated as absent/usable");
+    }
+    finally
+    {
+        SqliteConnection.ClearAllPools();
+        Directory.Delete(root, recursive: true);
+    }
+});
+Test("recovery inspection flags metadata-only interrupted creation", () =>
+{
+    var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+        "launchflow-partial-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    var path = System.IO.Path.Combine(root, "launchflow.db");
+    try
+    {
+        Sql(path, "CREATE TABLE vault_meta (" +
+            "id INTEGER PRIMARY KEY,salt BLOB,verifier BLOB,argon_memory_kb INTEGER," +
+            "argon_iterations INTEGER,argon_lanes INTEGER,schema_version INTEGER);" +
+            "INSERT INTO vault_meta VALUES(1,zeroblob(16),zeroblob(28),131072,4,2,2);" +
+            "CREATE TABLE objects (id TEXT PRIMARY KEY,sealed BLOB NOT NULL);");
+        var before = File.ReadAllBytes(path);
+        Require(new VaultDatabase(path).InspectStorage() == VaultStorageState.IncompleteOrUnsupported &&
+            File.ReadAllBytes(path).SequenceEqual(before),
+            "Partial initialization was not detected or its bytes were altered");
+    }
+    finally
+    {
+        SqliteConnection.ClearAllPools();
+        Directory.Delete(root, recursive: true);
+    }
+});
+Test("recovery inspection flags malformed KDF metadata without changing it", () =>
+{
+    using var f = new VaultFixture();
+    f.Vault.Lock();
+    Sql(f.Path, "UPDATE vault_meta SET salt=X'01',argon_memory_kb=0 WHERE id=1;");
+    var prior = File.ReadAllBytes(f.Path);
+    Require(f.Vault.InspectStorage() == VaultStorageState.IncompleteOrUnsupported &&
+        File.ReadAllBytes(f.Path).SequenceEqual(prior),
+        "Malformed KDF metadata was accepted or rewritten");
+});
+Test("recovery inspection flags unsupported future schema without downgrade", () =>
+{
+    using var f = new VaultFixture();
+    f.Vault.Lock();
+    Sql(f.Path, "UPDATE vault_meta SET schema_version=999 WHERE id=1;");
+    Require(f.Vault.InspectStorage() == VaultStorageState.IncompleteOrUnsupported,
+        "Unsupported future format was presented as authorized");
+    using var c = new SqliteConnection("Data Source=" + f.Path);
+    c.Open();
+    using var cmd = c.CreateCommand();
+    cmd.CommandText = "SELECT schema_version FROM vault_meta WHERE id=1;";
+    Require(Convert.ToInt64(cmd.ExecuteScalar()) == 999L,
+        "Unsupported metadata was silently downgraded");
+});
+Test("recovery inspection flags missing sealed configuration without reset", () =>
+{
+    using var f = new VaultFixture();
+    f.Vault.Lock();
+    Sql(f.Path, "DELETE FROM objects WHERE id='config';");
+    Require(f.Vault.InspectStorage() == VaultStorageState.IncompleteOrUnsupported,
+        "Missing configuration was treated as a valid setup");
+    var cold = new VaultDatabase(f.Path);
+    Require(!cold.Unlock(OldMaster) && !cold.IsUnlocked,
+        "A missing sealed configuration authorized a cold vault");
+    cold.Lock();
+});
+Test("recovery inspection recognizes valid new creation after interrupted-file checks", () =>
+{
+    var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+        "launchflow-valid-recovery-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    var path = System.IO.Path.Combine(root, "launchflow.db");
+    var vault = new VaultDatabase(path);
+    try
+    {
+        Require(vault.InspectStorage() == VaultStorageState.Absent, "Fresh location is not absent");
+        vault.Initialize(OldMaster, new Configuration { UiLanguage = "nl" });
+        vault.Lock();
+        Require(vault.InspectStorage() == VaultStorageState.PresentNeedsAuthentication,
+            "Successful creation was not recognized as requiring authentication");
+        var cold = new VaultDatabase(path);
+        Require(cold.Unlock(OldMaster) && cold.LoadConfiguration().UiLanguage == "nl",
+            "Newly created vault could not be reopened");
+        cold.Lock();
+    }
+    finally
+    {
+        vault.Lock();
+        SqliteConnection.ClearAllPools();
+        Directory.Delete(root, recursive: true);
+    }
+});
 Console.WriteLine($"STORAGE_INTEGRITY_SUMMARY passed={total - failures} failed={failures}");
 return failures == 0 ? 0 : 1;
 

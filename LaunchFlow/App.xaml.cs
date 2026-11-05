@@ -215,8 +215,8 @@ public partial class App : Application
             {
                 MessageBox.Show(
                     "An existing LaunchFlow vault file is incomplete, unsupported or cannot be read safely. " +
-                    "Your encrypted data has NOT been deleted, reset or replaced.\\n\\n" +
-                    "Close LaunchFlow and preserve a copy of %LOCALAPPDATA%\\\\LaunchFlow\\\\launchflow.db " +
+                    "Your encrypted data has NOT been deleted, reset or replaced.\n\n" +
+                    "Close LaunchFlow and preserve a copy of %LOCALAPPDATA%\\LaunchFlow\\launchflow.db " +
                     "and its associated -wal/-shm files, if present, before troubleshooting or restoring a known good backup. " +
                     "LaunchFlow will not create a new vault over this file.",
                     "Vault recovery required", MessageBoxButton.OK, MessageBoxImage.Error);
