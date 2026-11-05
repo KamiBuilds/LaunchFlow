@@ -13,6 +13,14 @@ namespace LaunchFlow.Services;
 /// Workflows and each site password are AES-256-GCM sealed blobs keyed by Argon2id.
 /// The SQLite container itself is not SQLCipher; ciphertext lives in BLOB columns.
 /// </summary>
+/// <summary>Structural disk state only; authorization and decryption require Unlock.</summary>
+public enum VaultStorageState
+{
+    Absent,
+    PresentNeedsAuthentication,
+    IncompleteOrUnsupported
+}
+
 public sealed class VaultDatabase
 {
     public static VaultDatabase Current { get; } = new();
@@ -60,6 +68,113 @@ public sealed class VaultDatabase
         ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LaunchFlow");
 
     public bool Exists => File.Exists(DatabasePath);
+
+    /// <summary>
+    /// Classify an existing vault without creating tables, changing metadata, or
+    /// attempting to decrypt records. A structurally recognized file still needs
+    /// the user's master password and is not a claim of healthy credentials.
+    /// </summary>
+    public VaultStorageState InspectStorage()
+    {
+        lock (_gate)
+        {
+            if (!File.Exists(DatabasePath)) return VaultStorageState.Absent;
+            try
+            {
+                using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+                {
+                    DataSource = DatabasePath,
+                    Mode = SqliteOpenMode.ReadOnly,
+                    Pooling = false
+                }.ToString());
+                connection.Open();
+
+                using (var integrity = connection.CreateCommand())
+                {
+                    integrity.CommandText = "PRAGMA quick_check(1);";
+                    if (!string.Equals(integrity.ExecuteScalar()?.ToString(), "ok",
+                            StringComparison.OrdinalIgnoreCase))
+                        return VaultStorageState.IncompleteOrUnsupported;
+                }
+
+                if (!HasColumns(connection, "vault_meta", "id", "salt", "verifier",
+                        "argon_memory_kb", "argon_iterations", "argon_lanes") ||
+                    !HasColumns(connection, "objects", "id", "sealed"))
+                    return VaultStorageState.IncompleteOrUnsupported;
+
+                var hasSchemaVersion = HasColumns(connection, "vault_meta", "schema_version");
+                using (var metadata = connection.CreateCommand())
+                {
+                    metadata.CommandText = hasSchemaVersion
+                        ? "SELECT salt, verifier, argon_memory_kb, argon_iterations, argon_lanes, " +
+                          "schema_version FROM vault_meta WHERE id=1;"
+                        : "SELECT salt, verifier, argon_memory_kb, argon_iterations, argon_lanes " +
+                          "FROM vault_meta WHERE id=1;";
+                    using var reader = metadata.ExecuteReader();
+                    if (!reader.Read() || reader.IsDBNull(0) || reader.IsDBNull(1))
+                        return VaultStorageState.IncompleteOrUnsupported;
+                    var salt = reader.GetFieldValue<byte[]>(0);
+                    var verifier = reader.GetFieldValue<byte[]>(1);
+                    var memory = reader.GetInt32(2);
+                    var passes = reader.GetInt32(3);
+                    var lanes = reader.GetInt32(4);
+                    var schema = hasSchemaVersion ? reader.GetInt32(5) : 1;
+                    if (salt.Length != SaltSize ||
+                        verifier.Length < NonceSize + TagSize ||
+                        memory < 8 || memory > 1024 * 1024 ||
+                        passes < 1 || passes > 1000 || lanes < 1 || lanes > 64 ||
+                        schema < 1 || schema > SchemaVersion)
+                        return VaultStorageState.IncompleteOrUnsupported;
+                }
+
+                using var configuration = connection.CreateCommand();
+                configuration.CommandText = "SELECT sealed FROM objects WHERE id='config';";
+                var configBytes = configuration.ExecuteScalar() as byte[];
+                if (configBytes is null || configBytes.Length < NonceSize + TagSize)
+                    return VaultStorageState.IncompleteOrUnsupported;
+
+                // Older vaults may hold their credentials in objects instead of
+                // a dedicated table; the unlock path handles that migration.
+                if (HasColumns(connection, "credentials", "workflow_id", "sealed"))
+                {
+                    // The table exists with its expected shape; decryption is
+                    // deliberately deferred until the authorized unlock.
+                }
+                else if (TableExists(connection, "credentials"))
+                {
+                    return VaultStorageState.IncompleteOrUnsupported;
+                }
+
+                return VaultStorageState.PresentNeedsAuthentication;
+            }
+            catch (Exception ex) when (ex is SqliteException or IOException or
+                UnauthorizedAccessException or InvalidOperationException or
+                FormatException or InvalidCastException or OverflowException)
+            {
+                return VaultStorageState.IncompleteOrUnsupported;
+            }
+        }
+    }
+
+    private static bool TableExists(SqliteConnection connection, string table)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT 1 FROM sqlite_master WHERE type='table' AND name=$table;";
+        cmd.Parameters.AddWithValue("$table", table);
+        return cmd.ExecuteScalar() is not null;
+    }
+
+    private static bool HasColumns(SqliteConnection connection, string table, params string[] expected)
+    {
+        if (!TableExists(connection, table)) return false;
+        using var cmd = connection.CreateCommand();
+        // Table identifiers below are fixed internal constants, not user input.
+        cmd.CommandText = "PRAGMA table_info(" + table + ");";
+        using var reader = cmd.ExecuteReader();
+        var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (reader.Read()) found.Add(reader.GetString(1));
+        return expected.All(found.Contains);
+    }
 
     public bool IsUnlocked
     {

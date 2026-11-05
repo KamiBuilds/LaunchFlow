@@ -210,7 +210,19 @@ public partial class App : Application
         for (int round = 0; round < 2; round++)
         {
             var db = VaultDatabase.Current;
-            if (db.Exists)
+            var diskState = db.InspectStorage();
+            if (diskState == VaultStorageState.IncompleteOrUnsupported)
+            {
+                MessageBox.Show(
+                    "An existing LaunchFlow vault file is incomplete, unsupported or cannot be read safely. " +
+                    "Your encrypted data has NOT been deleted, reset or replaced.\\n\\n" +
+                    "Close LaunchFlow and preserve a copy of %LOCALAPPDATA%\\\\LaunchFlow\\\\launchflow.db " +
+                    "and its associated -wal/-shm files, if present, before troubleshooting or restoring a known good backup. " +
+                    "LaunchFlow will not create a new vault over this file.",
+                    "Vault recovery required", MessageBoxButton.OK, MessageBoxImage.Error);
+                return false;
+            }
+            if (diskState == VaultStorageState.PresentNeedsAuthentication)
             {
                 for (int attempt = 0; attempt < 5; attempt++)
                 {
