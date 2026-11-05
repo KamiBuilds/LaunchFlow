@@ -271,6 +271,63 @@ Test("import replacement succeeds with current session and preserves identity", 
         cold.Vault.ReadCredential(f.B) is null,
         "Authorized import did not atomically publish its configuration and credentials");
 });
+Test("initialization failure cannot publish a live or cold authorized vault", () =>
+{
+    var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+        "launchflow-init-failure-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    var path = System.IO.Path.Combine(root, "vault.db");
+    var candidate = new VaultDatabase(path);
+    using var document = System.Text.Json.JsonDocument.Parse("{\"fault\":true}");
+    var disposedJson = document.RootElement;
+    document.Dispose();
+    var invalidConfig = new Configuration
+    {
+        UiLanguage = "en",
+        AdditionalSettings = new Dictionary<string, System.Text.Json.JsonElement>
+        {
+            ["synthetic-invalid-json"] = disposedJson
+        }
+    };
+    try
+    {
+        bool rejected = false;
+        try { candidate.Initialize(OldMaster, invalidConfig); }
+        catch (ObjectDisposedException) { rejected = true; }
+        catch (InvalidOperationException) { rejected = true; }
+        Require(rejected && !candidate.IsUnlocked,
+            "rejected vault initialization exposed an unlocked key");
+        if (File.Exists(path))
+        {
+            var cold = new VaultDatabase(path);
+            bool admitted = false;
+            try { admitted = cold.Unlock(OldMaster); }
+            catch (InvalidOperationException) { }
+            Require(!admitted && !cold.IsUnlocked,
+                "partly initialized metadata authorized a cold session");
+        }
+    }
+    finally
+    {
+        candidate.Lock();
+        SqliteConnection.ClearAllPools();
+        Directory.Delete(root, recursive: true);
+    }
+});
+Test("failed legacy credential migration does not publish an unlocked session", () =>
+{
+    using var f = new VaultFixture();
+    f.Vault.Lock();
+    Sql(f.Path, "DELETE FROM credentials; " +
+        "INSERT OR REPLACE INTO objects(id,sealed) VALUES('credentials',X'000102030405060708090a0b0c0d0e0f');");
+    var cold = new VaultDatabase(f.Path);
+    var previousGeneration = cold.SessionGeneration;
+    var admitted = cold.Unlock(OldMaster);
+    Require(!admitted && !cold.IsUnlocked &&
+        cold.SessionGeneration == previousGeneration,
+        "failed legacy migration published a new vault authorization");
+    cold.Lock();
+});
 Console.WriteLine($"STORAGE_INTEGRITY_SUMMARY passed={total - failures} failed={failures}");
 return failures == 0 ? 0 : 1;
 
