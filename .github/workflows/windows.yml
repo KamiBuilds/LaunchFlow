@@ -152,6 +152,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows setup compilation failed' }
           $setup = Join-Path $PWD "dist/LaunchFlow-Setup-v$env:LF_VERSION-x64.exe"
           if (-not (Test-Path -LiteralPath $setup -PathType Leaf)) { throw "Expected setup not found: $setup" }
+      - name: Verify PowerShell installer smoke exit contract
+        shell: pwsh
+        run: |
+          ./tests/native/ExitCodeContract.Tests.ps1
       - name: Exercise actual Windows silent installation and safe removal
         shell: pwsh
         run: |

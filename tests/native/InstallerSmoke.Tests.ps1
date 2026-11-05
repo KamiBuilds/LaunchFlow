@@ -67,3 +67,4 @@ if ((Test-Path -LiteralPath $exe) -or
     throw 'Silent uninstall did not preserve data or failed to remove installed executable.'
 }
 Write-Host 'PASS native Windows: silent per-user uninstall removes program and preserves synthetic user data.'
+exit 0
