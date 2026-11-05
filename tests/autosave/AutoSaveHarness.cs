@@ -116,7 +116,7 @@ try
     {
         var ui = new AutoSaveFixture();
         ui.NameBox.Text = "Durable on retry";
-        Sql("CREATE TRIGGER deny_autosave BEFORE UPDATE ON objects WHEN NEW.id='config' BEGIN SELECT RAISE(ABORT, 'synthetic refusal'); END;");
+        Sql("CREATE TRIGGER deny_autosave BEFORE UPDATE ON secure_objects WHEN NEW.id='config' BEGIN SELECT RAISE(ABORT, 'synthetic refusal'); END;");
         try
         {
             WaitAndTick(ui);
