@@ -246,28 +246,34 @@ public sealed class VaultDatabase
 
     public void SaveCredential(Guid id, SiteCredential credential)
     {
-        EnterprisePolicy.Current.RequireCredentialStorage();
-        RequireUnlocked();
+        ArgumentNullException.ThrowIfNull(credential);
+        if (id == Guid.Empty) throw new ArgumentException("A workflow ID is required.", nameof(id));
         lock (_gate)
         {
-            var secrets = LoadSecretsUnlocked();
-            secrets[id] = credential;
+            EnterprisePolicy.Current.RequireCredentialStorage();
+            if (_key is null) throw new InvalidOperationException("Encrypted vault is locked.");
+            var candidate = CloneSecrets(LoadSecretsUnlocked());
+            candidate[id] = credential;
             using var connection = OpenConnection();
-            PersistCredentials(connection, secrets);
-            _secretsCache = CloneSecrets(secrets);
+            using var transaction = connection.BeginTransaction();
+            PersistCredentials(connection, candidate);
+            transaction.Commit();
+            _secretsCache = candidate;
         }
     }
 
     public void DeleteCredential(Guid id)
     {
-        RequireUnlocked();
         lock (_gate)
         {
-            var secrets = LoadSecretsUnlocked();
-            if (!secrets.Remove(id)) return;
+            if (_key is null) throw new InvalidOperationException("Encrypted vault is locked.");
+            var candidate = CloneSecrets(LoadSecretsUnlocked());
+            if (!candidate.Remove(id)) return;
             using var connection = OpenConnection();
-            PersistCredentials(connection, secrets);
-            _secretsCache = CloneSecrets(secrets);
+            using var transaction = connection.BeginTransaction();
+            PersistCredentials(connection, candidate);
+            transaction.Commit();
+            _secretsCache = candidate;
         }
     }
 
