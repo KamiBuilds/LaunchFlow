@@ -53,7 +53,7 @@ void ResetState()
 }
 void CheckCold(bool original)
 {
-    using var fresh = new VaultDatabase(vault.DatabasePath);
+    var fresh = new VaultDatabase(vault.DatabasePath);
     Require(fresh.Unlock(Master), "Independent cold instance could not unlock");
     var config = fresh.LoadConfiguration();
     var activeId = original ? originalId : importedId;
