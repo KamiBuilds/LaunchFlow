@@ -4,8 +4,10 @@ using LaunchFlow.Services;
 using Microsoft.Data.Sqlite;
 
 var failed = 0;
+var scenarios = 0;
 void Check(bool condition, string label)
 {
+    scenarios++;
     Console.WriteLine((condition ? "PASS " : "FAIL ") + label);
     if (!condition) failed++;
 }
@@ -64,7 +66,97 @@ foreach (var swap in new[] { false, true })
     Check(rejected && returned != Fixture.Alpha,
         swap ? "S3_WORKFLOW_SUBSTITUTION_REJECTED" : "BIT_FLIP_REJECTED_CONTROL");
 }
-Console.WriteLine($"S3_RESULT scenarios=3 failures={failed}");
+byte[] ConfigBlob(string path)
+{
+    using var connection = new SqliteConnection("Data Source=" + path); connection.Open();
+    using var command = connection.CreateCommand();
+    command.CommandText = "SELECT sealed FROM secure_objects WHERE id='config'";
+    return (byte[])command.ExecuteScalar()!;
+}
+void Attack(string name, Action<Fixture> prepare, Func<Fixture, byte[]> replacement,
+    string password = Fixture.Master)
+{
+    using var f = new Fixture();
+    prepare(f);
+    f.Vault.Lock();
+    SetBlob(f.Path, f.B, replacement(f));
+    var cold = new VaultDatabase(f.Path);
+    var authorized = cold.Unlock(password);
+    var rejected = !authorized;
+    SiteCredential? received = null;
+    if (authorized)
+    {
+        try { received = cold.ReadCredential(f.B); }
+        catch (Exception ex) when (ex is CryptographicException or InvalidDataException)
+        { rejected = true; }
+    }
+    cold.Lock();
+    Check(rejected && received is null, name);
+}
+Attack("S3_REASSIGNMENT_AFTER_CREDENTIAL_SAVE",
+    f => f.Vault.SaveCredential(f.A, new("edited@example.invalid", "changed-a-test")),
+    f => GetBlob(f.Path, f.A));
+Attack("S3_REASSIGNMENT_AFTER_IMPORT_REPLACEMENT",
+    f => f.Vault.ReplaceSnapshot(f.Vault.LoadConfiguration(), new()
+    {
+        [f.A] = Fixture.Alpha, [f.B] = Fixture.Beta
+    }, f.Vault.SessionGeneration),
+    f => GetBlob(f.Path, f.A));
+Attack("S3_REASSIGNMENT_AFTER_MASTER_ROTATION",
+    f => f.Vault.ChangeMasterPassword(Fixture.Master, "Rotated!Synthetic-44"),
+    f => GetBlob(f.Path, f.A),
+    "Rotated!Synthetic-44");
+Attack("S3_CONFIG_CIPHERTEXT_CANNOT_BECOME_CREDENTIAL",
+    _ => { }, f => ConfigBlob(f.Path));
+Attack("S3_STRIPPED_ENVELOPE_HEADER_REJECTED",
+    _ => { }, f => GetBlob(f.Path, f.B)[4..]);
+Attack("S3_TRUNCATED_ENVELOPE_REJECTED",
+    _ => { }, f => GetBlob(f.Path, f.B)[..^1]);
+Attack("S3_CHANGED_FORMAT_HEADER_REJECTED",
+    _ => { }, f =>
+    {
+        var blob = GetBlob(f.Path, f.B);
+        blob[0] ^= 1;
+        return blob;
+    });
+Attack("S3_TRAILING_ENVELOPE_BYTES_REJECTED",
+    _ => { }, f => GetBlob(f.Path, f.B).Concat(new byte[] { 0x3f }).ToArray());
+
+using (var f = new Fixture())
+{
+    f.Vault.Lock();
+    using (var sql = new SqliteConnection("Data Source=" + f.Path))
+    {
+        sql.Open();
+        using var cmd = sql.CreateCommand();
+        cmd.CommandText = "DELETE FROM secure_credentials WHERE workflow_id=$target;" +
+            "UPDATE secure_credentials SET workflow_id=$target WHERE workflow_id=$source;";
+        cmd.Parameters.AddWithValue("$target", f.B.ToString("N"));
+        cmd.Parameters.AddWithValue("$source", f.A.ToString("N"));
+        cmd.ExecuteNonQuery();
+    }
+    var cold = new VaultDatabase(f.Path);
+    var rejected = !cold.Unlock(Fixture.Master);
+    if (!rejected)
+    {
+        try { rejected = cold.ReadCredential(f.B) is null; }
+        catch (CryptographicException) { rejected = true; }
+    }
+    Check(rejected, "S3_RELABELED_AUTHORITATIVE_ROW_REJECTED");
+    cold.Lock();
+}
+using (var f = new Fixture())
+{
+    var previous = GetBlob(f.Path, f.B);
+    f.Vault.SaveCredential(f.B, new("changed@example.invalid", "updated-b-test"));
+    f.Vault.Lock();
+    SetBlob(f.Path, f.B, previous);
+    var cold = new VaultDatabase(f.Path);
+    var replayAccepted = cold.Unlock(Fixture.Master) && cold.ReadCredential(f.B) == Fixture.Beta;
+    Check(replayAccepted, "S3_SAME_OWNER_REPLAY_LIMIT_DOCUMENTED");
+    cold.Lock();
+}
+Console.WriteLine($"S3_RESULT scenarios={scenarios} failures={failed}");
 return failed == 0 ? 0 : 1;
 
 sealed class Fixture : IDisposable
