@@ -610,6 +610,13 @@ Test("consented upgrade retains v1 and v2 credentials, disables auto-run and kee
             Require(wrongDenied && before.SequenceEqual(ReadDatabaseBytes(path)),
                 "Wrong-password upgrade modified the legacy database");
             var backup = vault.UpgradeLegacyVault(OldMaster);
+            if (!OperatingSystem.IsWindows())
+            {
+                var mode = File.GetUnixFileMode(backup);
+                Require((mode & (UnixFileMode.GroupRead | UnixFileMode.GroupWrite |
+                    UnixFileMode.OtherRead | UnixFileMode.OtherWrite)) == 0,
+                    "Recovery backup is readable or writable outside its owner account");
+            }
             Require(File.Exists(backup) && vault.IsUnlocked &&
                 vault.ReadCredential(Guid.Parse("11111111-1111-4111-8111-111111111111")) ==
                     VaultFixture.ACredential &&
