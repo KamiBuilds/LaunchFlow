@@ -50,7 +50,14 @@ internal static class CompatibilityTests
 #if !LEGACY_COMPAT
             throw new InvalidOperationException("Only the actual retained reader may assert old-reader denial.");
 #else
-            VaultTests.Check(!db.Unlock(password) && !db.IsUnlocked,
+            // The actual historical reader throws for missing legacy metadata
+            // rather than returning false. Either outcome is a valid refusal,
+            // provided it never publishes an unlocked session.
+            bool denied;
+            try { denied = !db.Unlock(password); }
+            catch (Exception ex) when (ex is InvalidOperationException or
+                Microsoft.Data.Sqlite.SqliteException) { denied = true; }
+            VaultTests.Check(denied && !db.IsUnlocked,
                 "Old reader unexpectedly authorized strict v3 storage.");
             bool rejected = false;
             try { db.ChangeMasterPassword(password, "UpdatedSyntheticMaster73!"); }
