@@ -2,7 +2,7 @@ name: Windows installer — build and gated draft release
 
 on:
   push:
-    branches: [hermes, chatgpt, both, both-2, both-3, chatgpt-safety-hardening-20261028, chatgpt-selective-safety-review-20261029, chatgpt-appcontrol-startup-20261029, chatgpt-trusted-distribution-20261029, chatgpt-ux-clarity-20261029, chatgpt-ux-clarity-v0.7.34-upload-20261029, fix/v0.7.44-adaptive-login-build-20261102, fix/v0.7.45-per-website-credentials-20261102, fix/v0.7.46-password-site-picker-20261102, validated/v0.7.46-three-checks-20261103]
+    branches: [hermes, chatgpt, both, both-2, both-3, chatgpt-safety-hardening-20261028, chatgpt-selective-safety-review-20261029, chatgpt-appcontrol-startup-20261029, chatgpt-trusted-distribution-20261029, chatgpt-ux-clarity-20261029, chatgpt-ux-clarity-v0.7.34-upload-20261029, fix/v0.7.44-adaptive-login-build-20261102, fix/v0.7.45-per-website-credentials-20261102, fix/v0.7.46-password-site-picker-20261102, validated/v0.7.46-three-checks-20261103, repair/vault-backup-integrity-20261105]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -49,6 +49,8 @@ jobs:
         run: python3 tests/ui/verify_guide.py
       - name: Validate source invariants
         run: python3 tools/Verify-LaunchFlow-Source.py
+      - name: Verify credential transactions and master-key rotation
+        run: dotnet run --project tests/storage-integrity/StorageIntegrity.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
       - name: Verify baseline-to-new-to-baseline encrypted data compatibility
         run: DOTNET=dotnet bash tests/policy/run-compatibility.sh
       - name: Exercise production WPF autosave methods through encrypted SQLite
