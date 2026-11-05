@@ -319,6 +319,8 @@ public sealed class VaultDatabase
 
             var config = LoadConfigurationUnlocked();
             var secrets = CloneSecrets(LoadSecretsUnlocked());
+            var nextConfigCache = CloneConfig(config);
+            var nextSecretsCache = CloneSecrets(secrets);
             var salt = RandomNumberGenerator.GetBytes(SaltSize);
             var newKey = DeriveKey(newPassword, salt, ArgonMemoryKb, ArgonIterations, ArgonLanes);
             try
@@ -340,15 +342,24 @@ public sealed class VaultDatabase
                     cmd.ExecuteNonQuery();
                 }
 
-                ZeroKey();
+                WriteSealed(connection, "config", Serialize(config), newKey);
+                PersistCredentials(connection, secrets, newKey);
+                try { tx.Commit(); }
+                catch
+                {
+                    // A provider-level commit failure may have an uncertain disk outcome.
+                    ZeroKey();
+                    _configCache = null;
+                    _secretsCache = null;
+                    throw;
+                }
+                var previousKey = _key;
                 _key = newKey;
                 _sessionGeneration++;
                 newKey = null;
-                WriteSealed(connection, "config", Serialize(config));
-                PersistCredentials(connection, secrets);
-                tx.Commit();
-                _configCache = CloneConfig(config);
-                _secretsCache = CloneSecrets(secrets);
+                _configCache = nextConfigCache;
+                _secretsCache = nextSecretsCache;
+                if (previousKey is not null) CryptographicOperations.ZeroMemory(previousKey);
             }
             finally
             {
@@ -396,9 +407,10 @@ public sealed class VaultDatabase
         return result;
     }
 
-    private void PersistCredentials(SqliteConnection connection, Dictionary<Guid, SiteCredential> secrets)
+    private void PersistCredentials(SqliteConnection connection, Dictionary<Guid, SiteCredential> secrets,
+        byte[]? operationKey = null)
     {
-        if (_key is null) throw new InvalidOperationException("Vault is locked.");
+        var key = operationKey ?? _key ?? throw new InvalidOperationException("Vault is locked.");
         using (var clear = connection.CreateCommand())
         {
             clear.CommandText = "DELETE FROM credentials;";
@@ -407,7 +419,7 @@ public sealed class VaultDatabase
 
         foreach (var (id, cred) in secrets)
         {
-            var sealedBytes = Encrypt(Serialize(cred), _key);
+            var sealedBytes = Encrypt(Serialize(cred), key);
             using var cmd = connection.CreateCommand();
             cmd.CommandText =
                 "INSERT INTO credentials (workflow_id, sealed) VALUES ($id, $sealed);";
@@ -567,10 +579,10 @@ public sealed class VaultDatabase
             Convert.ToInt32(reader["argon_lanes"]));
     }
 
-    private void WriteSealed(SqliteConnection connection, string id, byte[] plaintext)
+    private void WriteSealed(SqliteConnection connection, string id, byte[] plaintext, byte[]? operationKey = null)
     {
-        if (_key is null) throw new InvalidOperationException("Vault is locked.");
-        var sealedBytes = Encrypt(plaintext, _key);
+        var key = operationKey ?? _key ?? throw new InvalidOperationException("Vault is locked.");
+        var sealedBytes = Encrypt(plaintext, key);
         using var cmd = connection.CreateCommand();
         cmd.CommandText = """
             INSERT INTO objects (id, sealed) VALUES ($id, $sealed)
