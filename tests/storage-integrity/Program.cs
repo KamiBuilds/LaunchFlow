@@ -475,6 +475,22 @@ Test("recovery inspection recognizes valid new creation after interrupted-file c
         Directory.Delete(root, recursive: true);
     }
 });
+Test("recovery inspection rejects a schema-v2 vault missing the credentials table", () =>
+{
+    using var f = new VaultFixture();
+    f.Vault.Lock();
+    Sql(f.Path, "DROP TABLE credentials;");
+    Require(f.Vault.InspectStorage() == VaultStorageState.IncompleteOrUnsupported,
+        "Incomplete schema-v2 storage was misclassified as a recognized vault");
+});
+Test("recovery inspection accepts legacy v1 blob-layout without a row table", () =>
+{
+    using var f = new VaultFixture();
+    f.Vault.Lock();
+    Sql(f.Path, "UPDATE vault_meta SET schema_version=1 WHERE id=1; DROP TABLE credentials;");
+    Require(f.Vault.InspectStorage() == VaultStorageState.PresentNeedsAuthentication,
+        "Legacy v1 layout without dedicated credential rows was rejected");
+});
 Console.WriteLine($"STORAGE_INTEGRITY_SUMMARY passed={total - failures} failed={failures}");
 return failures == 0 ? 0 : 1;
 

@@ -103,6 +103,7 @@ public sealed class VaultDatabase
                     return VaultStorageState.IncompleteOrUnsupported;
 
                 var hasSchemaVersion = HasColumns(connection, "vault_meta", "schema_version");
+                var detectedSchema = 1;
                 using (var metadata = connection.CreateCommand())
                 {
                     metadata.CommandText = hasSchemaVersion
@@ -118,12 +119,12 @@ public sealed class VaultDatabase
                     var memory = reader.GetInt32(2);
                     var passes = reader.GetInt32(3);
                     var lanes = reader.GetInt32(4);
-                    var schema = hasSchemaVersion ? reader.GetInt32(5) : 1;
+                    detectedSchema = hasSchemaVersion ? reader.GetInt32(5) : 1;
                     if (salt.Length != SaltSize ||
                         verifier.Length < NonceSize + TagSize ||
                         memory < 8 || memory > 1024 * 1024 ||
                         passes < 1 || passes > 1000 || lanes < 1 || lanes > 64 ||
-                        schema < 1 || schema > SchemaVersion)
+                        detectedSchema < 1 || detectedSchema > SchemaVersion)
                         return VaultStorageState.IncompleteOrUnsupported;
                 }
 
@@ -140,7 +141,7 @@ public sealed class VaultDatabase
                     // The table exists with its expected shape; decryption is
                     // deliberately deferred until the authorized unlock.
                 }
-                else if (TableExists(connection, "credentials"))
+                else if (detectedSchema >= 2 || TableExists(connection, "credentials"))
                 {
                     return VaultStorageState.IncompleteOrUnsupported;
                 }
