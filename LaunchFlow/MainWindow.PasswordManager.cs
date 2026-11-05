@@ -138,15 +138,50 @@ public partial class MainWindow
         var confirm = new SecretPromptWindow("Confirm new master password", "Enter the same new password again.") { Owner = this };
         if (confirm.ShowDialog() != true) return;
         if (next.Secret != confirm.Secret) { MessageBox.Show(this, "Passwords did not match."); return; }
+        if (_windowsLocked || _vaultLockInProgress || _exiting || _runInProgress ||
+            _teachingInProgress || !VaultDatabase.Current.IsUnlocked)
+        {
+            MessageBox.Show(this, "Unlock the vault and finish active operations before changing the master password.",
+                "Password change paused", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        var changed = false;
         try
         {
             _master.Change(current.Secret, next.Secret);
+            changed = true;
             WindowsHelloService.Disable();
             _configuration.WindowsHelloUnlockEnabled = false;
             await SecureVaultLockAsync("Master password changed; vault locked. Re-enable Windows Hello if you use it.");
+            if (_vaultCleanupFailed || _vaultLockInProgress)
+                throw new InvalidOperationException("Browser cleanup did not finish after the password change.");
             AppendLog("Master password changed. Windows Hello unlock was cleared.");
         }
-        catch (Exception ex) { MessageBox.Show(this, ex.Message, "Password not changed", MessageBoxButton.OK, MessageBoxImage.Warning); }
+        catch (Exception ex)
+        {
+            if (changed)
+            {
+                AppendLog("Master password was committed; follow-up cleanup needs attention: " + ex.GetType().Name);
+                MessageBox.Show(this,
+                    "The master password WAS changed, but browser or optional unlock cleanup did not finish. " +
+                    "Use the new master password when unlocking and finish any pending vault cleanup.",
+                    "Password changed; cleanup incomplete", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            if (!VaultDatabase.Current.IsUnlocked)
+            {
+                try { await SecureVaultLockAsync("Master-password rotation was interrupted; vault access revoked."); }
+                catch (Exception cleanupError) { AppendLog("Rotation cleanup needs attention: " + cleanupError.GetType().Name); }
+            }
+            AppendLog("Master password change did not confirm success: " + ex.GetType().Name);
+            var message = ex is InvalidOperationException &&
+                ex.Message == "Current master password is incorrect."
+                ? "Current master password is incorrect."
+                : "Master password rotation did not confirm success. If storage failed during commit, " +
+                  "verify the vault using a fresh unlock before trying again.";
+            MessageBox.Show(this, message, "Password change incomplete",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
 }
