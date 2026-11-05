@@ -123,6 +123,7 @@ public partial class MainWindow
     private async void ChangeMasterPassword_Click(object sender, RoutedEventArgs e)
     {
         if (_vaultLockInProgress || _runInProgress || _teachingInProgress || !RequireMasterPassword()) return;
+        var authorizedSession = VaultDatabase.Current.SessionGeneration;
         var current = new SecretPromptWindow("Change master password", "Enter your current master password.") { Owner = this };
         if (current.ShowDialog() != true) return;
         var next = new SecretPromptWindow("New master password",
@@ -139,7 +140,8 @@ public partial class MainWindow
         if (confirm.ShowDialog() != true) return;
         if (next.Secret != confirm.Secret) { MessageBox.Show(this, "Passwords did not match."); return; }
         if (_windowsLocked || _vaultLockInProgress || _exiting || _runInProgress ||
-            _teachingInProgress || !VaultDatabase.Current.IsUnlocked)
+            _teachingInProgress || !VaultDatabase.Current.IsUnlocked ||
+            VaultDatabase.Current.SessionGeneration != authorizedSession)
         {
             MessageBox.Show(this, "Unlock the vault and finish active operations before changing the master password.",
                 "Password change paused", MessageBoxButton.OK, MessageBoxImage.Warning);
