@@ -144,7 +144,7 @@ sealed class VaultFixture : IDisposable
 {
     public static readonly SiteCredential ACredential = new("alpha@example.invalid", "alpha-synthetic-secret");
     public static readonly SiteCredential BCredential = new("beta@example.invalid", "beta-synthetic-secret");
-    private readonly string _directory = Path.Combine(Path.GetTempPath(),
+    private readonly string _directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
         "launchflow-storage-fixture-" + Guid.NewGuid().ToString("N"));
     public Guid A { get; } = Guid.NewGuid();
     public Guid B { get; } = Guid.NewGuid();

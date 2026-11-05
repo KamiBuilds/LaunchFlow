@@ -51,6 +51,13 @@ jobs:
         run: python3 tools/Verify-LaunchFlow-Source.py
       - name: Verify credential transactions and master-key rotation
         run: dotnet run --project tests/storage-integrity/StorageIntegrity.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
+      - name: Verify encrypted backups and session-bound exports
+        env:
+          XDG_DATA_HOME: ${{ runner.temp }}/launchflow-backup-fixture/home
+          LAUNCHFLOW_FIXTURE_DATA_ROOT: ${{ runner.temp }}/launchflow-backup-fixture
+        run: |
+          mkdir -p "$XDG_DATA_HOME/LaunchFlow"
+          dotnet run --project tests/backup-integrity/BackupIntegrity.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
       - name: Verify baseline-to-new-to-baseline encrypted data compatibility
         run: DOTNET=dotnet bash tests/policy/run-compatibility.sh
       - name: Exercise production WPF autosave methods through encrypted SQLite
