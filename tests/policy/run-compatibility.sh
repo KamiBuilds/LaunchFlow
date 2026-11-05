@@ -21,6 +21,8 @@ if ! git cat-file -e "${BASELINE}^{commit}"; then
 fi
 git show "$BASELINE:LaunchFlow/Services/VaultDatabase.cs" > "$ROOT/BaselineVault.cs"
 git show "$BASELINE:LaunchFlow/Services/ConfigStore.cs" > "$ROOT/BaselineConfigStore.cs"
+git show "$BASELINE:LaunchFlow/Services/CredentialVault.cs" > "$ROOT/BaselineCredentialVault.cs"
+git show "$BASELINE:LaunchFlow/Services/SecureTransferService.cs" > "$ROOT/BaselineTransfer.cs"
 echo "Pinned legacy VaultDatabase: $(git rev-parse "$BASELINE:LaunchFlow/Services/VaultDatabase.cs")"
 echo "Pinned legacy ConfigStore: $(git rev-parse "$BASELINE:LaunchFlow/Services/ConfigStore.cs")"
 echo "Current test commit: $(git rev-parse HEAD)"
@@ -31,6 +33,8 @@ legacy=(
   -c Release
   -p:VaultDatabaseSource="$ROOT/BaselineVault.cs"
   -p:LegacyConfigStoreSource="$ROOT/BaselineConfigStore.cs"
+  -p:LegacyCredentialVaultSource="$ROOT/BaselineCredentialVault.cs"
+  -p:LegacyTransferSource="$ROOT/BaselineTransfer.cs"
   -p:BaseIntermediateOutputPath="$ROOT/legacy-obj/"
   -p:BaseOutputPath="$ROOT/legacy-bin/"
   -p:TreatWarningsAsErrors=true
