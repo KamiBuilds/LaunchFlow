@@ -72,10 +72,12 @@ public sealed class CredentialVault
         var policy = EnterprisePolicy.Current;
         policy.RequireTransfer();
         policy.RequireCredentialStorage();
-        return VaultDatabase.Current.IsUnlocked
-            ? VaultDatabase.Current.ExportCredentials()
-            : new Dictionary<Guid, SiteCredential>();
+        return VaultDatabase.Current.ExportCredentials();
     }
+
+    public (Configuration Config, Dictionary<Guid, SiteCredential> Credentials) CaptureExportSnapshot(
+        bool includePasswords, long expectedSession) =>
+        VaultDatabase.Current.CaptureExportSnapshot(includePasswords, expectedSession);
 
     private static Configuration? TryLoadConfig()
     {

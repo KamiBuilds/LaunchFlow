@@ -50,14 +50,40 @@ public static class PortableExport
             using (var aes = new AesGcm(key, TagSize))
                 aes.Encrypt(nonce, payload, ciphertext, tag);
 
-            using var stream = File.Create(path);
-            using var writer = new BinaryWriter(stream);
-            writer.Write(Encoding.ASCII.GetBytes(Magic));
-            writer.Write(salt);
-            writer.Write(nonce);
-            writer.Write(tag);
-            writer.Write(ciphertext.Length);
-            writer.Write(ciphertext);
+            var destination = Path.GetFullPath(path);
+            var directory = Path.GetDirectoryName(destination)
+                ?? throw new InvalidOperationException("Backup destination has no parent directory.");
+            var temporary = Path.Combine(directory,
+                "." + Path.GetFileName(destination) + "." + Guid.NewGuid().ToString("N") + ".tmp");
+            try
+            {
+                using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
+                    writer.Write(Encoding.ASCII.GetBytes(Magic));
+                    writer.Write(salt);
+                    writer.Write(nonce);
+                    writer.Write(tag);
+                    writer.Write(ciphertext.Length);
+                    writer.Write(ciphertext);
+                    writer.Flush();
+                    stream.Flush(flushToDisk: true);
+                }
+
+                var verified = Read(temporary, exportPassword);
+                if (verified.Credentials.Count != package.Credentials.Count ||
+                    verified.Config.Workflows.Count != package.Config.Workflows.Count)
+                    throw new InvalidDataException("The staged encrypted backup did not pass verification.");
+
+                if (File.Exists(destination))
+                    File.Replace(temporary, destination, null);
+                else
+                    File.Move(temporary, destination);
+            }
+            finally
+            {
+                if (File.Exists(temporary)) File.Delete(temporary);
+            }
         }
         finally
         {

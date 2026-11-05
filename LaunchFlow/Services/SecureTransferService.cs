@@ -19,17 +19,17 @@ public static class SecureTransferService
         string exportPassword,
         Configuration configuration,
         CredentialVault vault,
-        bool includePasswords)
+        bool includePasswords,
+        long? expectedSession = null)
     {
-        var policy = EnterprisePolicy.Current;
-        policy.RequireTransfer();
-        if (includePasswords) policy.RequireCredentialStorage();
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(vault);
+        var snapshot = vault.CaptureExportSnapshot(includePasswords,
+            expectedSession ?? VaultDatabase.Current.SessionGeneration);
         var package = new PortableExport.PortablePackage
         {
-            Config = Clone(configuration),
-            Credentials = includePasswords
-                ? vault.ExportAll()
-                : new Dictionary<Guid, SiteCredential>()
+            Config = snapshot.Config,
+            Credentials = snapshot.Credentials
         };
         PortableExport.Write(path, exportPassword, package);
     }

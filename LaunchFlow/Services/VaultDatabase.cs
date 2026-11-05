@@ -281,11 +281,29 @@ public sealed class VaultDatabase
     {
         var policy = EnterprisePolicy.Current;
         policy.RequireTransfer();
-        policy.RequireCredentialStorage();
-        RequireUnlocked();
         lock (_gate)
         {
+            policy.RequireCredentialStorage();
+            if (_key is null) throw new InvalidOperationException("Unlock the vault before exporting credentials.");
             return CloneSecrets(LoadSecretsUnlocked());
+        }
+    }
+
+    public (Configuration Config, Dictionary<Guid, SiteCredential> Credentials) CaptureExportSnapshot(
+        bool includePasswords, long expectedSession)
+    {
+        var policy = EnterprisePolicy.Current;
+        policy.RequireTransfer();
+        lock (_gate)
+        {
+            if (_key is null || _sessionGeneration != expectedSession)
+                throw new InvalidOperationException("Vault authorization changed before export. Unlock and retry.");
+            if (includePasswords) policy.RequireCredentialStorage();
+            var config = LoadConfigurationUnlocked();
+            var credentials = includePasswords
+                ? CloneSecrets(LoadSecretsUnlocked())
+                : new Dictionary<Guid, SiteCredential>();
+            return (config, credentials);
         }
     }
 

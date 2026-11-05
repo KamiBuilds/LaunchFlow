@@ -26,6 +26,10 @@ public partial class MainWindow
     {
         if (!SaveAll()) return;
         if (!RequireMasterPassword(forcePrompt: true)) return;
+        var exportOwner = _configuration;
+        var exportRevision = _workspaceRevision;
+        var exportSession = VaultDatabase.Current.SessionGeneration;
+        var includePasswords = IncludePasswordsCheck.IsChecked == true;
         var dialog = new Microsoft.Win32.SaveFileDialog
         {
             Title = "Export LaunchFlow",
@@ -43,7 +47,12 @@ public partial class MainWindow
         if (first.Secret != second.Secret) { MessageBox.Show(this, "Export passwords did not match."); return; }
         try
         {
-            SecureTransferService.Export(dialog.FileName, first.Secret, _configuration, _vault, IncludePasswordsCheck.IsChecked == true);
+            if (_windowsLocked || _vaultLockInProgress || _exiting ||
+                !ReferenceEquals(_configuration, exportOwner) || _workspaceRevision != exportRevision ||
+                !VaultDatabase.Current.IsUnlocked || VaultDatabase.Current.SessionGeneration != exportSession)
+                throw new InvalidOperationException("The vault or configuration changed during export. Unlock and retry.");
+            SecureTransferService.Export(dialog.FileName, first.Secret, exportOwner, _vault,
+                includePasswords, exportSession);
             AppendLog("Encrypted portable configuration exported.");
             MessageBox.Show(this, "Export saved. Keep the file and password safe.", "Export complete");
         }
