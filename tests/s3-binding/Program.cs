@@ -156,6 +156,84 @@ using (var f = new Fixture())
     Check(replayAccepted, "S3_SAME_OWNER_REPLAY_LIMIT_DOCUMENTED");
     cold.Lock();
 }
+using (var source = new Fixture())
+using (var destination = new Fixture())
+{
+    var destinationConfiguration = destination.Vault.LoadConfiguration();
+    source.Vault.Lock();
+    destination.Vault.Lock();
+
+    byte[] firstSalt, targetVaultId;
+    using (var a = new SqliteConnection("Data Source=" + source.Path))
+    using (var b = new SqliteConnection("Data Source=" + destination.Path))
+    {
+        a.Open(); b.Open();
+        using var commandA = a.CreateCommand();
+        commandA.CommandText = "SELECT salt FROM secure_meta WHERE id=1;";
+        firstSalt = (byte[])commandA.ExecuteScalar()!;
+        using var commandB = b.CreateCommand();
+        commandB.CommandText = "SELECT vault_id FROM secure_meta WHERE id=1;";
+        targetVaultId = (byte[])commandB.ExecuteScalar()!;
+    }
+
+    var derive = typeof(VaultDatabase).GetMethod("DeriveKey",
+        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+        ?? throw new InvalidOperationException("Vault key derivation is missing");
+    var sharedKey = (byte[])derive.Invoke(null,
+        new object[] { Fixture.Master, firstSalt, 128 * 1024, 4, 2 })!;
+    try
+    {
+        var verifier = VaultRecordCodec.Seal(
+            System.Text.Encoding.UTF8.GetBytes("LaunchFlow.Vault.v3"),
+            sharedKey, targetVaultId, "verifier", "verifier");
+        var config = VaultRecordCodec.Seal(
+            System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(destinationConfiguration),
+            sharedKey, targetVaultId, "config", "config");
+
+        using (var db = new SqliteConnection("Data Source=" + destination.Path))
+        {
+            db.Open();
+            using var update = db.CreateCommand();
+            update.CommandText =
+                "UPDATE secure_meta SET salt=$salt,verifier=$verifier WHERE id=1;" +
+                "UPDATE secure_objects SET sealed=$config WHERE id='config';" +
+                "DELETE FROM secure_credentials;";
+            update.Parameters.AddWithValue("$salt", firstSalt);
+            update.Parameters.AddWithValue("$verifier", verifier);
+            update.Parameters.AddWithValue("$config", config);
+            update.ExecuteNonQuery();
+        }
+
+        // Both vaults now use the same master key derivation inputs; before the
+        // attack the destination has independently valid v3 verifier/config.
+        var valid = new VaultDatabase(destination.Path);
+        var healthy = valid.Unlock(Fixture.Master) &&
+            valid.LoadConfiguration().Workflows.Count == 2;
+        valid.Lock();
+        Check(healthy, "S3_MATCHED_KEY_DISTINCT_VAULT_CONTROL");
+
+        using (var db = new SqliteConnection("Data Source=" + destination.Path))
+        {
+            db.Open();
+            using var insert = db.CreateCommand();
+            insert.CommandText =
+                "INSERT INTO secure_credentials(workflow_id,sealed) VALUES($owner,$value);";
+            insert.Parameters.AddWithValue("$owner", source.A.ToString("N"));
+            insert.Parameters.AddWithValue("$value", GetBlob(source.Path, source.A));
+            insert.ExecuteNonQuery();
+        }
+        var cold = new VaultDatabase(destination.Path);
+        var rejected = !cold.Unlock(Fixture.Master);
+        if (!rejected)
+        {
+            try { rejected = cold.ReadCredential(source.A) is null; }
+            catch (CryptographicException) { rejected = true; }
+        }
+        Check(rejected, "S3_CROSS_VAULT_TRANSPLANT_SAME_KEY_OWNER_REJECTED");
+        cold.Lock();
+    }
+    finally { CryptographicOperations.ZeroMemory(sharedKey); }
+}
 Console.WriteLine($"S3_RESULT scenarios={scenarios} failures={failed}");
 return failed == 0 ? 0 : 1;
 
