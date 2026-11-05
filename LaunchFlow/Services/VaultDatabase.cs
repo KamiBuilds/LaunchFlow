@@ -161,25 +161,42 @@ public sealed class VaultDatabase
         }
     }
 
-    public void ReplaceSnapshot(Configuration config, Dictionary<Guid, SiteCredential> credentials)
+    public void ReplaceSnapshot(Configuration config, Dictionary<Guid, SiteCredential> credentials) =>
+        ReplaceSnapshotUnderGate(config, credentials, expectedSession: null);
+
+    public void ReplaceSnapshot(Configuration config, Dictionary<Guid, SiteCredential> credentials,
+        long expectedSession) =>
+        ReplaceSnapshotUnderGate(config, credentials, expectedSession);
+
+    private void ReplaceSnapshotUnderGate(Configuration config,
+        Dictionary<Guid, SiteCredential> credentials, long? expectedSession)
     {
+        ArgumentNullException.ThrowIfNull(config);
+        ArgumentNullException.ThrowIfNull(credentials);
         var policy = EnterprisePolicy.Current;
         policy.RequireTransfer();
-        // Even an empty snapshot would delete existing credentials. Refuse, never strip.
+        // An empty replacement removes saved credentials, so storage permission is mandatory.
         policy.RequireCredentialStorage();
-        RequireUnlocked();
         lock (_gate)
         {
-            foreach (var w in config.Workflows)
-                w.Enabled = false;
+            if (_key is null || (expectedSession.HasValue && _sessionGeneration != expectedSession.Value))
+                throw new InvalidOperationException("Vault authorization changed; import was not applied.");
+
+            var candidateConfig = CloneConfig(config);
+            foreach (var workflow in candidateConfig.Workflows)
+                workflow.Enabled = false;
+            var candidateCredentials = CloneSecrets(credentials);
 
             using var connection = OpenConnection();
-            using var tx = connection.BeginTransaction();
-            WriteSealed(connection, "config", Serialize(config));
-            PersistCredentials(connection, credentials);
-            tx.Commit();
-            _configCache = CloneConfig(config);
-            _secretsCache = CloneSecrets(credentials);
+            using var transaction = connection.BeginTransaction();
+            WriteSealed(connection, "config", Serialize(candidateConfig));
+            PersistCredentials(connection, candidateCredentials);
+            transaction.Commit();
+
+            foreach (var workflow in config.Workflows)
+                workflow.Enabled = false;
+            _configCache = candidateConfig;
+            _secretsCache = candidateCredentials;
         }
     }
 

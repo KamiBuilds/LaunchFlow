@@ -81,6 +81,9 @@ public partial class MainWindow
             return;
         }
         if (!RequireMasterPassword(forcePrompt: true)) return;
+        var originalConfiguration = _configuration;
+        var capturedRevision = _workspaceRevision;
+        var capturedSession = VaultDatabase.Current.SessionGeneration;
 
         try { SettingsTabs.SelectedIndex = 7; } catch { /* optional */ }
         MainTabs.SelectedIndex = 1; // Settings
@@ -88,11 +91,18 @@ public partial class MainWindow
             "Enter the password used to export this file.")
         { Owner = this };
         if (prompt.ShowDialog() != true) return;
+        if (_windowsLocked || _vaultLockInProgress || _exiting || _runner.IsRunning ||
+            !VaultDatabase.Current.IsUnlocked ||
+            VaultDatabase.Current.SessionGeneration != capturedSession ||
+            capturedRevision != _workspaceRevision ||
+            !ReferenceEquals(originalConfiguration, _configuration))
+        {
+            AppendLog("Import canceled: the vault session or configuration changed during password confirmation.");
+            return;
+        }
         try
         {
             var imported = SecureTransferService.Read(path, prompt.Secret);
-            var originalConfiguration = _configuration;
-            var capturedRevision = _workspaceRevision;
             if (MessageBox.Show(this,
                     $"Replace your {_configuration.Workflows.Count} existing workflow(s) with {imported.Config.Workflows.Count} imported workflow(s) and their credentials?\n\n" +
                     "File:\n" + path + "\n\nExisting workflows/passwords will be replaced.",
@@ -101,8 +111,9 @@ public partial class MainWindow
 
             // Modal confirmation allows imports, selection changes and machine
             // lock callbacks. Never publish a stale import after those events.
-            if (_windowsLocked || _vaultLockInProgress || _exiting ||
+            if (_windowsLocked || _vaultLockInProgress || _exiting || _runner.IsRunning ||
                 !VaultDatabase.Current.IsUnlocked ||
+                VaultDatabase.Current.SessionGeneration != capturedSession ||
                 capturedRevision != _workspaceRevision ||
                 !ReferenceEquals(originalConfiguration, _configuration))
             {
@@ -115,7 +126,7 @@ public partial class MainWindow
             // startup registration and hotkey bindings remain local.
             var projected = ImportConfigurationProjection.ForThisDevice(
                 imported.Config, originalConfiguration, _activeShortcut);
-            VaultDatabase.Current.ReplaceSnapshot(projected, imported.Credentials);
+            VaultDatabase.Current.ReplaceSnapshot(projected, imported.Credentials, capturedSession);
 
             _workspaceRevision++;
             _keepassMasterPassword = null;

@@ -230,6 +230,47 @@ using (var second = new VaultFixture())
             cold.Vault.ReadCredential(first.A) == VaultFixture.ACredential,
             "correct password failed to recover the original credential"));
 }
+Test("import replacement denies a revoked vault session under the storage gate", () =>
+{
+    using var f = new VaultFixture();
+    var expected = f.Vault.SessionGeneration;
+    var replacement = f.Vault.LoadConfiguration();
+    replacement.UiLanguage = "nl";
+    var next = new Dictionary<Guid, SiteCredential>
+    {
+        [f.A] = new("replacement@example.invalid", "replacement-synthetic-secret")
+    };
+    f.Vault.Lock();
+    Require(f.Vault.Unlock(OldMaster), "Synthetic vault could not be unlocked again");
+    bool refused = false;
+    try { f.Vault.ReplaceSnapshot(replacement, next, expected); }
+    catch (InvalidOperationException) { refused = true; }
+    Require(refused && f.Vault.ReadCredential(f.A) == VaultFixture.ACredential &&
+        f.Vault.ReadCredential(f.B) == VaultFixture.BCredential,
+        "Revoked import session wrote credentials or changed the live cache");
+    f.Vault.Lock();
+    using var cold = new ColdVault(f.Path);
+    Require(cold.Vault.Unlock(OldMaster) && cold.Vault.LoadConfiguration().UiLanguage == "en" &&
+        cold.Vault.ReadCredential(f.A) == VaultFixture.ACredential &&
+        cold.Vault.ReadCredential(f.B) == VaultFixture.BCredential,
+        "Revoked import session modified cold encrypted storage");
+});
+Test("import replacement succeeds with current session and preserves identity", () =>
+{
+    using var f = new VaultFixture();
+    var config = f.Vault.LoadConfiguration();
+    config.UiLanguage = "nl";
+    var expected = f.Vault.SessionGeneration;
+    f.Vault.ReplaceSnapshot(config,
+        new Dictionary<Guid, SiteCredential> { [f.A] = VaultFixture.ACredential },
+        expected);
+    f.Vault.Lock();
+    using var cold = new ColdVault(f.Path);
+    Require(cold.Vault.Unlock(OldMaster) && cold.Vault.LoadConfiguration().UiLanguage == "nl" &&
+        cold.Vault.ReadCredential(f.A) == VaultFixture.ACredential &&
+        cold.Vault.ReadCredential(f.B) is null,
+        "Authorized import did not atomically publish its configuration and credentials");
+});
 Console.WriteLine($"STORAGE_INTEGRITY_SUMMARY passed={total - failures} failed={failures}");
 return failures == 0 ? 0 : 1;
 
