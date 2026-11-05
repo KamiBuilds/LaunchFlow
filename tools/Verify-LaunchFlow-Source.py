@@ -161,7 +161,8 @@ check('ImportLaunchFlowFile' in main_code and 'SecureTransferService.Export' in 
       'protected import and export remain available')
 check('CredentialDeleteGuard.IsCurrent(' in main_code and
       'ImportConfigurationProjection.ForThisDevice(' in main_code and
-      'VaultDatabase.Current.ReplaceSnapshot(projected, imported.Credentials)' in main_code,
+      'VaultDatabase.Current.ReplaceSnapshot(projected, imported.Credentials, capturedSession)' in main_code and
+      'VaultDatabase.Current.SessionGeneration != capturedSession' in main_code,
       'import and destructive credential deletion use identity and one authoritative configuration projection')
 app_startup=(root/'LaunchFlow/App.xaml.cs').read_text(encoding='utf-8')
 builder=(root/'BUILD-INSTALLER.ps1').read_text(encoding='utf-8')

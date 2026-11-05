@@ -108,7 +108,8 @@ check('WorkspaceCatalog.Save(_configuration, name' in source and
       "workspace save, preview and run share rollback-safe validated selection")
 check('WorkspaceCatalog.ConfirmationStillValid(' in source and
       '_workspaceRevision++' in source and
-      'VaultDatabase.Current.ReplaceSnapshot(projected, imported.Credentials);' in source and
+      'VaultDatabase.Current.ReplaceSnapshot(projected, imported.Credentials, capturedSession);' in source and
+      'VaultDatabase.Current.SessionGeneration != capturedSession' in source and
       'ImportConfigurationProjection.ForThisDevice(' in source and
       '_workspaceRevision++;' in source,
       "encrypted import invalidates modal workspace overwrite approval")
@@ -210,7 +211,7 @@ check('dialog.Show();' in source and
       "noncritical windows remain modeless while dedicated authorization prompts stay gated")
 check('CredentialDeleteGuard.IsCurrent(' in source and
       'ImportConfigurationProjection.ForThisDevice(' in source and
-      'VaultDatabase.Current.ReplaceSnapshot(projected, imported.Credentials)' in source and
+      'VaultDatabase.Current.ReplaceSnapshot(projected, imported.Credentials, capturedSession)' in source and
       '_configuration = projected;' in source and
       'SealProfilesCheck.IsChecked = _configuration.SealBrowserProfilesOnLock;' in source and
       'KeePassDbBox.Text = _configuration.KeePassDatabasePath ?? "";' in source,
