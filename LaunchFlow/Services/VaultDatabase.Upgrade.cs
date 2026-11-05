@@ -211,11 +211,16 @@ public sealed partial class VaultDatabase
             var original = ReadLegacySnapshot(DatabasePath, password);
             var backupRoot = Path.Combine(DataDirectory, "recovery");
             Directory.CreateDirectory(backupRoot);
+            if (!OperatingSystem.IsWindows())
+                File.SetUnixFileMode(backupRoot,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             var backup = Path.Combine(backupRoot, "launchflow-legacy-" +
                 DateTimeOffset.UtcNow.ToString("yyyyMMddTHHmmssZ") + "-" +
                 Guid.NewGuid().ToString("N") + ".db");
             // Reserve a collision-free destination without replacing any file.
             using (new FileStream(backup, FileMode.CreateNew, FileAccess.Write, FileShare.None)) { }
+            if (!OperatingSystem.IsWindows())
+                File.SetUnixFileMode(backup, UnixFileMode.UserRead | UnixFileMode.UserWrite);
             using (var source = new SqliteConnection(new SqliteConnectionStringBuilder
                    { DataSource = DatabasePath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString()))
             using (var destination = new SqliteConnection(new SqliteConnectionStringBuilder
