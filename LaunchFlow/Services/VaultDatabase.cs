@@ -18,10 +18,11 @@ public enum VaultStorageState
 {
     Absent,
     PresentNeedsAuthentication,
+    LegacyUpgradeRequired,
     IncompleteOrUnsupported
 }
 
-public sealed class VaultDatabase
+public sealed partial class VaultDatabase
 {
     public static VaultDatabase Current { get; } = new();
 
@@ -97,6 +98,12 @@ public sealed class VaultDatabase
                         return VaultStorageState.IncompleteOrUnsupported;
                 }
 
+                if (TableExists(connection, "secure_meta"))
+                    return InspectStrictStructure(connection);
+                if (TableExists(connection, "secure_objects") ||
+                    TableExists(connection, "secure_credentials"))
+                    return VaultStorageState.IncompleteOrUnsupported;
+
                 if (!HasColumns(connection, "vault_meta", "id", "salt", "verifier",
                         "argon_memory_kb", "argon_iterations", "argon_lanes") ||
                     !HasColumns(connection, "objects", "id", "sealed"))
@@ -146,7 +153,7 @@ public sealed class VaultDatabase
                     return VaultStorageState.IncompleteOrUnsupported;
                 }
 
-                return VaultStorageState.PresentNeedsAuthentication;
+                return VaultStorageState.LegacyUpgradeRequired;
             }
             catch (Exception ex) when (ex is SqliteException or IOException or
                 UnauthorizedAccessException or InvalidOperationException or
@@ -182,110 +189,11 @@ public sealed class VaultDatabase
         get { lock (_gate) return _key is not null; }
     }
 
-    public bool Unlock(string password)
-    {
-        if (string.IsNullOrEmpty(password)) return false;
-        lock (_gate)
-        {
-            byte[]? candidateKey = null;
-            try
-            {
-                EnsureSchema();
-                var meta = ReadMeta();
-                candidateKey = DeriveKey(password, meta.Salt, meta.MemoryKb, meta.Iterations, meta.Lanes);
-                if (!TryDecrypt(meta.Verifier, candidateKey, out var verifier) ||
-                    Encoding.UTF8.GetString(verifier) != "LaunchFlow.Vault.v1")
-                    return false;
+    public bool Unlock(string password) => UnlockStrict(password);
 
-                // Validate the encrypted snapshot before creating a new authorization.
-                using (var connection = OpenConnection())
-                {
-                    var sealedConfig = ReadSealed(connection, "config", candidateKey);
-                    _ = Deserialize<Configuration>(sealedConfig)
-                        ?? throw new InvalidDataException("Vault configuration is missing.");
-                    if (!EnterprisePolicy.Current.DisableCredentialStorage)
-                        MigrateLegacyCredentialBlobIfNeeded(connection, candidateKey);
-                }
-
-                ZeroKey();
-                _key = candidateKey;
-                _sessionGeneration++;
-                candidateKey = null;
-                _configCache = null;
-                _secretsCache = null;
-                return true;
-            }
-            catch
-            {
-                // A wrong key, invalid snapshot or failed migration cannot publish a session.
-                return false;
-            }
-            finally
-            {
-                if (candidateKey is not null)
-                    CryptographicOperations.ZeroMemory(candidateKey);
-            }
-        }
-    }
-
-    public void Initialize(string password, Configuration config, Dictionary<Guid, SiteCredential>? secrets = null)
-    {
-        ArgumentNullException.ThrowIfNull(config);
-        if (secrets is { Count: > 0 }) EnterprisePolicy.Current.RequireCredentialStorage();
-        if (!PasswordStrength.MeetsMinimum(password))
-            throw new ArgumentException(
-                $"Master password must be at least {PasswordStrength.MinimumLength} characters and not trivially weak.");
-
-        lock (_gate)
-        {
-            if (_key is not null)
-                throw new InvalidOperationException("A vault session is already active.");
-            Directory.CreateDirectory(Path.GetDirectoryName(DatabasePath)!);
-            if (File.Exists(DatabasePath))
-                throw new InvalidOperationException("Vault database already exists.");
-
-            // Allocate and serialize all candidate state before the first durable write.
-            var candidateConfig = CloneConfig(config);
-            var candidateSecrets = CloneSecrets(secrets ?? new Dictionary<Guid, SiteCredential>());
-            var serializedConfig = Serialize(candidateConfig);
-            var salt = RandomNumberGenerator.GetBytes(SaltSize);
-            byte[]? key = DeriveKey(password, salt, ArgonMemoryKb, ArgonIterations, ArgonLanes);
-            try
-            {
-                using var connection = OpenConnection(create: true);
-                EnsureSchema(connection);
-                using var transaction = connection.BeginTransaction();
-                var verifier = Encrypt(Encoding.UTF8.GetBytes("LaunchFlow.Vault.v1"), key);
-                using (var cmd = connection.CreateCommand())
-                {
-                    cmd.CommandText =
-                        "INSERT INTO vault_meta (id, salt, verifier, argon_memory_kb, argon_iterations, argon_lanes, schema_version) " +
-                        "VALUES (1, $salt, $verifier, $mem, $iter, $lanes, $ver);";
-                    cmd.Parameters.AddWithValue("$salt", salt);
-                    cmd.Parameters.AddWithValue("$verifier", verifier);
-                    cmd.Parameters.AddWithValue("$mem", ArgonMemoryKb);
-                    cmd.Parameters.AddWithValue("$iter", ArgonIterations);
-                    cmd.Parameters.AddWithValue("$lanes", ArgonLanes);
-                    cmd.Parameters.AddWithValue("$ver", SchemaVersion);
-                    cmd.ExecuteNonQuery();
-                }
-                WriteSealed(connection, "config", serializedConfig, key);
-                PersistCredentials(connection, candidateSecrets, key);
-                transaction.Commit();
-
-                _key = key;
-                _sessionGeneration++;
-                key = null;
-                _configCache = candidateConfig;
-                _secretsCache = candidateSecrets;
-            }
-            finally
-            {
-                if (key is not null)
-                    CryptographicOperations.ZeroMemory(key);
-            }
-        }
-    }
+    public void Initialize(string password, Configuration config,
+        Dictionary<Guid, SiteCredential>? secrets = null) =>
+        InitializeStrict(password, config, secrets);
 
     public void Lock()
     {
@@ -344,7 +252,8 @@ public sealed class VaultDatabase
             if (_configCache is not null) return CloneConfig(_configCache);
             using var connection = OpenConnection();
             var bytes = ReadSealed(connection, "config");
-            var config = Deserialize<Configuration>(bytes) ?? new Configuration();
+            var config = Deserialize<Configuration>(bytes)
+            ?? throw new InvalidDataException("Vault configuration is empty.");
             _configCache = CloneConfig(config);
             return CloneConfig(config);
         }
@@ -488,84 +397,8 @@ public sealed class VaultDatabase
         }
     }
 
-    public void ChangeMasterPassword(string currentPassword, string newPassword)
-    {
-        if (!PasswordStrength.MeetsMinimum(newPassword))
-            throw new ArgumentException(
-                $"New master password must be at least {PasswordStrength.MinimumLength} characters and not trivially weak.");
-
-        lock (_gate)
-        {
-            // Verify current password without discarding a good session on failure.
-            var meta = ReadMeta();
-            var probe = DeriveKey(currentPassword, meta.Salt, meta.MemoryKb, meta.Iterations, meta.Lanes);
-            try
-            {
-                if (!TryDecrypt(meta.Verifier, probe, out var plain) ||
-                    Encoding.UTF8.GetString(plain) != "LaunchFlow.Vault.v1")
-                    throw new InvalidOperationException("Current master password is incorrect.");
-            }
-            finally
-            {
-                CryptographicOperations.ZeroMemory(probe);
-            }
-
-            if (_key is null)
-            {
-                if (!Unlock(currentPassword))
-                    throw new InvalidOperationException("Current master password is incorrect.");
-            }
-
-            var config = LoadConfigurationUnlocked();
-            var secrets = CloneSecrets(LoadSecretsUnlocked());
-            var nextConfigCache = CloneConfig(config);
-            var nextSecretsCache = CloneSecrets(secrets);
-            var salt = RandomNumberGenerator.GetBytes(SaltSize);
-            var newKey = DeriveKey(newPassword, salt, ArgonMemoryKb, ArgonIterations, ArgonLanes);
-            try
-            {
-                using var connection = OpenConnection();
-                using var tx = connection.BeginTransaction();
-                var verifier = Encrypt(Encoding.UTF8.GetBytes("LaunchFlow.Vault.v1"), newKey);
-                using (var cmd = connection.CreateCommand())
-                {
-                    cmd.CommandText =
-                        "UPDATE vault_meta SET salt=$salt, verifier=$verifier, argon_memory_kb=$mem, " +
-                        "argon_iterations=$iter, argon_lanes=$lanes, schema_version=$ver WHERE id=1;";
-                    cmd.Parameters.AddWithValue("$salt", salt);
-                    cmd.Parameters.AddWithValue("$verifier", verifier);
-                    cmd.Parameters.AddWithValue("$mem", ArgonMemoryKb);
-                    cmd.Parameters.AddWithValue("$iter", ArgonIterations);
-                    cmd.Parameters.AddWithValue("$lanes", ArgonLanes);
-                    cmd.Parameters.AddWithValue("$ver", SchemaVersion);
-                    cmd.ExecuteNonQuery();
-                }
-
-                WriteSealed(connection, "config", Serialize(config), newKey);
-                PersistCredentials(connection, secrets, newKey);
-                try { tx.Commit(); }
-                catch
-                {
-                    // A provider-level commit failure may have an uncertain disk outcome.
-                    ZeroKey();
-                    _configCache = null;
-                    _secretsCache = null;
-                    throw;
-                }
-                var previousKey = _key;
-                _key = newKey;
-                _sessionGeneration++;
-                newKey = null;
-                _configCache = nextConfigCache;
-                _secretsCache = nextSecretsCache;
-                if (previousKey is not null) CryptographicOperations.ZeroMemory(previousKey);
-            }
-            finally
-            {
-                if (newKey is not null) CryptographicOperations.ZeroMemory(newKey);
-            }
-        }
-    }
+    public void ChangeMasterPassword(string currentPassword, string newPassword) =>
+        ChangeMasterStrict(currentPassword, newPassword);
 
     private Configuration LoadConfigurationUnlocked()
     {
@@ -581,56 +414,62 @@ public sealed class VaultDatabase
     {
         if (_secretsCache is not null) return _secretsCache;
         using var connection = OpenConnection();
-        MigrateLegacyCredentialBlobIfNeeded(connection);
         _secretsCache = ReadCredentialRows(connection);
         return _secretsCache;
     }
 
-    private Dictionary<Guid, SiteCredential> ReadCredentialRows(SqliteConnection connection)
+    private Dictionary<Guid, SiteCredential> ReadCredentialRows(SqliteConnection connection,
+        byte[]? operationKey = null, byte[]? operationVaultId = null)
     {
+        var key = operationKey ?? _key ?? throw new InvalidOperationException("Vault is locked.");
+        var vaultId = operationVaultId ?? _strictVaultId
+            ?? throw new InvalidOperationException("Vault format context is missing.");
         var result = new Dictionary<Guid, SiteCredential>();
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT workflow_id, sealed FROM credentials;";
+        cmd.CommandText = "SELECT workflow_id, sealed FROM secure_credentials;";
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
         {
             var idText = reader.GetString(0);
-            if (!Guid.TryParse(idText, out var id)) continue;
-            var sealedBytes = (byte[])reader["sealed"];
-            if (!TryDecrypt(sealedBytes, _key!, out var plain))
-                throw new CryptographicException("Unable to decrypt a stored credential.");
-            var cred = Deserialize<SiteCredential>(plain)
-                       ?? throw new InvalidOperationException("Credential payload was empty.");
-            result[id] = cred;
+            if (!Guid.TryParseExact(idText, "N", out var id) ||
+                id == Guid.Empty || id.ToString("N") != idText || result.ContainsKey(id))
+                throw new InvalidDataException("Invalid or duplicate encrypted workflow identity.");
+            var envelope = (byte[])reader["sealed"];
+            var plain = VaultRecordCodec.Open(envelope, key, vaultId, "credential", idText);
+            try
+            {
+                result.Add(id, Deserialize<SiteCredential>(plain)
+                    ?? throw new InvalidDataException("Credential payload was empty."));
+            }
+            finally { CryptographicOperations.ZeroMemory(plain); }
         }
         return result;
     }
 
     private void PersistCredentials(SqliteConnection connection, Dictionary<Guid, SiteCredential> secrets,
-        byte[]? operationKey = null)
+        byte[]? operationKey = null, byte[]? operationVaultId = null)
     {
         var key = operationKey ?? _key ?? throw new InvalidOperationException("Vault is locked.");
+        var vaultId = operationVaultId ?? _strictVaultId
+            ?? throw new InvalidOperationException("Vault format context is missing.");
         using (var clear = connection.CreateCommand())
         {
-            clear.CommandText = "DELETE FROM credentials;";
+            clear.CommandText = "DELETE FROM secure_credentials;";
             clear.ExecuteNonQuery();
         }
-
-        foreach (var (id, cred) in secrets)
+        foreach (var (id, credential) in secrets)
         {
-            var sealedBytes = Encrypt(Serialize(cred), key);
+            if (id == Guid.Empty)
+                throw new InvalidDataException("Empty credential workflow identity.");
+            var owner = id.ToString("N");
+            var envelope = VaultRecordCodec.Seal(Serialize(credential), key, vaultId,
+                "credential", owner);
             using var cmd = connection.CreateCommand();
-            cmd.CommandText =
-                "INSERT INTO credentials (workflow_id, sealed) VALUES ($id, $sealed);";
-            cmd.Parameters.AddWithValue("$id", id.ToString("N"));
-            cmd.Parameters.AddWithValue("$sealed", sealedBytes);
+            cmd.CommandText = "INSERT INTO secure_credentials (workflow_id,sealed) VALUES ($id,$s);";
+            cmd.Parameters.AddWithValue("$id", owner);
+            cmd.Parameters.AddWithValue("$s", envelope);
             cmd.ExecuteNonQuery();
         }
-
-        // Remove legacy single-blob credentials object if present.
-        using var drop = connection.CreateCommand();
-        drop.CommandText = "DELETE FROM objects WHERE id='credentials';";
-        drop.ExecuteNonQuery();
     }
 
     private void MigrateLegacyCredentialBlobIfNeeded(SqliteConnection? existing = null,
@@ -690,6 +529,7 @@ public sealed class VaultDatabase
         _sessionGeneration++;
         CryptographicOperations.ZeroMemory(_key);
         _key = null;
+        _strictVaultId = null;
     }
 
     private SqliteConnection OpenConnection(bool create = false)
@@ -782,31 +622,35 @@ public sealed class VaultDatabase
             Convert.ToInt32(reader["argon_lanes"]));
     }
 
-    private void WriteSealed(SqliteConnection connection, string id, byte[] plaintext, byte[]? operationKey = null)
+    private void WriteSealed(SqliteConnection connection, string id, byte[] plaintext,
+        byte[]? operationKey = null, byte[]? operationVaultId = null)
     {
+        if (id != "config") throw new InvalidDataException("Unknown strict vault object.");
         var key = operationKey ?? _key ?? throw new InvalidOperationException("Vault is locked.");
-        var sealedBytes = Encrypt(plaintext, key);
+        var vaultId = operationVaultId ?? _strictVaultId
+            ?? throw new InvalidOperationException("Vault format context is missing.");
+        var envelope = VaultRecordCodec.Seal(plaintext, key, vaultId, "config", "config");
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = """
-            INSERT INTO objects (id, sealed) VALUES ($id, $sealed)
-            ON CONFLICT(id) DO UPDATE SET sealed=excluded.sealed;
-            """;
+        cmd.CommandText = "INSERT INTO secure_objects (id,sealed) VALUES ($id,$s) " +
+            "ON CONFLICT(id) DO UPDATE SET sealed=excluded.sealed;";
         cmd.Parameters.AddWithValue("$id", id);
-        cmd.Parameters.AddWithValue("$sealed", sealedBytes);
+        cmd.Parameters.AddWithValue("$s", envelope);
         cmd.ExecuteNonQuery();
     }
 
-    private byte[] ReadSealed(SqliteConnection connection, string id, byte[]? operationKey = null)
+    private byte[] ReadSealed(SqliteConnection connection, string id,
+        byte[]? operationKey = null, byte[]? operationVaultId = null)
     {
+        if (id != "config") throw new InvalidDataException("Unknown strict vault object.");
         var key = operationKey ?? _key ?? throw new InvalidOperationException("Vault is locked.");
+        var vaultId = operationVaultId ?? _strictVaultId
+            ?? throw new InvalidOperationException("Vault format context is missing.");
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT sealed FROM objects WHERE id=$id;";
+        cmd.CommandText = "SELECT sealed FROM secure_objects WHERE id=$id;";
         cmd.Parameters.AddWithValue("$id", id);
-        var result = cmd.ExecuteScalar() as byte[]
-                     ?? throw new InvalidOperationException($"Vault object '{id}' is missing.");
-        if (!TryDecrypt(result, key, out var plain))
-            throw new CryptographicException("Unable to decrypt vault object.");
-        return plain;
+        var envelope = cmd.ExecuteScalar() as byte[]
+            ?? throw new InvalidDataException("Encrypted configuration is missing.");
+        return VaultRecordCodec.Open(envelope, key, vaultId, "config", "config");
     }
 
     private static byte[] DeriveKey(string password, byte[] salt, int memoryKb, int iterations, int lanes)
