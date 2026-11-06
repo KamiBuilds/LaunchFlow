@@ -12,7 +12,7 @@
     <Compile Include="PlatformStubs.cs" />
     <Compile Include="obj/ProductionAutosave.g.cs" />
     <Compile Include="../../LaunchFlow/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
-    <Compile Include="../../LaunchFlow/Controllers/WorkflowEditorSession.cs" Link="Controllers/WorkflowEditorSession.cs" />
+    <Compile Include="../../LaunchFlow/Controllers/*.cs" Link="Controllers/%(Filename)%(Extension)" />
     <Compile Include="../../LaunchFlow/Services/EnterprisePolicy.cs" Link="Services/EnterprisePolicy.cs" />
     <Compile Include="../../LaunchFlow/Services/VaultDatabase.cs" Link="Services/VaultDatabase.cs" />
     <Compile Include="../../LaunchFlow/Services/VaultDatabase.Strict.cs" Link="Services/VaultDatabase.Strict.cs" />

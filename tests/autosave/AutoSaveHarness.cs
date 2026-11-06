@@ -276,7 +276,8 @@ partial class AutoSaveFixture
     private Configuration _configuration;
     private readonly WorkflowEditorSession _editorSession = new();
     private bool _loadingEditor;
-    private bool _vaultLockInProgress = false, _windowsLocked = false, _exiting = false, _runInProgress = false;
+    private bool _vaultLockInProgress = false, _windowsLocked = false, _exiting = false;
+    private readonly RunUiOperationController _runUi = new();
     private bool _installerShutdownInProgress = false;
     private bool _monitorSelectionChanged = false;
     private bool HasPendingEditorDialog => false;
