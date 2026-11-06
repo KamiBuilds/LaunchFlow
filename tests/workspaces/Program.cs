@@ -145,6 +145,7 @@ tests.AddRange(ExitCompletionGateTests.Cases());
 tests.AddRange(SafetyIntegrationTests.Cases());
 tests.AddRange(WebsiteLoginModeTests.Cases());
 tests.AddRange(WebsiteEditMapperTests.Cases());
+tests.AddRange(OperationOwnershipTests.Cases());
 tests.AddRange(ApplicationControlTests.Cases());
 tests.AddRange(BrowserInstallationTests.Cases());
 

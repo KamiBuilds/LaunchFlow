@@ -21,6 +21,7 @@
     <Compile Include="../../LaunchFlow/Services/WebsiteNextStepGuidance.cs" Link="WebsiteNextStepGuidance.cs" />
     <Compile Include="WebsiteLoginModeTests.cs" />
     <Compile Include="WebsiteEditMapperTests.cs" />
+    <Compile Include="OperationOwnershipTests.cs" />
     <Compile Include="../../LaunchFlow/Services/WindowsApplicationControl.cs" Link="WindowsApplicationControl.cs" />
     <Compile Include="ApplicationControlTests.cs" />
     <Compile Include="../../LaunchFlow/Services/BrowserInstallations.cs" Link="BrowserInstallations.cs" />
