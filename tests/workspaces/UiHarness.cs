@@ -1,4 +1,5 @@
 using LaunchFlow.Models;
+using LaunchFlow.Controllers;
 using LaunchFlow.Services;
 
 var tests = new List<(string Name, Func<Task> Body)>
@@ -26,7 +27,7 @@ var tests = new List<(string Name, Func<Task> Body)>
         try
         {
             Check(!ui.RunAllButton.IsEnabled && !ui.RunSelectedButton.IsEnabled && !ui.RunWorkspaceButton.IsEnabled && ui.StopButton.IsEnabled, "run controls allow duplicate actions");
-            ui._runCancellation!.Cancel();
+            ui._runUi.RequestStop();
         }
         finally { ui._runner.RunRelease.TrySetResult(new()); await run; }
         Check(ui.RunAllButton.IsEnabled && ui.RunSelectedButton.IsEnabled && !ui.StopButton.IsEnabled, "controls not restored");
@@ -54,7 +55,7 @@ var tests = new List<(string Name, Func<Task> Body)>
             "typing another profile name left a stale workspace action enabled");
 
         ui.WorkspaceNameBox.Text = "Morning";
-        ui._runInProgress = true;
+        Check(ui._runUi.TryBeginRun(out var heldLease), "failed to admit synthetic UI run");
         ui.RefreshControls();
         Check(!ui.RunWorkspaceButton.IsEnabled && !ui.PreviewWorkspaceButton.IsEnabled,
             "active run allowed another workspace action");
@@ -73,7 +74,8 @@ var tests = new List<(string Name, Func<Task> Body)>
     }),
     ("Test this site with no selection never falls through to Run all", async () =>
     {
-        var ui = new UiFixture { _selected = null };
+        var ui = new UiFixture();
+        ui._editorSession.Select(null);
         ui._runner.RunRelease.SetResult(new());
         await ui.Run(selected: true);
         Check(ui._runner.RunCalls == 0, "missing selection ran unrelated workflows");
@@ -154,7 +156,7 @@ var tests = new List<(string Name, Func<Task> Body)>
         var other = new WebsiteWorkflow();
         ui._configuration.Workflows.Add(other);
         var teaching = ui.Teach(original);
-        ui._selected = other;
+        ui._editorSession.Select(other);
         ui.RecorderResult.SetResult(true);
         await teaching;
         Check(original.Steps.Count == 1 && other.Steps.Count == 0 && ui._store.Saves == 1, "Teach retargeted the selection");
@@ -162,7 +164,7 @@ var tests = new List<(string Name, Func<Task> Body)>
     ("LIFE-R03 lock closes modeless recorder and waits for whole Teach task", async () =>
     {
         var ui = new UiFixture();
-        ui._selected = ui._configuration.Workflows[0];
+        ui._editorSession.Select(ui._configuration.Workflows[0]);
         ui._runner.CloseRelease.SetResult();
         var teaching = AsyncVoidTracker.Run(ui.Record);
         Check(ui.Recorder is not null && ui._activeTeachTask is { IsCompleted: false },
@@ -177,7 +179,7 @@ var tests = new List<(string Name, Func<Task> Body)>
     ("LIFE-R03 browser cleanup cannot seal profiles until recorder callbacks drain", async () =>
     {
         var ui = new UiFixture();
-        ui._selected = ui._configuration.Workflows[0];
+        ui._editorSession.Select(ui._configuration.Workflows[0]);
         ui.RecorderDrainRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
         ui._runner.CloseRelease.SetResult();
         var recording = AsyncVoidTracker.Run(ui.Record);
@@ -195,7 +197,7 @@ var tests = new List<(string Name, Func<Task> Body)>
     ("LIFE-R03 active Teach represents the entire modeless recorder lifetime", async () =>
     {
         var ui = new UiFixture();
-        ui._selected = ui._configuration.Workflows[0];
+        ui._editorSession.Select(ui._configuration.Workflows[0]);
         var pending = AsyncVoidTracker.Run(ui.Record);
         Check(ui.Recorder is not null && !pending.IsCompleted,
             "LIFE-R03 fixture must reach a modeless recorder before completing");
@@ -221,7 +223,7 @@ var tests = new List<(string Name, Func<Task> Body)>
         var replacement = new WebsiteWorkflow { Id = original.Id, Name = "Imported same-ID replacement" };
         ui._configuration.Workflows[0] = replacement;
         ui._workspaceRevision++;
-        ui._selected = replacement;
+        ui._editorSession.Select(replacement);
         ui.RecorderResult.SetResult(true);
         await teaching;
         Check(original.Steps.Count == 0 && replacement.Steps.Count == 0 &&
@@ -287,7 +289,7 @@ var tests = new List<(string Name, Func<Task> Body)>
     {
         var ui = new UiFixture();
         var workflow = ui._configuration.Workflows[0];
-        ui._selected = workflow;
+        ui._editorSession.Select(workflow);
         ui._loadedCredentialWorkflowId = workflow.Id;
         ui.PasswordWebsiteCombo.SelectedItem = workflow;
         ui.UsernameBox.Text = "synthetic-user";
@@ -308,7 +310,7 @@ var tests = new List<(string Name, Func<Task> Body)>
         VaultDatabase.Current.Credentials[first.Id] = new("first@example.invalid", "first-only-secret");
         VaultDatabase.Current.Credentials[second.Id] = new("second@example.invalid", "second-only-secret");
 
-        ui._selected = second;
+        ui._editorSession.Select(second);
         ui.PasswordWebsiteCombo.SelectedItem = second;
         ui._loadedCredentialWorkflowId = second.Id;
         ui.UsernameBox.Text = "changed@example.invalid";
@@ -328,7 +330,7 @@ var tests = new List<(string Name, Func<Task> Body)>
         var second = new WebsiteWorkflow { Name = "Another account" };
         ui._configuration.Workflows.Add(second);
         VaultDatabase.Current.Credentials[first.Id] = new("first@example.invalid", "original-secret");
-        ui._selected = first;
+        ui._editorSession.Select(first);
         ui.PasswordWebsiteCombo.SelectedItem = second;
         ui._loadedCredentialWorkflowId = first.Id;
         ui.UsernameBox.Text = "incorrect-account@example.invalid";
@@ -350,12 +352,12 @@ var tests = new List<(string Name, Func<Task> Body)>
     ("disabled fill preserves an existing credential when saving blank replacement fields", () =>
     {
         var ui = new UiFixture();
-        ui._selected = ui._configuration.Workflows[0];
-        var id = ui._selected.Id;
+        ui._editorSession.Select(ui._configuration.Workflows[0]);
+        var id = ui._editorSession.Selection.Id;
         VaultDatabase.Current.Credentials[id] = new("old-user", "old-password");
         ui._loadedCredentialWorkflowId = id;
         using var policy = EnterprisePolicy.UseProviderForTesting(() => new Dictionary<string, object?> { ["DisableCredentialFill"] = 1 });
-        ui.PasswordWebsiteCombo.SelectedItem = ui._selected;
+        ui.PasswordWebsiteCombo.SelectedItem = ui._editorSession.Selection;
         ui.UsernameBox.Text = "replacement";
         ui.SaveCredential();
         Check(VaultDatabase.Current.Credentials[id].Username == "old-user" && ui._store.Saves == 0, "denied read overwrote saved credential");
@@ -394,10 +396,11 @@ var tests = new List<(string Name, Func<Task> Body)>
             var ui = new UiFixture();
             var workflow = ui._configuration.Workflows[0];
             workflow.StartUrl = "https://site.example";
-            ui._runCancellation = new();
+            Check(ui._runUi.TryBeginRun(out var syntheticLease), "synthetic operation already active");
+        Check(ui._runUi.AttachCancellation(syntheticLease, new CancellationTokenSource()), "synthetic token not owned");
             var values = new Dictionary<string, object?>();
             using var policy = EnterprisePolicy.UseProviderForTesting(() => values);
-            MessageBox.Hook = () => { if (denial == "cancel") ui._runCancellation.Cancel(); else if (denial == "lock") VaultDatabase.Current.Lock(); else values["AllowedHosts"] = "site.example"; };
+            MessageBox.Hook = () => { if (denial == "cancel") ui._runUi.RequestStop(); else if (denial == "lock") VaultDatabase.Current.Lock(); else values["AllowedHosts"] = "site.example"; };
             Check(!await ui.Approve(workflow, "https://idp.example"), "SSO approved after " + denial);
             Check(workflow.ApprovedLoginOrigins.Count == 0 && ui._store.Saves == 0, "SSO persisted after " + denial);
         }
@@ -422,7 +425,9 @@ var tests = new List<(string Name, Func<Task> Body)>
     ("workflow status is queued without blocking and stale callbacks cannot overwrite final status", () =>
     {
         var ui = new UiFixture();
-        ui._runInProgress = true; ui._runStatusActive = true; ui._runCancellation = new();
+        Check(ui._runUi.TryBeginRun(out var statusLease), "status fixture lease not granted");
+        Check(ui._runUi.AttachCancellation(statusLease, new CancellationTokenSource()) &&
+              ui._runUi.BeginStatus(statusLease), "status fixture not active");
         var method = typeof(UiFixture).GetMethod("QueueWorkflowStatus", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
         Check(method is not null, "engine workflow status is not wired through a dispatcher method");
         method!.Invoke(ui, new object[] { "duplicate display name", AutomationEngine.WorkflowRunState.WaitingForSignIn });
@@ -430,7 +435,7 @@ var tests = new List<(string Name, Func<Task> Body)>
         ui.Dispatcher.Pending.Dequeue()();
         Check(ui.WorkflowStatusLabel.Text.Contains("Sign-in"), "workflow attention status missing");
         method.Invoke(ui, new object[] { "duplicate display name", AutomationEngine.WorkflowRunState.Completed });
-        ui._runInProgress = false;
+        ui._runUi.Complete(statusLease);
         ui.WorkflowStatusLabel.Text = "Final failed summary";
         ui.Dispatcher.Pending.Dequeue()();
         Check(ui.WorkflowStatusLabel.Text == "Final failed summary", "queued status overwrote final summary");
@@ -466,7 +471,7 @@ var tests = new List<(string Name, Func<Task> Body)>
     ("KeePass entry selection rechecks policy after listing entries and cannot persist a denied fallback", async () =>
     {
         var ui = new UiFixture();
-        ui._selected = ui._configuration.Workflows[0];
+        ui._editorSession.Select(ui._configuration.Workflows[0]);
         var database = Path.GetTempFileName();
         try
         {
@@ -479,7 +484,7 @@ var tests = new List<(string Name, Func<Task> Body)>
             values["DisableCredentialStorage"] = 1;
             KeePassXcService.ListRelease.SetResult(new() { "synthetic-entry" });
             await pending.WaitAsync(TimeSpan.FromSeconds(3));
-            Check(ui._store.Saves == 0 && string.IsNullOrEmpty(ui._selected.KeepassEntryPath), "KeePass selection persisted after policy denial");
+            Check(ui._store.Saves == 0 && string.IsNullOrEmpty(ui._editorSession.Selection.KeepassEntryPath), "KeePass selection persisted after policy denial");
             Check(ui._keepassMasterPassword is null, "KeePass retained password after policy denial");
         }
         finally { File.Delete(database); }
@@ -493,7 +498,7 @@ var tests = new List<(string Name, Func<Task> Body)>
         ui._runner.RunRelease.SetResult(attention);
         await ui.Run();
         Check(ui._openSignInDecisions.TryGetValue(original.Id, out var dialog) &&
-              !ui._runInProgress && !ui._runner.IsRunning,
+              !ui._runUi.IsRunning && !ui._runner.IsRunning,
               "fixture A did not produce an idle modeless sign-in decision");
 
         ui._runner.RunRelease = new TaskCompletionSource<AutomationEngine.RunResult>(
@@ -501,7 +506,7 @@ var tests = new List<(string Name, Func<Task> Body)>
         var runB = ui.Run();
         try
         {
-            Check(ui._runInProgress && ui._runner.IsRunning,
+            Check(ui._runUi.IsRunning && ui._runner.IsRunning,
                 "fixture B must be a genuinely active production-linked run");
             var beforeSaves = ui.SaveAllCalls;
             dialog!.Choose(SignInDecisionWindow.Decision.Repair);
@@ -522,15 +527,15 @@ var tests = new List<(string Name, Func<Task> Body)>
         var original = ui._configuration.Workflows[0];
         var other = new WebsiteWorkflow { Name = original.Name };
         ui._configuration.Workflows.Add(other);
-        ui._selected = original;
-        MessageBox.Hook = () => ui._selected = other;
+        ui._editorSession.Select(original);
+        MessageBox.Hook = () => ui._editorSession.Select(other);
         var result = new AutomationEngine.RunResult();
         result.LoginNeedsAttention.Add(new(original.Id, original.Name, "Synthetic attention"));
         ui._runner.RunRelease.SetResult(result);
         ui.RecorderResult.SetResult(true);
         await ui.Run();
         Check(ui._openSignInDecisions.TryGetValue(original.Id, out var dialog) &&
-            !ui._runInProgress && ReferenceEquals(ui._selected, other),
+            !ui._runUi.IsRunning && ReferenceEquals(ui._editorSession.Selection, other),
             "sign-in assistance blocked the main window or lost the original workflow");
         dialog!.Choose(SignInDecisionWindow.Decision.Repair);
         Check(ui._runner.LastTeachId == original.Id && other.Steps.Count == 0 && original.Steps.Count == 1,
@@ -545,7 +550,7 @@ var tests = new List<(string Name, Func<Task> Body)>
         result.LoginNeedsAttention.Add(new(workflow.Id, workflow.Name, "Unverified"));
         ui._runner.RunRelease.SetResult(result);
         await ui.Run();
-        Check(ui._openSignInDecisions.Count == 1 && !ui._runInProgress &&
+        Check(ui._openSignInDecisions.Count == 1 && !ui._runUi.IsRunning &&
             ui.RunAllButton.IsEnabled && ui._runner.RunCalls == 1,
             "modeless assistance kept the launch UI blocked");
         var active = ui._openSignInDecisions[workflow.Id];
@@ -574,7 +579,7 @@ var tests = new List<(string Name, Func<Task> Body)>
     ("Teach start and post-acquisition continuation use fresh policy", async () =>
     {
         var ui = new UiFixture();
-        ui._selected = ui._configuration.Workflows[0];
+        ui._editorSession.Select(ui._configuration.Workflows[0]);
         var values = new Dictionary<string, object?> { ["DisableTeach"] = 1 };
         using var policy = EnterprisePolicy.UseProviderForTesting(() => values);
         await AsyncVoidTracker.Run(ui.Record).WaitAsync(TimeSpan.FromSeconds(3));
@@ -608,10 +613,11 @@ var tests = new List<(string Name, Func<Task> Body)>
     ("synchronous cancellation reentrancy sees a revoked key and shares the owned lock task", async () =>
     {
         var ui = new UiFixture();
-        ui._runCancellation = new();
+        Check(ui._runUi.TryBeginRun(out var syntheticLease), "synthetic operation already active");
+        Check(ui._runUi.AttachCancellation(syntheticLease, new CancellationTokenSource()), "synthetic token not owned");
         Task? reentered = null;
         bool revokedAtCallback = false;
-        using var registration = ui._runCancellation.Token.Register(() =>
+        using var registration = ui._runUi.Cancellation.Token.Register(() =>
         {
             revokedAtCallback = !VaultDatabase.Current.IsUnlocked;
             reentered = ui.Lock();
@@ -676,7 +682,7 @@ var tests = new List<(string Name, Func<Task> Body)>
         try
         {
             Check(ReferenceEquals(first, second), "overlapping locks duplicated cleanup");
-            Check(!VaultDatabase.Current.IsUnlocked && ui._runCancellation!.IsCancellationRequested, "lock did not revoke and cancel immediately");
+            Check(!VaultDatabase.Current.IsUnlocked && ui._runUi.Cancellation!.IsCancellationRequested, "lock did not revoke and cancel immediately");
             Check(ui._runner.CloseEntered.Task.IsCompleted, "close barrier waited for stalled UI run");
             Check(ProfileVaultService.Seals == 0, "sealed before barrier completed");
         }
@@ -707,15 +713,13 @@ partial class UiFixture
         OfferRepairForLoginAttentionAsync(items);
     public readonly Dictionary<Guid, SignInDecisionWindow> _openSignInDecisions = new();
     public readonly Configuration _configuration = new() { Workflows = new() { new WebsiteWorkflow() } };
-    public WebsiteWorkflow? _selected = new();
-    public bool _runStatusActive = false, _vaultCleanupFailed = false, _profileSealFailed = false;
-    public bool _hasUnsavedChanges = false;
+    public readonly WorkflowEditorSession _editorSession = new(new WebsiteWorkflow());
+    public readonly RunUiOperationController _runUi = new();
+    public bool _vaultCleanupFailed = false, _profileSealFailed = false;
     public bool _installerShutdownInProgress = false, _installerProfileSealFailed = false;
     public long _workspaceRevision;
     public readonly Control RetryVaultLockButton = new();
-    public bool _windowsLocked = false, _vaultLockInProgress = false, _runInProgress = false, _teachingInProgress = false, _exiting = false;
-    public CancellationTokenSource? _runCancellation;
-    public Task<AutomationEngine.RunResult>? _activeRunTask = null;
+    public bool _windowsLocked = false, _vaultLockInProgress = false, _teachingInProgress = false, _exiting = false;
     public Task? _activeTeachTask = null;
     public VisualRecorderWindow? _activeRecorder;
     public Task _vaultLockTask = Task.CompletedTask;
