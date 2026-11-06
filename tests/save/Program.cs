@@ -68,7 +68,7 @@ try
 
     // Reject an ACTUAL SQLite UPDATE. This is not a mocked writer exception.
     WriteSql(path, """
-        CREATE TRIGGER deny_config_save BEFORE UPDATE ON objects
+        CREATE TRIGGER deny_config_save BEFORE UPDATE ON secure_objects
         WHEN NEW.id='config' BEGIN SELECT RAISE(ABORT, 'synthetic disk refusal'); END;
         """);
     var failed = tx.Commit(live, c => c.Workflows[0].Name = "Not persisted",
