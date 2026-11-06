@@ -32,7 +32,8 @@ public partial class MainWindow
         catch (Exception ex)
         {
             AppendLog("Could not save previous credential: " + ex.Message);
-            // Do not switch entries if the previous password could not be encrypted.
+            // Keep the previous selection if applying its website fields fails.
+            // Credentials have a separate explicit save path; this is not an encryption commit.
             _loadingEditor = true;
             WorkflowList.SelectedItem = _selected;
             _loadingEditor = false;

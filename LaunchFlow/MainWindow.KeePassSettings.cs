@@ -144,7 +144,4 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>
-    /// Prompt once per vault session when a run needs KeePass and has no local vault password.
-    /// </summary>
 }

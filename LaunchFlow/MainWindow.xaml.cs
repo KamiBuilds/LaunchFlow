@@ -712,6 +712,10 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Request KeePassXC authorization only for workflows that need it, then
+    /// revalidate vault, policy and run admission after the modal prompt.
+    /// </summary>
     private bool EnsureKeePassPasswordForRun(IReadOnlyList<WebsiteWorkflow> workflows)
     {
         if (!CredentialReadAllowed())
