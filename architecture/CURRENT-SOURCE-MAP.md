@@ -17,7 +17,34 @@
 
 **Former mutable responsibilities removed from MainWindow:** run admission (`_runInProgress`), status phase (`_runStatusActive`), run cancellation (`_runCancellation`) and engine task (`_activeRunTask`) are accessed via RunUiOperationController. Selected workflow (`_selected`), edit generation (`_editGeneration`) and dirty acknowledgement (`_hasUnsavedChanges`) are accessed via WorkflowEditorSession. Readers/writers: RunEnabledAsync admits/registers/completes a lease, Stop/lock/exit cancel through it, queued workflow status checks its captured lease; website selection selects the editor object, edit events mark a revision, SaveAll acknowledges only its captured revision. Existing config/workspace/vault/session authorities stay separate.
 
-**Website field contract:** `Enabled, Name, StartUrl, DestinationUrl` → ApplyLeading (name blank fallback `Unnamed website`, trim URLs); `Browser, ReplaceMonitor, MonitorIndex, MonitorDeviceName` → ApplyBrowser (explicit monitor replacement only, saved disconnected identity retained); `LoginMode, UsernameContinueSelector, PasswordCredentialOrigin, AutoLogin` → ApplyLogin (mode determines derived AutoLogin in the UI adapters); `KeepassEntryPath, UsernameSelector, PasswordSelector, SubmitSelector, CredentialOrigin, LoginSuccessSelector, LoginSuccessUrlContains, LoginWaitSeconds` → ApplyDetails (trim selectors/origins; invalid wait 60, bounds 5–180). Consumers are actual `ApplyCurrentEditor` navigation, `WebsiteEditDraft.Apply` durable save and source-linked `tests/workspaces/WebsiteEditMapperTests.cs`. Credentials and steps are not part of the website mapper; global setting validation remains durable-save-only.
+### Editable website field-to-consumer contract
+
+Both consumers use the same typed mapper, with deliberately different evaluation timing: N = navigation `MainWindow.Persistence.ApplyCurrentEditor`; D = detached durable `WebsiteEditDraft.Apply` invoked from `CaptureConfigurationDraft` / `ConfigurationSaveTransaction`. Every entry below is exercised by `tests/workspaces/WebsiteEditMapperTests.cs` (W1 full sentinel + W2 browser partial + W3 monitor + W4 normalization); event-order/native WPF tests remain separate.
+
+| WPF source input or decision | Shared rule / stage | Model target | Production consumers | Test |
+|---|---|---|---|---|
+| EnabledCheck | ApplyLeading: Boolean | Enabled | N,D | W1 |
+| NameBox | NormalizeName: trim, blank → Unnamed website | Name | N,D | W1,W4 |
+| StartUrlBox | NormalizeText: trim | StartUrl | N,D | W1 |
+| DestinationUrlBox | NormalizeText: trim | DestinationUrl | N,D | W1 |
+| BrowserCombo | BrowserSelection, ApplyBrowser: reject missing | Browser | N,D | W1,W2 |
+| MonitorCombo + _monitorSelectionChanged | ReplaceMonitor only on explicit choice/allowed missing identity | Replacement decision | N,D | W3 |
+| MonitorCombo.Index | ApplyBrowser: retain saved identity when not replaced | MonitorIndex | N,D | W1,W3 |
+| MonitorCombo.DeviceName | ApplyBrowser: retain disconnected saved name when not replaced | MonitorDeviceName | N,D | W1,W3 |
+| LoginModeCombo | SelectedLoginMode, ApplyLogin | LoginMode | N,D | W1 |
+| LoginModeCombo (derived) | WebsiteLoginMode.UsesSavedPassword; UI AutoLoginCheck fires in N after ApplyLogin | AutoLogin | N,D | W1, UI autosave |
+| UsernameContinueBox | NormalizeText, ApplyLogin | UsernameContinueSelector | N,D | W1 |
+| PasswordOriginBox | NormalizeText, ApplyLogin | PasswordCredentialOrigin | N,D | W1 |
+| KeepassEntryBox | NormalizeText, ApplyDetails | KeepassEntryPath | N,D | W1 |
+| UsernameSelectorBox | NormalizeText, ApplyDetails | UsernameSelector | N,D | W1 |
+| PasswordSelectorBox | NormalizeText, ApplyDetails | PasswordSelector | N,D | W1 |
+| SubmitSelectorBox | NormalizeText, ApplyDetails | SubmitSelector | N,D | W1 |
+| CredentialOriginBox | NormalizeText, ApplyDetails | CredentialOrigin | N,D | W1 |
+| LoginSuccessSelectorBox | NormalizeText, ApplyDetails | LoginSuccessSelector | N,D | W1 |
+| LoginSuccessUrlBox | NormalizeText, ApplyDetails | LoginSuccessUrlContains | N,D | W1 |
+| LoginWaitBox | NormalizeWait: culture-aware int.TryParse; invalid 60; clamp 5–180 | LoginWaitSeconds | N,D | W1,W4 |
+
+WPF credential/password inputs, workflow ID/index ownership, steps, unknown configuration extensions and global settings are intentionally outside this mapping. Invalid global settings still block durable Save capture but not live navigation. The navigation path preserves its original leading-field partial update if browser validation fails.
 
 **Verification:** New tests `tests/workspaces/OperationOwnershipTests.cs` and `WebsiteEditMapperTests.cs` plus current UI/autosave/runtime extraction compile the collaborators. First branch CI at `40b22f98` failed on CS0165 in a regression test; corrected by `a1fe9967c9b9dd9163870b680180e72f6689ece8`. Hosted rerun, native installer/build, independent full-source review, owner interactive Windows acceptance and the final pinned artifact must each be recorded separately. Do not call an unexecuted gate passed.
 
