@@ -23,7 +23,8 @@ internal static class OperationOwnershipTests
             Check(owner.AttachCancellation(old, c1) && owner.BeginStatus(old), "old status");
             var observed = owner.CaptureLeaseForCallback();
             Check(owner.IsStatusCurrent(observed), "current status denied");
-            Check(owner.Complete(old) && owner.TryBeginRun(out var next), "new lease");
+            Check(owner.Complete(old), "old lease failed to complete");
+            Check(owner.TryBeginRun(out var next), "new lease");
             using var c2 = new CancellationTokenSource();
             Check(owner.AttachCancellation(next, c2) && owner.BeginStatus(next) &&
                 observed != owner.CaptureLeaseForCallback() &&
