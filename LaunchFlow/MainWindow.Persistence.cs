@@ -24,7 +24,6 @@ public partial class MainWindow
 {
     // A synchronous save owns exactly one edit generation and live configuration.
     // No UI/control references enter the draft or encrypted persistence boundary.
-    private long _editGeneration;
     private bool _saveInProgress;
 
     private ConfigurationEditDraft CaptureConfigurationDraft(bool showNotification)
@@ -35,9 +34,9 @@ public partial class MainWindow
             ? m : throw new ArgumentException("Vault lock timeout must be between 1 and 120 minutes.");
 
         WebsiteEditDraft? website = null;
-        if (_selected is not null && !_loadingEditor)
+        if (_editorSession.Selection is not null && !_loadingEditor)
         {
-            var index = _configuration.Workflows.FindIndex(w => ReferenceEquals(w, _selected));
+            var index = _configuration.Workflows.FindIndex(w => ReferenceEquals(w, _editorSession.Selection));
             if (index < 0)
                 throw new InvalidOperationException("Website was replaced or removed; save the current selection again.");
             var browser = BrowserSelection(BrowserCombo);
@@ -45,15 +44,15 @@ public partial class MainWindow
                 throw new InvalidOperationException("Choose an installed browser before saving this website.");
             var monitor = MonitorCombo.SelectedItem as MonitorChoice;
             var replaceMonitor = monitor is not null &&
-                (_monitorSelectionChanged || string.IsNullOrWhiteSpace(_selected.MonitorDeviceName));
+                (_monitorSelectionChanged || string.IsNullOrWhiteSpace(_editorSession.Selection.MonitorDeviceName));
             website = new WebsiteEditDraft(
-                index, _selected.Id,
+                index, _editorSession.Selection.Id,
                 EnabledCheck.IsChecked == true,
                 WebsiteEditMapper.NormalizeName(NameBox.Text),
                 WebsiteEditMapper.NormalizeText(StartUrlBox.Text),
                 WebsiteEditMapper.NormalizeText(DestinationUrlBox.Text), browser,
-                replaceMonitor, monitor?.Index ?? _selected.MonitorIndex,
-                monitor?.DeviceName ?? _selected.MonitorDeviceName,
+                replaceMonitor, monitor?.Index ?? _editorSession.Selection.MonitorIndex,
+                monitor?.DeviceName ?? _editorSession.Selection.MonitorDeviceName,
                 SelectedLoginMode(LoginModeCombo.SelectedIndex),
                 WebsiteLoginMode.UsesSavedPassword(SelectedLoginMode(LoginModeCombo.SelectedIndex)),
                 WebsiteEditMapper.NormalizeText(UsernameContinueBox.Text),
@@ -83,8 +82,8 @@ public partial class MainWindow
 
     private void ApplyCurrentEditor()
     {
-        if (_selected is null || _loadingEditor) return;
-        var w = _selected;
+        if (_editorSession.Selection is null || _loadingEditor) return;
+        var w = _editorSession.Selection;
         // Preserve the original staged navigation contract: leading fields are
         // applied before browser validation, and the AutoLogin UI event may run
         // before the later selector inputs are read.
@@ -114,10 +113,9 @@ public partial class MainWindow
     private void MarkUnsavedChanges()
     {
         if (_loadingEditor || _configuration is null || _exiting) return;
-        _editGeneration++;
+        _editorSession.MarkEdited();
         _autoSaveSchedule.Changed(DateTimeOffset.UtcNow);
         _autoSaveTimer.Start();
-        _hasUnsavedChanges = true;
         SaveStatusLabel.Text = "Unsaved changes";
         SaveStatusLabel.Foreground = new System.Windows.Media.SolidColorBrush(
             System.Windows.Media.Color.FromRgb(255, 202, 111));
@@ -126,11 +124,11 @@ public partial class MainWindow
         SaveChangesButton.ToolTip = "Changes are waiting for encrypted automatic save. Click to save immediately.";
     }
 
-    private void MarkSaved()
+    private void MarkSaved(long? committedRevision = null)
     {
+        if (!_editorSession.TryAcknowledge(committedRevision ?? _editorSession.Revision)) return;
         _autoSaveSchedule.Saved();
         _autoSaveTimer.Stop();
-        _hasUnsavedChanges = false;
         SaveStatusLabel.Text = "All changes saved";
         SaveStatusLabel.Foreground = new System.Windows.Media.SolidColorBrush(
             System.Windows.Media.Color.FromRgb(133, 201, 185));
@@ -148,8 +146,8 @@ public partial class MainWindow
         try
         {
             var originalConfig = _configuration;
-            var originalSelection = _selected;
-            var originalRevision = _editGeneration;
+            var originalSelection = _editorSession.Selection;
+            var originalRevision = _editorSession.Revision;
             var vaultGeneration = VaultDatabase.Current.SessionGeneration;
 
             // UI data are captured into an immutable draft. Nothing writes to
@@ -159,10 +157,10 @@ public partial class MainWindow
                 !originalConfig.ShortcutTipShown && draft.ShortcutTipShown;
             bool Owns() =>
                 ReferenceEquals(_configuration, originalConfig) &&
-                ReferenceEquals(_selected, originalSelection) &&
+                ReferenceEquals(_editorSession.Selection, originalSelection) &&
                 (originalSelection is null || originalConfig.Workflows.Any(w =>
                     ReferenceEquals(w, originalSelection))) &&
-                _editGeneration == originalRevision &&
+                _editorSession.Revision == originalRevision &&
                 !_vaultLockInProgress && !_windowsLocked && !_exiting &&
                 VaultDatabase.Current.IsUnlocked &&
                 VaultDatabase.Current.SessionGeneration == vaultGeneration;
@@ -190,7 +188,7 @@ public partial class MainWindow
                 return false; // superseded before the write
             }
 
-            MarkSaved();
+            MarkSaved(originalRevision);
             // Platform/UI effects are NOT part of the storage transaction.
             // Their failures must not misreport a successful encrypted commit.
             try
@@ -220,7 +218,7 @@ public partial class MainWindow
                     WebsiteLoginMode.UsesSavedPassword(draft.Website.LoginMode);
                 RefreshKeePassStatus();
                 WorkflowList.Items.Refresh();
-                WorkflowList.SelectedItem = _selected;
+                WorkflowList.SelectedItem = _editorSession.Selection;
             }
             catch (Exception ex)
             {
