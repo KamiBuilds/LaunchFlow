@@ -66,6 +66,23 @@ internal static class OperationOwnershipTests
             Check(!editor.IsCurrent(a, rev) && editor.IsCurrent(b, rev),
                 "same-GUID replacement borrowed stale workflow identity");
         });
+        yield return ("editor A/B/A re-selection invalidates a stale operation token without an edit", () =>
+        {
+            var first = new WebsiteWorkflow { Id = Guid.NewGuid() };
+            var other = new WebsiteWorkflow { Id = Guid.NewGuid() };
+            var editor = new WorkflowEditorSession(first);
+            editor.MarkEdited();
+            var initial = editor.CaptureOwnership();
+            Check(editor.IsCurrent(initial), "initial selection token denied");
+            editor.Select(other);
+            editor.Select(first);
+            Check(!editor.IsCurrent(initial) &&
+                !editor.TryAcknowledge(initial) && editor.IsDirty,
+                "stale A/B/A selection acknowledged a previous operation");
+            var current = editor.CaptureOwnership();
+            Check(editor.IsCurrent(current) && editor.TryAcknowledge(current) &&
+                !editor.IsDirty, "current selection could not acknowledge its revision");
+        });
         yield return ("editor late edit and rejected save cannot acknowledge earlier revision", () =>
         {
             var editor = new WorkflowEditorSession(new WebsiteWorkflow());

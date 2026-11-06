@@ -146,8 +146,9 @@ public partial class MainWindow
         try
         {
             var originalConfig = _configuration;
-            var originalSelection = _editorSession.Selection;
-            var originalRevision = _editorSession.Revision;
+            var editorOwner = _editorSession.CaptureOwnership();
+            var originalSelection = editorOwner.Selection;
+            var originalRevision = editorOwner.EditRevision;
             var vaultGeneration = VaultDatabase.Current.SessionGeneration;
 
             // UI data are captured into an immutable draft. Nothing writes to
@@ -157,10 +158,9 @@ public partial class MainWindow
                 !originalConfig.ShortcutTipShown && draft.ShortcutTipShown;
             bool Owns() =>
                 ReferenceEquals(_configuration, originalConfig) &&
-                ReferenceEquals(_editorSession.Selection, originalSelection) &&
+                _editorSession.IsCurrent(editorOwner) &&
                 (originalSelection is null || originalConfig.Workflows.Any(w =>
                     ReferenceEquals(w, originalSelection))) &&
-                _editorSession.Revision == originalRevision &&
                 !_vaultLockInProgress && !_windowsLocked && !_exiting &&
                 VaultDatabase.Current.IsUnlocked &&
                 VaultDatabase.Current.SessionGeneration == vaultGeneration;
@@ -188,7 +188,9 @@ public partial class MainWindow
                 return false; // superseded before the write
             }
 
-            MarkSaved(originalRevision);
+            // Reentrant selection A -> B -> A with no new edit does not
+            // acknowledge an earlier operation merely by matching reference/revision.
+            if (_editorSession.IsCurrent(editorOwner)) MarkSaved(originalRevision);
             // Platform/UI effects are NOT part of the storage transaction.
             // Their failures must not misreport a successful encrypted commit.
             try
