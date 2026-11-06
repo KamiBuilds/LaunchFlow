@@ -45,3 +45,7 @@ output includes both the workspace and UI summaries.
 These are **executable orchestration seams**, not actual WPF event delivery,
 Windows Registry/DPAPI, browser dispatch cancellation or installer assurance.
 `docs/BOTH-UI-INTEGRATION.md` records exact parent contracts and native gates.
+
+## 2026-11-06 source-linked structural ownership regressions
+
+`OperationOwnershipTests.cs` executes the actual dispatcher-owned RunUiOperationController and WorkflowEditorSession for lease admission before a prompt/token, stale queued callback, Stop, real engine task identity, and imported same-GUID object/revision invalidation. `WebsiteEditMapperTests.cs` executes the production WebsiteEditDraft mapper and staged navigation groups, including every editable field, default wait, missing browser's prior partial update and disconnected monitor preservation. These fixtures do not exercise the installed WPF event dispatcher or actual Windows browser.

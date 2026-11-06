@@ -1,5 +1,30 @@
 # Current source and state ownership map
 
+**Structural implementation branch:** `refactor/core-structure-20261106` from approved baseline `93b49482b6ea197c810e27def9fe6d9b080ec0aa` (LaunchFlow v0.7.46). This overlay describes the implemented source at `a1fe9967c9b9dd9163870b680180e72f6689ece8` before final verification. Subsequent documentation/verification commits must be treated as distinct source bytes. The earlier baseline map is preserved below for historical context.
+
+## 2026-11-06 structural ownership overlay — candidate, not accepted
+
+| Component | Owned state or responsibility | Production call path and boundaries |
+|---|---|---|
+| [RunUiOperationController](../LaunchFlow/Controllers/RunUiOperationController.cs) | Per-UI-run lease, stop-token reference, task reference and status phase | MainWindow acquires lease **before modal prompts**, registers real engine task after approval, releases only matching lease in finally; AutomationEngine separately owns browser and session lifetime |
+| [WorkflowEditorSession](../LaunchFlow/Controllers/WorkflowEditorSession.cs) | Current workflow object reference, edit revision, dirty state and specific-revision acknowledgement | MainWindow website/navigation/save/autosave adapters; does **not** own live Configuration, vault generation, workspace revision or Windows session |
+| [WebsiteEditMapper](../LaunchFlow/Models/WebsiteEditMapper.cs) | Shared normalized assignment of every editable website property | Navigation uses ordered ApplyLeading → ApplyBrowser → ApplyLogin → AutoLoginCheck event → ApplyDetails; durable WebsiteEditDraft.Apply uses the same groups on a detached candidate, after ID/index and save-transaction guards |
+| [LoginFlowCoordinator](../LaunchFlow/Services/LoginFlowCoordinator.cs) | Transient nonsecret per-attempt sequencing and submission markers | AutomationEngine.TryAutoLoginAsync delegates; engine retains credential acquisition, policy, browser, cancel and public-result authority |
+| [LoginCompletionObserver](../LaunchFlow/Services/LoginCompletionObserver.cs) | Bounded verification observations | Actual LoginHealth predicates and cancellation remain authoritative; submission is not automatically verified completion |
+| [AutomationEngine.LoginStages](../LaunchFlow/Services/AutomationEngine.LoginStages.cs) | Named username, combined/resumed password and owned final-submit stages | Protected FillCredentialAsync afterFill callback keeps document/form/frame binding alive through continuation; no separate context/session owner |
+
+**Before/after physical source sizes** (GitHub recursive-tree blob byte sizes; not an assertion of fewer LOC): 18 MainWindow C# partials, **166,577 → 167,627 bytes**; new Controllers, **0 → 3,644 bytes**; three extracted login collaboration files, **0 → 23,353 bytes**; tracked files **261 → 269**. Responsibility extraction, not a universal line budget, is the measure; MainWindow remains the WPF dialog, rendering, dispatcher and platform lifecycle adapter.
+
+**Former mutable responsibilities removed from MainWindow:** run admission (`_runInProgress`), status phase (`_runStatusActive`), run cancellation (`_runCancellation`) and engine task (`_activeRunTask`) are accessed via RunUiOperationController. Selected workflow (`_selected`), edit generation (`_editGeneration`) and dirty acknowledgement (`_hasUnsavedChanges`) are accessed via WorkflowEditorSession. Readers/writers: RunEnabledAsync admits/registers/completes a lease, Stop/lock/exit cancel through it, queued workflow status checks its captured lease; website selection selects the editor object, edit events mark a revision, SaveAll acknowledges only its captured revision. Existing config/workspace/vault/session authorities stay separate.
+
+**Website field contract:** `Enabled, Name, StartUrl, DestinationUrl` → ApplyLeading (name blank fallback `Unnamed website`, trim URLs); `Browser, ReplaceMonitor, MonitorIndex, MonitorDeviceName` → ApplyBrowser (explicit monitor replacement only, saved disconnected identity retained); `LoginMode, UsernameContinueSelector, PasswordCredentialOrigin, AutoLogin` → ApplyLogin (mode determines derived AutoLogin in the UI adapters); `KeepassEntryPath, UsernameSelector, PasswordSelector, SubmitSelector, CredentialOrigin, LoginSuccessSelector, LoginSuccessUrlContains, LoginWaitSeconds` → ApplyDetails (trim selectors/origins; invalid wait 60, bounds 5–180). Consumers are actual `ApplyCurrentEditor` navigation, `WebsiteEditDraft.Apply` durable save and source-linked `tests/workspaces/WebsiteEditMapperTests.cs`. Credentials and steps are not part of the website mapper; global setting validation remains durable-save-only.
+
+**Verification:** New tests `tests/workspaces/OperationOwnershipTests.cs` and `WebsiteEditMapperTests.cs` plus current UI/autosave/runtime extraction compile the collaborators. First branch CI at `40b22f98` failed on CS0165 in a regression test; corrected by `a1fe9967c9b9dd9163870b680180e72f6689ece8`. Hosted rerun, native installer/build, independent full-source review, owner interactive Windows acceptance and the final pinned artifact must each be recorded separately. Do not call an unexecuted gate passed.
+
+---
+
+## Historical baseline map retained for comparison
+
 **Reviewed source baseline:** `52f0978b0954937a61674105c01b10e57d80f67c` (LaunchFlow 0.7.46). **Maintenance branch:** `refactor/architecture-readability-20261106`. This map describes code **at that baseline**; the delivery receipt supplies the final documentation-only commit SHA. Links target repository paths at the baseline. Partial classes share one object and all private fields; file separation is navigation, **not** service isolation.
 
 ## Start here: composition and dependency ownership
