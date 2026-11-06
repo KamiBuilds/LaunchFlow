@@ -1,5 +1,6 @@
 using System.Text.Json;
 using LaunchFlow.Models;
+using LaunchFlow.Controllers;
 using LaunchFlow.Services;
 using Microsoft.Data.Sqlite;
 using System.Windows.Controls;
@@ -273,12 +274,11 @@ partial class AutoSaveFixture
     private readonly ConfigurationSaveTransaction _saveTransaction;
     private readonly StartupRegistrationService _startupRegistration;
     private Configuration _configuration;
-    private WebsiteWorkflow? _selected;
+    private readonly WorkflowEditorSession _editorSession = new();
     private bool _loadingEditor;
     private bool _vaultLockInProgress = false, _windowsLocked = false, _exiting = false, _runInProgress = false;
     private bool _installerShutdownInProgress = false;
     private bool _monitorSelectionChanged = false;
-    private bool _hasUnsavedChanges;
     private bool HasPendingEditorDialog => false;
 
     public Action? StartupHook;
@@ -303,19 +303,19 @@ partial class AutoSaveFixture
     public AutoSaveFixture()
     {
         _configuration = _store.Load();
-        _selected = _configuration.Workflows.Single();
-        NameBox.Text = _selected.Name;
-        StartUrlBox.Text = _selected.StartUrl;
-        DestinationUrlBox.Text = _selected.DestinationUrl;
-        BrowserCombo.SelectedItem = _selected.Browser;
-        EnabledCheck.IsChecked = _selected.Enabled;
-        KeepassEntryBox.Text = _selected.KeepassEntryPath ?? "";
+        _editorSession.Select(_configuration.Workflows.Single());
+        NameBox.Text = _editorSession.Selection!.Name;
+        StartUrlBox.Text = _editorSession.Selection!.StartUrl;
+        DestinationUrlBox.Text = _editorSession.Selection!.DestinationUrl;
+        BrowserCombo.SelectedItem = _editorSession.Selection!.Browser;
+        EnabledCheck.IsChecked = _editorSession.Selection!.Enabled;
+        KeepassEntryBox.Text = _editorSession.Selection!.KeepassEntryPath ?? "";
         LoginWaitBox.Text = "60";
         DelayBox.Text = "5";
         VaultTimeoutBox.Text = "10";
         ShortcutBox.Text = _configuration.GlobalShortcut;
         LanguageCombo.SelectedItem = new ComboBoxItem { Tag = _configuration.UiLanguage };
-        LoginModeCombo.SelectedIndex = WebsiteLoginMode.Index(_selected.LoginMode);
+        LoginModeCombo.SelectedIndex = WebsiteLoginMode.Index(_editorSession.Selection!.LoginMode);
         _startupRegistration = new StartupRegistrationService(
             _ => StartupHook?.Invoke(), _ => StartupHook?.Invoke());
         var validator = new WorkflowConfigurationService(_store.SaveDurable, url =>
@@ -345,9 +345,9 @@ partial class AutoSaveFixture
     private void RefreshKeePassStatus() { }
     private void AppendLog(string message) => Logs.Add(message);
 
-    public WebsiteWorkflow? Selected => _selected;
+    public WebsiteWorkflow? Selected => _editorSession.Selection;
     public Configuration Configuration => _configuration;
-    public bool Dirty => _hasUnsavedChanges;
+    public bool Dirty => _editorSession.IsDirty;
     public bool TimerEnabled => _autoSaveTimer.IsEnabled;
     public void FireTimer() => _autoSaveTimer.Fire();
     public bool ManualSave() => SaveAll();

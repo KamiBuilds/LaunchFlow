@@ -21,7 +21,7 @@ def extract_method(source, name):
 
 auto_fields_start = autosave.index("    private readonly AutoSaveSchedule _autoSaveSchedule")
 auto_fields_end = autosave.index("    private void StartAutoSave()", auto_fields_start)
-save_fields_start = persistence.index("    private long _editGeneration;")
+save_fields_start = persistence.index("    private bool _saveInProgress;")
 save_fields_end = persistence.index("    private ConfigurationEditDraft CaptureConfigurationDraft(", save_fields_start)
 events_start = mainwindow.index("        NameBox.TextChanged += (_, _) => MarkUnsavedChanges();")
 events_end_line = "        LanguageCombo.SelectionChanged += (_, _) => MarkUnsavedChanges();"
