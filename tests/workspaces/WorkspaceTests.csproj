@@ -7,6 +7,7 @@
   <ItemGroup>
     <Compile Include="Program.cs" /><Compile Include="WorkspaceCatalogTests.cs" /><Compile Include="PlatformStubs.cs" />
     <Compile Include="../../LaunchFlow/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
+    <Compile Include="../../LaunchFlow/Controllers/*.cs" Link="Controllers/%(Filename)%(Extension)" />
     <Compile Include="../../LaunchFlow/Services/WorkspaceCatalog.cs" Link="WorkspaceCatalog.cs" />
     <Compile Include="../../LaunchFlow/Services/WorkflowEditGuard.cs" Link="WorkflowEditGuard.cs" />
     <Compile Include="../../LaunchFlow/Services/ExitSafety.cs" Link="ExitSafety.cs" />
