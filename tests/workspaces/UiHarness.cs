@@ -353,7 +353,9 @@ var tests = new List<(string Name, Func<Task> Body)>
     {
         var ui = new UiFixture();
         ui._editorSession.Select(ui._configuration.Workflows[0]);
-        var id = ui._editorSession.Selection.Id;
+        var selected = ui._editorSession.Selection ??
+            throw new InvalidOperationException("Fixture expected a selected workflow");
+        var id = selected.Id;
         VaultDatabase.Current.Credentials[id] = new("old-user", "old-password");
         ui._loadedCredentialWorkflowId = id;
         using var policy = EnterprisePolicy.UseProviderForTesting(() => new Dictionary<string, object?> { ["DisableCredentialFill"] = 1 });
@@ -484,7 +486,9 @@ var tests = new List<(string Name, Func<Task> Body)>
             values["DisableCredentialStorage"] = 1;
             KeePassXcService.ListRelease.SetResult(new() { "synthetic-entry" });
             await pending.WaitAsync(TimeSpan.FromSeconds(3));
-            Check(ui._store.Saves == 0 && string.IsNullOrEmpty(ui._editorSession.Selection.KeepassEntryPath), "KeePass selection persisted after policy denial");
+            var selected = ui._editorSession.Selection ??
+                throw new InvalidOperationException("Fixture lost its selected workflow");
+            Check(ui._store.Saves == 0 && string.IsNullOrEmpty(selected.KeepassEntryPath), "KeePass selection persisted after policy denial");
             Check(ui._keepassMasterPassword is null, "KeePass retained password after policy denial");
         }
         finally { File.Delete(database); }
@@ -617,7 +621,9 @@ var tests = new List<(string Name, Func<Task> Body)>
         Check(ui._runUi.AttachCancellation(syntheticLease, new CancellationTokenSource()), "synthetic token not owned");
         Task? reentered = null;
         bool revokedAtCallback = false;
-        using var registration = ui._runUi.Cancellation.Token.Register(() =>
+        var ownedCancellation = ui._runUi.Cancellation ??
+            throw new InvalidOperationException("Fixture operation did not own a cancellation token");
+        using var registration = ownedCancellation.Token.Register(() =>
         {
             revokedAtCallback = !VaultDatabase.Current.IsUnlocked;
             reentered = ui.Lock();
