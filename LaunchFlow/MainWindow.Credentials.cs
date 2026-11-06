@@ -25,8 +25,8 @@ public partial class MainWindow
     private void ClearCredential_Click(object sender, RoutedEventArgs e)
     {
         // A modal confirmation pumps WPF events: import or a selection change
-        // can replace _selected while the Yes/No prompt is open.
-        if (_selected is not { } workflow || _windowsLocked || _vaultLockInProgress ||
+        // can replace _editorSession.Selection while the Yes/No prompt is open.
+        if (_editorSession.Selection is not { } workflow || _windowsLocked || _vaultLockInProgress ||
             _exiting || !VaultDatabase.Current.IsUnlocked || !CredentialReadAllowed() ||
             !ReferenceEquals(PasswordWebsiteCombo.SelectedItem, workflow)) return;
         var revision = _workspaceRevision;
@@ -35,7 +35,7 @@ public partial class MainWindow
                 "Remove credential", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
             return;
 
-        if (!CredentialDeleteGuard.IsCurrent(_configuration, _selected, workflow,
+        if (!CredentialDeleteGuard.IsCurrent(_configuration, _editorSession.Selection, workflow,
                 revision, _workspaceRevision,
                 VaultDatabase.Current.IsUnlocked && !_windowsLocked &&
                 !_vaultLockInProgress && !_exiting && CredentialReadAllowed() &&
@@ -65,15 +65,15 @@ public partial class MainWindow
 
     private void SaveCredentials_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is null || !ReferenceEquals(PasswordWebsiteCombo.SelectedItem, _selected) ||
-            !_configuration.Workflows.Any(w => ReferenceEquals(w, _selected)))
+        if (_editorSession.Selection is null || !ReferenceEquals(PasswordWebsiteCombo.SelectedItem, _editorSession.Selection) ||
+            !_configuration.Workflows.Any(w => ReferenceEquals(w, _editorSession.Selection)))
         {
             MessageBox.Show(this, "Choose a website in the Password Manager before saving credentials.",
                 "No workflow selected", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
         if (_vaultLockInProgress || _windowsLocked || !VaultDatabase.Current.IsUnlocked ||
-            !PasswordSessionIsValid() || _loadedCredentialWorkflowId != _selected.Id)
+            !PasswordSessionIsValid() || _loadedCredentialWorkflowId != _editorSession.Selection.Id)
         {
             MessageBox.Show(this, "Unlock the Password Manager before saving credentials.",
                 "Vault locked", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -88,7 +88,7 @@ public partial class MainWindow
                 "Credentials unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
-        var workflow = _selected;
+        var workflow = _editorSession.Selection;
         var ownedConfig = _configuration;
         var ownedRevision = _workspaceRevision;
         var ownedVaultSession = VaultDatabase.Current.SessionGeneration;
@@ -122,7 +122,7 @@ public partial class MainWindow
             var keepassPath = KeepassEntryBox.Text.Trim();
             candidateConfig.Workflows[index].AutoLogin = autoLogin;
             candidateConfig.Workflows[index].KeepassEntryPath = keepassPath;
-            if (!ReferenceEquals(_configuration, ownedConfig) || !ReferenceEquals(_selected, workflow) ||
+            if (!ReferenceEquals(_configuration, ownedConfig) || !ReferenceEquals(_editorSession.Selection, workflow) ||
                 !ReferenceEquals(PasswordWebsiteCombo.SelectedItem, workflow) ||
                 ownedRevision != _workspaceRevision ||
                 !VaultDatabase.Current.IsUnlocked ||
@@ -133,7 +133,7 @@ public partial class MainWindow
             _vault.SaveWithConfiguration(workflow.Id, new SiteCredential(username, password),
                 candidateConfig, ownedVaultSession);
             _store.NoteCommittedExternally();
-            if (!ReferenceEquals(_configuration, ownedConfig) || !ReferenceEquals(_selected, workflow) ||
+            if (!ReferenceEquals(_configuration, ownedConfig) || !ReferenceEquals(_editorSession.Selection, workflow) ||
                 ownedRevision != _workspaceRevision)
             {
                 AppendLog("Credential update committed, but website ownership changed before the editor refreshed.");

@@ -40,7 +40,7 @@ public partial class MainWindow
         UpdateRunButtons();
         _lockedSinceUtc = DateTimeOffset.UtcNow;
         _unlockCancellation?.Cancel();
-        _runCancellation?.Cancel(); // Don't start new steps while the device is locked.
+        _runUi.Cancellation?.Cancel(); // Don't start new steps while the device is locked.
         _lockTimeoutCancellation?.Cancel();
         _lockTimeoutCancellation?.Dispose();
         _lockTimeoutCancellation = new CancellationTokenSource();

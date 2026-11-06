@@ -35,7 +35,7 @@ public partial class MainWindow
                 if (_vaultCleanupFailed || _vaultLockInProgress)
                     throw new InvalidOperationException(
                         "Browser session cleanup did not finish safely. Profiles are retained; retry Lock vault.");
-                if (_hasUnsavedChanges || HasPendingEditorDialog)
+                if (_editorSession.IsDirty || HasPendingEditorDialog)
                     throw new InvalidOperationException(
                         "New unsaved changes appeared. Unlock and save them before exiting.");
 
@@ -67,7 +67,7 @@ public partial class MainWindow
     {
         try { await _vaultLockTask; } catch { }
         try { await _runner.DisposeAsync(); } catch { }
-        _runCancellation?.Dispose();
+        _runUi.Cancellation?.Dispose();
         _unlockCancellation?.Dispose();
     }
 }

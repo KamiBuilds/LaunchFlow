@@ -156,7 +156,7 @@ public partial class MainWindow
                 ClearCredentialEditor();
                 return;
             }
-            if (_selected is not null) LoadCredentialEditor(_selected);
+            if (_editorSession.Selection is not null) LoadCredentialEditor(_editorSession.Selection);
             PasswordSessionTimer_Tick(null, EventArgs.Empty);
         }
         else

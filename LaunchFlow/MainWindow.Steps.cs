@@ -24,38 +24,38 @@ public partial class MainWindow
 {
     private void RefreshSteps()
     {
-        if (_selected is null) return;
+        if (_editorSession.Selection is null) return;
         StepList.ItemsSource = null;
-        StepList.ItemsSource = _selected.Steps;
+        StepList.ItemsSource = _editorSession.Selection.Steps;
     }
 
     private void SelectAllSteps_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is not null) StepList.SelectAll();
+        if (_editorSession.Selection is not null) StepList.SelectAll();
     }
 
     private void QuickWaitStep_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is null) return;
-        _selected.Steps.Add(new WorkflowStep
+        if (_editorSession.Selection is null) return;
+        _editorSession.Selection.Steps.Add(new WorkflowStep
         {
             Type = "Wait", Target = "1000", Description = "Wait 1 second for the page"
         });
         RefreshSteps();
-        StepList.SelectedIndex = _selected.Steps.Count - 1;
+        StepList.SelectedIndex = _editorSession.Selection.Steps.Count - 1;
         MarkUnsavedChanges();
     }
 
     private bool IsCurrentStepEditorOwner(WebsiteWorkflow workflow, long revision) =>
         revision == _workspaceRevision &&
-        ReferenceEquals(_selected, workflow) &&
+        ReferenceEquals(_editorSession.Selection, workflow) &&
         _configuration.Workflows.Any(item => ReferenceEquals(item, workflow)) &&
         !_windowsLocked && !_vaultLockInProgress && !_exiting &&
         VaultDatabase.Current.IsUnlocked;
 
     private void AddPage_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is not { } workflow) return;
+        if (_editorSession.Selection is not { } workflow) return;
         var revision = _workspaceRevision;
         var editor = new StepEditorWindow(new WorkflowStep { Type = "Navigate", Target = "https://" }) { Owner = this };
         if (!ShowTrackedStepEditor(editor)) return;
@@ -68,7 +68,7 @@ public partial class MainWindow
 
     private void AddStep_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is not { } workflow) return;
+        if (_editorSession.Selection is not { } workflow) return;
         var revision = _workspaceRevision;
         var editor = new StepEditorWindow { Owner = this };
         if (!ShowTrackedStepEditor(editor) || !IsCurrentStepEditorOwner(workflow, revision)) return;
@@ -79,9 +79,9 @@ public partial class MainWindow
 
     private void EditStep_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is null || StepList.SelectedItems.Count != 1 ||
+        if (_editorSession.Selection is null || StepList.SelectedItems.Count != 1 ||
             StepList.SelectedItem is not WorkflowStep current) return;
-        var workflow = _selected;
+        var workflow = _editorSession.Selection;
         var revision = _workspaceRevision;
         int index = workflow.Steps.IndexOf(current);
         if (index < 0) return;
@@ -90,7 +90,7 @@ public partial class MainWindow
         // ShowDialog pumps WPF messages. Import can replace the entire workflow
         // with an object having the same GUID and step count while it is open.
         if (!IsCurrentStepEditorOwner(workflow, revision) ||
-            !WorkflowEditGuard.IsCurrent(_configuration, _selected, workflow, current,
+            !WorkflowEditGuard.IsCurrent(_configuration, _editorSession.Selection, workflow, current,
                 index, revision, _workspaceRevision) ||
             !ReferenceEquals(StepList.SelectedItem, current))
         {
@@ -105,13 +105,13 @@ public partial class MainWindow
 
     private void RemoveStep_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is null || StepList.SelectedItems.Count == 0) return;
+        if (_editorSession.Selection is null || StepList.SelectedItems.Count == 0) return;
         var selected = StepList.SelectedItems.Cast<WorkflowStep>().ToArray();
         if (selected.Length > 1 && MessageBox.Show(this,
             $"Delete {selected.Length} selected actions? This takes effect when you save.",
             "Delete actions", MessageBoxButton.YesNo, MessageBoxImage.Question,
             MessageBoxResult.No) != MessageBoxResult.Yes) return;
-        foreach (var step in selected) _selected.Steps.Remove(step);
+        foreach (var step in selected) _editorSession.Selection.Steps.Remove(step);
         RefreshSteps();
         MarkUnsavedChanges();
     }
@@ -120,13 +120,13 @@ public partial class MainWindow
     private void MoveStepDown_Click(object sender, RoutedEventArgs e) => MoveStep(1);
     private void MoveStep(int offset)
     {
-        if (_selected is null || StepList.SelectedItems.Count != 1 ||
+        if (_editorSession.Selection is null || StepList.SelectedItems.Count != 1 ||
             StepList.SelectedItem is not WorkflowStep current) return;
-        int index = _selected.Steps.IndexOf(current);
+        int index = _editorSession.Selection.Steps.IndexOf(current);
         int dest = index + offset;
-        if (dest < 0 || dest >= _selected.Steps.Count) return;
-        _selected.Steps.RemoveAt(index);
-        _selected.Steps.Insert(dest, current);
+        if (dest < 0 || dest >= _editorSession.Selection.Steps.Count) return;
+        _editorSession.Selection.Steps.RemoveAt(index);
+        _editorSession.Selection.Steps.Insert(dest, current);
         RefreshSteps(); StepList.SelectedIndex = dest;
         MarkUnsavedChanges();
     }
