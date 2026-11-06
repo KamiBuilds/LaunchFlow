@@ -18,6 +18,8 @@
     <Compile Include="../../LaunchFlow/Services/ProfileVaultService.cs" Link="ProfileVaultService.cs" />
     <Compile Include="../profiles/PlatformStubs.cs" Link="ProfilePlatformStubs.cs" />
     <Compile Include="../../LaunchFlow/Services/LoginHealth.cs" Link="LoginHealth.cs" />
+    <Compile Include="../../LaunchFlow/Services/LoginCompletionObserver.cs" Link="Services/LoginCompletionObserver.cs" Condition="'$(AutomationEngineSource)' == '../../LaunchFlow/Services/AutomationEngine.cs'" />
+    <Compile Include="../../LaunchFlow/Services/LoginFlowCoordinator.cs" Link="Services/LoginFlowCoordinator.cs" Condition="'$(AutomationEngineSource)' == '../../LaunchFlow/Services/AutomationEngine.cs'" />
     <Compile Include="../../LaunchFlow/Services/KeePassXcService.cs" Link="KeePassXcService.cs" />
     <Compile Include="../../LaunchFlow/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
   </ItemGroup>

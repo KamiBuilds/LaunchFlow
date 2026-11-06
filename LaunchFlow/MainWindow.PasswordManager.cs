@@ -35,10 +35,10 @@ public partial class MainWindow
             else
                 PasswordWebsiteCombo.Items.Refresh();
 
-            PasswordWebsiteCombo.SelectedItem = _selected;
+            PasswordWebsiteCombo.SelectedItem = _editorSession.Selection;
             PasswordWebsiteCombo.IsEnabled = _configuration.Workflows.Count > 0;
-            SaveCredentialsButton.IsEnabled = _selected is not null;
-            ClearCredentialButton.IsEnabled = _selected is not null;
+            SaveCredentialsButton.IsEnabled = _editorSession.Selection is not null;
+            ClearCredentialButton.IsEnabled = _editorSession.Selection is not null;
         }
         finally { _syncingPasswordWebsiteSelection = false; }
     }
@@ -56,9 +56,9 @@ public partial class MainWindow
             SyncPasswordWebsiteSelector();
             return;
         }
-        if (ReferenceEquals(target, _selected)) return;
+        if (ReferenceEquals(target, _editorSession.Selection)) return;
 
-        var previous = _selected;
+        var previous = _editorSession.Selection;
         var revision = _workspaceRevision;
         var configuration = _configuration;
         if (UsernameBox.Text.Length > 0 || PasswordInput.Password.Length > 0)
@@ -69,7 +69,7 @@ public partial class MainWindow
             if (answer != MessageBoxResult.Yes ||
                 revision != _workspaceRevision ||
                 !ReferenceEquals(configuration, _configuration) ||
-                !ReferenceEquals(previous, _selected) ||
+                !ReferenceEquals(previous, _editorSession.Selection) ||
                 !_configuration.Workflows.Any(w => ReferenceEquals(w, target)) ||
                 !PasswordSessionIsValid())
             {
@@ -81,7 +81,7 @@ public partial class MainWindow
         // Use the existing selected-workflow owner so login mode, KeePass
         // entry, vault ID and the password editor always refer to one website.
         WorkflowList.SelectedItem = target;
-        if (!ReferenceEquals(_selected, target)) SyncPasswordWebsiteSelector();
+        if (!ReferenceEquals(_editorSession.Selection, target)) SyncPasswordWebsiteSelector();
     }
 
     private bool RequireMasterPassword(bool forcePrompt = false)
@@ -122,7 +122,7 @@ public partial class MainWindow
 
     private async void ChangeMasterPassword_Click(object sender, RoutedEventArgs e)
     {
-        if (_vaultLockInProgress || _runInProgress || _teachingInProgress || !RequireMasterPassword()) return;
+        if (_vaultLockInProgress || _runUi.IsRunning || _teachingInProgress || !RequireMasterPassword()) return;
         var authorizedSession = VaultDatabase.Current.SessionGeneration;
         var current = new SecretPromptWindow("Change master password", "Enter your current master password.") { Owner = this };
         if (current.ShowDialog() != true) return;
@@ -139,7 +139,7 @@ public partial class MainWindow
         var confirm = new SecretPromptWindow("Confirm new master password", "Enter the same new password again.") { Owner = this };
         if (confirm.ShowDialog() != true) return;
         if (next.Secret != confirm.Secret) { MessageBox.Show(this, "Passwords did not match."); return; }
-        if (_windowsLocked || _vaultLockInProgress || _exiting || _runInProgress ||
+        if (_windowsLocked || _vaultLockInProgress || _exiting || _runUi.IsRunning ||
             _teachingInProgress || !VaultDatabase.Current.IsUnlocked ||
             VaultDatabase.Current.SessionGeneration != authorizedSession)
         {

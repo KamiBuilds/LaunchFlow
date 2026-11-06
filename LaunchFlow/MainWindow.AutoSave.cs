@@ -36,7 +36,7 @@ public partial class MainWindow
         bool canSave =
             !_autoSaving && !_vaultLockInProgress && !_windowsLocked && !_exiting &&
             !_loadingEditor && !_installerShutdownInProgress && !HasPendingEditorDialog &&
-            !_runInProgress && VaultDatabase.Current.IsUnlocked;
+            !_runUi.IsRunning && VaultDatabase.Current.IsUnlocked;
         if (!_autoSaveSchedule.Ready(DateTimeOffset.UtcNow, canSave)) return;
 
         // Mark before SaveAll, because its synchronous WPF setters may fire
@@ -62,7 +62,7 @@ public partial class MainWindow
 
     private void ShowAutoSaveFailed()
     {
-        _hasUnsavedChanges = true;
+        _editorSession.MarkFailed();
         SaveStatusLabel.Text = "Save failed";
         SaveStatusLabel.Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 155, 134));
         SaveChangesButton.FontWeight = FontWeights.Bold;

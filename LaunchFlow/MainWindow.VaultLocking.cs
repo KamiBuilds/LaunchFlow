@@ -44,7 +44,7 @@ public partial class MainWindow
         _profileSealFailed = false;
         _keepassMasterPassword = null;
         bool cleanupComplete = false;
-        var pendingRun = _activeRunTask;
+        var pendingRun = _runUi.ActiveTask;
         var pendingTeach = _activeTeachTask;
         try
         {
@@ -52,7 +52,7 @@ public partial class MainWindow
             // awaiting a dispatched fill before closing its context can stall forever.
             VaultDatabase.Current.Lock();
             UpdateRunButtons();
-            try { _runCancellation?.Cancel(); }
+            try { _runUi.Cancellation?.Cancel(); }
             catch (Exception ex) { AppendLog("Cancellation callback failed during lock: " + ex.GetType().Name); }
             // Stop the modeless recorder before closing browser contexts.
             // Only then can the full Teach task safely drain its callbacks.

@@ -45,3 +45,7 @@ The fix pins each approval and fill to an element, its owning frame and its docu
 This is **not protection against malicious JavaScript already executing in an approved origin**, which can observe or manipulate that origin's fields. Automatic continuation/submit and recorded Click actions resolve their own bound handle and check its owning-document policy; credential approval is not a document grant for those later actions. Already-dispatched browser actions cannot be recalled.
 
 Linux Chromium runs and Windows cross-compilation do not establish native WPF, Windows DPAPI, installed-browser or installer runtime behavior. Those native verification gates remain.
+
+## 2026-11-06 coordinator extraction boundary
+
+The default runtime harness compiles production `LoginFlowCoordinator`, `LoginCompletionObserver` and `AutomationEngine.LoginStages` alongside the engine, not test-copied stage methods. The coordinator owns only per-attempt sequencing; the engine's protected `FillCredentialAsync` callback still owns document/form/frame/selected-handle resources and live policy. The observer uses existing LoginHealth completion predicates. Compare healthy and hostile browser outcomes with the pinned baseline before treating this refactor as accepted; Windows installed/vendor acceptance is separate.

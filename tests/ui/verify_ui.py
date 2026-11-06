@@ -164,7 +164,7 @@ check({"PasswordWebsiteCombo", "SaveCredentialsButton", "ClearCredentialButton"}
       named["UsernameBox"].tag.endswith("}TextBox") and
       named["PasswordInput"].tag.endswith("}PasswordBox") and
       'SyncPasswordWebsiteSelector();' in editor_source and
-      'ReferenceEquals(PasswordWebsiteCombo.SelectedItem, _selected)' in credential_source and
+      'ReferenceEquals(PasswordWebsiteCombo.SelectedItem, _editorSession.Selection)' in credential_source and
       'UsernameBox.Text.Trim()' in credential_source and
       'UsernameBox.Password' not in credential_source and
       'private void PasswordWebsiteCombo_SelectionChanged' in manager_source and
@@ -307,20 +307,20 @@ check('SelectionMode="Extended"' in ET.tostring(ui, encoding="unicode") and
 check('HasPendingEditorDialog' in source and
       'private bool ShowTrackedStepEditor(StepEditorWindow editor)' in source and
       source.count('!ShowTrackedStepEditor(editor)') == 3 and
-      'if (_hasUnsavedChanges || HasPendingEditorDialog)' in source and
+      'if (_editorSession.IsDirty || HasPendingEditorDialog)' in source and
       'if (HasPendingEditorDialog)' in source,
       "installer and explicit exit refuse a still-open website wizard, step editor or Teach recording")
 check('ExitSafety.TryPersistForExit(' in source and
       'if (_installerShutdownInProgress || _exiting || !TryCloseWithSavedChanges()) return;' in source and
       'if (!TryCloseWithSavedChanges())' in source and
-      'if (_hasUnsavedChanges)' in source and
+      'if (_editorSession.IsDirty)' in source and
       'MarkUnsavedChanges();\n        AppendLog("Workflow duplicated' in source and
       '_vault.SaveWithConfiguration(workflow.Id, new SiteCredential(username, password),' in source and
       '_store.NoteCommittedExternally();' in source and
       'candidateConfig.Workflows[index].AutoLogin = autoLogin;' in source,
       "explicit tray/window exits refuse dirty locked saves, credential preference writes are durable and duplicates become dirty")
 lifecycle_source = (root / "LaunchFlow/MainWindow.Lifecycle.cs").read_text(encoding="utf-8")
-check('if (_hasUnsavedChanges && !VaultDatabase.Current.IsUnlocked)' in source and
+check('if (_editorSession.IsDirty && !VaultDatabase.Current.IsUnlocked)' in source and
       'if (_vaultCleanupFailed || _vaultLockInProgress)' in lifecycle_source and
       'if (installer && _installerProfileSealFailed)' in lifecycle_source and
       'if (_profileSealFailed)' in lifecycle_source and
@@ -331,11 +331,11 @@ check('if (_hasUnsavedChanges && !VaultDatabase.Current.IsUnlocked)' in source a
       'await CompleteOwnedExitAsync(installer: true)' in source,
       "installer refuses dirty locked-vault edits and distinguishes browser/profile cleanup failures")
 check('IsCurrentStepEditorOwner(WebsiteWorkflow workflow, long revision)' in source and
-      'WorkflowEditGuard.IsCurrent(_configuration, _selected, workflow, current,' in source and
+      'WorkflowEditGuard.IsCurrent(_configuration, _editorSession.Selection, workflow, current,' in source and
       'index >= 0 && index < original.Steps.Count' in
       (root / "LaunchFlow/Services/WorkflowEditGuard.cs").read_text(encoding="utf-8") and
       'var revision = _workspaceRevision;' in source and
-      'ReferenceEquals(_selected, workflow)' in source,
+      'ReferenceEquals(_editorSession.Selection, workflow)' in source,
       "modal step editing cannot modify a detached or imported workflow")
 check('KeepassEntryBox.TextChanged += (_, _) => MarkUnsavedChanges();' in source and
       'SaveStatusLabel.Text = "Unsaved changes"' in source,

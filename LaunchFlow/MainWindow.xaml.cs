@@ -10,6 +10,7 @@ using System.Windows.Threading;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using LaunchFlow.Models;
 using LaunchFlow.Services;
+using LaunchFlow.Controllers;
 using Microsoft.Win32;
 using Microsoft.Playwright;
 using Forms = System.Windows.Forms;
@@ -27,7 +28,6 @@ public partial class MainWindow : Window
     private readonly StartupRegistrationService _startupRegistration;
     private readonly MasterPasswordService _master = new();
     private TutorialWindow? _tutorial;
-    private bool _hasUnsavedChanges;
     private bool _passwordsUnlocked;
     private DateTimeOffset _passwordSessionExpiresUtc = DateTimeOffset.MinValue;
     private Guid? _loadedCredentialWorkflowId;
@@ -40,8 +40,6 @@ public partial class MainWindow : Window
     private bool _revertingTab;
     private bool _sidebarCollapsed;
     private bool _teachingInProgress;
-    private bool _runInProgress;
-    private bool _runStatusActive;
     private bool _vaultLockInProgress;
     private bool _vaultCleanupFailed;
     private bool _profileSealFailed;
@@ -50,7 +48,6 @@ public partial class MainWindow : Window
     private bool _monitorSelectionChanged;
     private long _workspaceRevision;
     private Task _vaultLockTask = Task.CompletedTask;
-    private Task<AutomationEngine.RunResult>? _activeRunTask;
     private Task? _activeTeachTask;
     private VisualRecorderWindow? _activeRecorder;
     private readonly Dictionary<Guid, SignInDecisionWindow> _openSignInDecisions = new();
@@ -63,11 +60,11 @@ public partial class MainWindow : Window
     private readonly CredentialVault _vault;
     private readonly AutomationEngine _runner;
     private Configuration _configuration;
-    private WebsiteWorkflow? _selected;
+    private readonly RunUiOperationController _runUi = new();
+    private readonly WorkflowEditorSession _editorSession = new();
     private bool _loadingEditor;
     private bool _exiting;
     private string? _keepassMasterPassword;
-    private CancellationTokenSource? _runCancellation;
     private CancellationTokenSource? _unlockCancellation;
     private readonly Forms.NotifyIcon _tray;
     private HwndSource? _windowSource;
@@ -256,7 +253,7 @@ public partial class MainWindow : Window
         WorkspaceNameBox.ToolTip = Text("Enter a workspace name");
         SaveWorkspaceButton.ToolTip = Text("Save enabled websites as a workspace");
         RunWorkspaceButton.ToolTip = Text("Run selected workspace");
-        if (!_runInProgress) WorkflowStatusLabel.Text = Text("Ready");
+        if (!_runUi.IsRunning) WorkflowStatusLabel.Text = Text("Ready");
     }
 
     private void MonitorCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -267,11 +264,11 @@ public partial class MainWindow : Window
     private void QueueWorkflowStatus(string workflowName, AutomationEngine.WorkflowRunState state)
     {
         // The engine supplies a display name, not an identity. Never use it to select a repair.
-        var cancellation = _runCancellation;
+        var statusLease = _runUi.CaptureLeaseForCallback();
         Dispatcher.BeginInvoke(new Action(() =>
         {
-            if (!_runInProgress || !_runStatusActive || _vaultLockInProgress || _windowsLocked || _exiting ||
-                cancellation is null || cancellation.IsCancellationRequested || !ReferenceEquals(_runCancellation, cancellation)) return;
+            if (!_runUi.IsStatusCurrent(statusLease) ||
+                _vaultLockInProgress || _windowsLocked || _exiting) return;
             var text = state switch
             {
                 AutomationEngine.WorkflowRunState.WaitingForSignIn => "Sign-in needs attention",
@@ -321,7 +318,7 @@ public partial class MainWindow : Window
 
     private void UpdateRunButtons()
     {
-        bool available = !_runInProgress && !_vaultLockInProgress && !_teachingInProgress && !_windowsLocked && !_exiting;
+        bool available = !_runUi.IsRunning && !_vaultLockInProgress && !_teachingInProgress && !_windowsLocked && !_exiting;
         RunAllButton.IsEnabled = available;
         RunSelectedButton.IsEnabled = available;
         var savedWorkspaceSelected = _configuration is not null &&
@@ -331,7 +328,7 @@ public partial class MainWindow : Window
         PreviewWorkspaceButton.IsEnabled = available && savedWorkspaceSelected;
         TeachButton.IsEnabled = available;
         RepairButton.IsEnabled = available;
-        StopButton.IsEnabled = _runInProgress && _runCancellation is { IsCancellationRequested: false } && !_vaultLockInProgress;
+        StopButton.IsEnabled = _runUi.CanStop && !_vaultLockInProgress;
         MainTabs.IsEnabled = !_vaultLockInProgress;
         RetryVaultLockButton.Visibility = _vaultCleanupFailed ? Visibility.Visible : Visibility.Collapsed;
         if (_vaultCleanupFailed)
@@ -421,10 +418,10 @@ public partial class MainWindow : Window
         }
         if (ExitSafety.TryPersistForExit(
                 () => VaultDatabase.Current.IsUnlocked,
-                () => _hasUnsavedChanges,
+                () => _editorSession.IsDirty,
                 () => SaveAll())) return true;
         ShowFromTray();
-        if (_hasUnsavedChanges && !VaultDatabase.Current.IsUnlocked)
+        if (_editorSession.IsDirty && !VaultDatabase.Current.IsUnlocked)
             MessageBox.Show(this,
                 "You have unsaved website changes. Unlock the vault and click Save before exiting.",
                 "Exit paused", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -455,13 +452,13 @@ public partial class MainWindow : Window
             if (HasPendingEditorDialog)
                 throw new InvalidOperationException("Finish or cancel the open editor or Teach recording before updating.");
             _unlockCancellation?.Cancel();
-            _runCancellation?.Cancel();
+            _runUi.Cancellation?.Cancel();
             UpdateRunButtons();
-            if (_hasUnsavedChanges && !VaultDatabase.Current.IsUnlocked)
+            if (_editorSession.IsDirty && !VaultDatabase.Current.IsUnlocked)
                 throw new InvalidOperationException("Unlock LaunchFlow and save your edits before updating.");
             if (VaultDatabase.Current.IsUnlocked && !SaveAll())
                 throw new InvalidOperationException("Save your unsaved edits before updating.");
-            if (_hasUnsavedChanges)
+            if (_editorSession.IsDirty)
                 throw new InvalidOperationException("Unsaved changes remain; the update cannot replace running files.");
             await CompleteOwnedExitAsync(installer: true);
         }
@@ -539,11 +536,11 @@ public partial class MainWindow : Window
 
     private async Task<bool> ConfirmLoginOriginAsync(WebsiteWorkflow workflow, string newOrigin)
     {
-        var cancellation = _runCancellation;
+        var cancellation = _runUi.Cancellation;
         bool Authorized()
         {
             var policy = EnterprisePolicy.Current;
-            return cancellation is { IsCancellationRequested: false } && ReferenceEquals(_runCancellation, cancellation) &&
+            return cancellation is { IsCancellationRequested: false } && ReferenceEquals(_runUi.Cancellation, cancellation) &&
                 !_vaultLockInProgress && !_windowsLocked && !_exiting && VaultDatabase.Current.IsUnlocked &&
                 !policy.DisableAutomation && !policy.DisableCredentialFill && !policy.DisableCredentialStorage &&
                 policy.IsUrlAllowed(workflow.StartUrl) && policy.IsUrlAllowed(newOrigin) &&
@@ -631,8 +628,8 @@ public partial class MainWindow : Window
             CredentialStatus.Text = "Credential access is unavailable; unlock the vault and check your organization policy.";
             return false;
         }
-        if (_selected is null || !Authorized()) return;
-        var workflowId = _selected.Id;
+        if (_editorSession.Selection is null || !Authorized()) return;
+        var workflowId = _editorSession.Selection.Id;
         if (!KeePassXcService.IsCliAvailable())
         {
             MessageBox.Show(this, "KeePassXC could not be found. Install it and try again.",
@@ -694,7 +691,7 @@ public partial class MainWindow : Window
             workflow.KeepassEntryPath = picker.SelectedPath;
             _configuration.KeePassDatabasePath = database;
             _configuration.KeePassKeyFilePath = KeePassKeyBox.Text.Trim();
-            if (_selected?.Id == workflowId)
+            if (_editorSession.Selection?.Id == workflowId)
                 KeepassEntryBox.Text = picker.SelectedPath;
             _store.Save(_configuration);
             CredentialStatus.Text = DescribeCredentialStatus(workflow);
@@ -772,7 +769,7 @@ public partial class MainWindow : Window
         // Explicit exits wait for an owned cleanup permit before WPF can close.
         if (_exitDrain.Permitted)
         {
-            if (_hasUnsavedChanges || HasPendingEditorDialog)
+            if (_editorSession.IsDirty || HasPendingEditorDialog)
             {
                 e.Cancel = true;
                 _exitDrain.RevokePermit();
@@ -847,7 +844,7 @@ public partial class MainWindow : Window
         _passwordSessionTimer.Stop();
         _passwordSessionTimer.Tick -= PasswordSessionTimer_Tick;
         _autoSaveTimer.Stop();
-        _runCancellation?.Cancel();
+        _runUi.Cancellation?.Cancel();
         _unlockCancellation?.Cancel();
         _lockTimeoutCancellation?.Cancel();
         _lockTimeoutCancellation?.Dispose();
@@ -855,7 +852,7 @@ public partial class MainWindow : Window
         _tray.Dispose();
         if (_exitDrain.Permitted)
         {
-            _runCancellation?.Dispose();
+            _runUi.Cancellation?.Dispose();
             _unlockCancellation?.Dispose();
         }
         else

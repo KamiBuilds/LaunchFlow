@@ -1,5 +1,59 @@
 # Current source and state ownership map
 
+**Structural implementation branch:** `refactor/core-structure-20261106` from approved baseline `93b49482b6ea197c810e27def9fe6d9b080ec0aa` (LaunchFlow v0.7.46). This overlay describes the implemented source at `a1fe9967c9b9dd9163870b680180e72f6689ece8` before final verification. Subsequent documentation/verification commits must be treated as distinct source bytes. The earlier baseline map is preserved below for historical context.
+
+## 2026-11-06 structural ownership overlay — candidate, not accepted
+
+| Component | Owned state or responsibility | Production call path and boundaries |
+|---|---|---|
+| [RunUiOperationController](../LaunchFlow/Controllers/RunUiOperationController.cs) | Per-UI-run lease, stop-token reference, task reference and status phase | MainWindow acquires lease **before modal prompts**, registers real engine task after approval, releases only matching lease in finally; AutomationEngine separately owns browser and session lifetime |
+| [WorkflowEditorSession](../LaunchFlow/Controllers/WorkflowEditorSession.cs) | Current workflow object reference, edit revision, dirty state and specific-revision acknowledgement | MainWindow website/navigation/save/autosave adapters; does **not** own live Configuration, vault generation, workspace revision or Windows session |
+| [WebsiteEditMapper](../LaunchFlow/Models/WebsiteEditMapper.cs) | Shared normalized assignment of every editable website property | Navigation uses ordered ApplyLeading → ApplyBrowser → ApplyLogin → AutoLoginCheck event → ApplyDetails; durable WebsiteEditDraft.Apply uses the same groups on a detached candidate, after ID/index and save-transaction guards |
+| [LoginFlowCoordinator](../LaunchFlow/Services/LoginFlowCoordinator.cs) | Transient nonsecret per-attempt sequencing and submission markers | AutomationEngine.TryAutoLoginAsync delegates; engine retains credential acquisition, policy, browser, cancel and public-result authority |
+| [LoginCompletionObserver](../LaunchFlow/Services/LoginCompletionObserver.cs) | Bounded verification observations | Actual LoginHealth predicates and cancellation remain authoritative; submission is not automatically verified completion |
+| [AutomationEngine.LoginStages](../LaunchFlow/Services/AutomationEngine.LoginStages.cs) | Named username, combined/resumed password and owned final-submit stages | Protected FillCredentialAsync afterFill callback keeps document/form/frame binding alive through continuation; no separate context/session owner |
+
+**Before/after physical source sizes** (GitHub recursive-tree blob byte sizes; not an assertion of fewer LOC): 18 MainWindow C# partials, **166,577 → 167,807 bytes**; new Controllers, **0 → 4,343 bytes**; three extracted login collaboration files, **0 → 23,353 bytes**; tracked files **261 → 269**. Responsibility extraction, not a universal line budget, is the measure; MainWindow remains the WPF dialog, rendering, dispatcher and platform lifecycle adapter.
+
+**Reentrant save hardening at `95c0b866`:** `WorkflowEditorSession.CaptureOwnership` records the workflow reference, edit revision and a separate selection epoch. The epoch changes when selecting another object, so an A → B → same A transition without intervening edits cannot reuse an earlier durable-save owner. `SaveAll` tests the entire token when committing and before marking that revision saved. The run lease and editor selection epoch remain separate from vault/workspace generation.
+
+**Former mutable responsibilities removed from MainWindow:** run admission (`_runInProgress`), status phase (`_runStatusActive`), run cancellation (`_runCancellation`) and engine task (`_activeRunTask`) are accessed via RunUiOperationController. Selected workflow (`_selected`), edit generation (`_editGeneration`) and dirty acknowledgement (`_hasUnsavedChanges`) are accessed via WorkflowEditorSession. Readers/writers: RunEnabledAsync admits/registers/completes a lease, Stop/lock/exit cancel through it, queued workflow status checks its captured lease; website selection selects the editor object, edit events mark a revision, SaveAll acknowledges only its captured revision. Existing config/workspace/vault/session authorities stay separate.
+
+### Editable website field-to-consumer contract
+
+Both consumers use the same typed mapper, with deliberately different evaluation timing: N = navigation `MainWindow.Persistence.ApplyCurrentEditor`; D = detached durable `WebsiteEditDraft.Apply` invoked from `CaptureConfigurationDraft` / `ConfigurationSaveTransaction`. Every entry below is exercised by `tests/workspaces/WebsiteEditMapperTests.cs` (W1 full sentinel + W2 browser partial + W3 monitor + W4 normalization); event-order/native WPF tests remain separate.
+
+| WPF source input or decision | Shared rule / stage | Model target | Production consumers | Test |
+|---|---|---|---|---|
+| EnabledCheck | ApplyLeading: Boolean | Enabled | N,D | W1 |
+| NameBox | NormalizeName: trim, blank → Unnamed website | Name | N,D | W1,W4 |
+| StartUrlBox | NormalizeText: trim | StartUrl | N,D | W1 |
+| DestinationUrlBox | NormalizeText: trim | DestinationUrl | N,D | W1 |
+| BrowserCombo | BrowserSelection, ApplyBrowser: reject missing | Browser | N,D | W1,W2 |
+| MonitorCombo + _monitorSelectionChanged | ReplaceMonitor only on explicit choice/allowed missing identity | Replacement decision | N,D | W3 |
+| MonitorCombo.Index | ApplyBrowser: retain saved identity when not replaced | MonitorIndex | N,D | W1,W3 |
+| MonitorCombo.DeviceName | ApplyBrowser: retain disconnected saved name when not replaced | MonitorDeviceName | N,D | W1,W3 |
+| LoginModeCombo | SelectedLoginMode, ApplyLogin | LoginMode | N,D | W1 |
+| LoginModeCombo (derived) | WebsiteLoginMode.UsesSavedPassword; UI AutoLoginCheck fires in N after ApplyLogin | AutoLogin | N,D | W1, UI autosave |
+| UsernameContinueBox | NormalizeText, ApplyLogin | UsernameContinueSelector | N,D | W1 |
+| PasswordOriginBox | NormalizeText, ApplyLogin | PasswordCredentialOrigin | N,D | W1 |
+| KeepassEntryBox | NormalizeText, ApplyDetails | KeepassEntryPath | N,D | W1 |
+| UsernameSelectorBox | NormalizeText, ApplyDetails | UsernameSelector | N,D | W1 |
+| PasswordSelectorBox | NormalizeText, ApplyDetails | PasswordSelector | N,D | W1 |
+| SubmitSelectorBox | NormalizeText, ApplyDetails | SubmitSelector | N,D | W1 |
+| CredentialOriginBox | NormalizeText, ApplyDetails | CredentialOrigin | N,D | W1 |
+| LoginSuccessSelectorBox | NormalizeText, ApplyDetails | LoginSuccessSelector | N,D | W1 |
+| LoginSuccessUrlBox | NormalizeText, ApplyDetails | LoginSuccessUrlContains | N,D | W1 |
+| LoginWaitBox | NormalizeWait: culture-aware int.TryParse; invalid 60; clamp 5–180 | LoginWaitSeconds | N,D | W1,W4 |
+
+WPF credential/password inputs, workflow ID/index ownership, steps, unknown configuration extensions and global settings are intentionally outside this mapping. Invalid global settings still block durable Save capture but not live navigation. The navigation path preserves its original leading-field partial update if browser validation fails.
+
+**Verification:** New tests `tests/workspaces/OperationOwnershipTests.cs` and `WebsiteEditMapperTests.cs` plus current UI/autosave/runtime extraction compile the collaborators. First branch CI at `40b22f98` failed on CS0165 in a regression test; corrected by `a1fe9967c9b9dd9163870b680180e72f6689ece8`. Hosted rerun, native installer/build, independent full-source review, owner interactive Windows acceptance and the final pinned artifact must each be recorded separately. Do not call an unexecuted gate passed.
+
+---
+
+## Historical baseline map retained for comparison
+
 **Reviewed source baseline:** `52f0978b0954937a61674105c01b10e57d80f67c` (LaunchFlow 0.7.46). **Maintenance branch:** `refactor/architecture-readability-20261106`. This map describes code **at that baseline**; the delivery receipt supplies the final documentation-only commit SHA. Links target repository paths at the baseline. Partial classes share one object and all private fields; file separation is navigation, **not** service isolation.
 
 ## Start here: composition and dependency ownership

@@ -32,28 +32,7 @@ public sealed record WebsiteEditDraft(
     {
         if (workflow.Id != ExpectedId)
             throw new InvalidOperationException("The selected website was replaced during editing.");
-        workflow.Enabled = Enabled;
-        workflow.Name = Name;
-        workflow.StartUrl = StartUrl;
-        workflow.DestinationUrl = DestinationUrl;
-        workflow.Browser = Browser;
-        if (ReplaceMonitor)
-        {
-            workflow.MonitorIndex = MonitorIndex;
-            workflow.MonitorDeviceName = MonitorDeviceName;
-        }
-        workflow.LoginMode = LoginMode;
-        workflow.AutoLogin = AutoLogin;
-        workflow.UsernameContinueSelector = UsernameContinueSelector;
-        workflow.PasswordCredentialOrigin = PasswordCredentialOrigin;
-        workflow.KeepassEntryPath = KeepassEntryPath;
-        workflow.UsernameSelector = UsernameSelector;
-        workflow.PasswordSelector = PasswordSelector;
-        workflow.SubmitSelector = SubmitSelector;
-        workflow.CredentialOrigin = CredentialOrigin;
-        workflow.LoginSuccessSelector = LoginSuccessSelector;
-        workflow.LoginSuccessUrlContains = LoginSuccessUrlContains;
-        workflow.LoginWaitSeconds = LoginWaitSeconds;
+        WebsiteEditMapper.Apply(workflow, this);
     }
 }
 

@@ -35,13 +35,13 @@ public partial class MainWindow
             // Keep the previous selection if applying its website fields fails.
             // Credentials have a separate explicit save path; this is not an encryption commit.
             _loadingEditor = true;
-            WorkflowList.SelectedItem = _selected;
+            WorkflowList.SelectedItem = _editorSession.Selection;
             _loadingEditor = false;
             return;
         }
-        _selected = WorkflowList.SelectedItem as WebsiteWorkflow;
-        if (_selected is null) ShowEmptyEditor();
-        else ShowEditor(_selected);
+        _editorSession.Select(WorkflowList.SelectedItem as WebsiteWorkflow);
+        if (_editorSession.Selection is null) ShowEmptyEditor();
+        else ShowEditor(_editorSession.Selection);
     }
 
     private void RefreshWorkflowList(WebsiteWorkflow? selection)
@@ -49,7 +49,7 @@ public partial class MainWindow
         _loadingEditor = true;
         WorkflowList.Items.Refresh();
         WorkflowList.SelectedItem = selection;
-        _selected = selection;
+        _editorSession.Select(selection);
         _loadingEditor = false;
         if (selection is null) ShowEmptyEditor();
         else ShowEditor(selection);
@@ -144,9 +144,9 @@ public partial class MainWindow
 
     private void DuplicateWorkflow_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is null) return;
+        if (_editorSession.Selection is null) return;
         ApplyCurrentEditor();
-        var next = _selected.CloneWithoutCredential();
+        var next = _editorSession.Selection.CloneWithoutCredential();
         _configuration.Workflows.Add(next);
         RefreshWorkflowList(next);
         MarkUnsavedChanges();
@@ -155,8 +155,8 @@ public partial class MainWindow
 
     private void DeleteWorkflow_Click(object sender, RoutedEventArgs e)
     {
-        if (_selected is null) return;
-        var w = _selected;
+        if (_editorSession.Selection is null) return;
+        var w = _editorSession.Selection;
         if (MessageBox.Show(this, $"Delete '{w.Name}' and its encrypted credential?", "Delete workflow",
             MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
         // Clear selection first so a pending password is not written to a deleted workflow.
@@ -164,7 +164,7 @@ public partial class MainWindow
         WorkflowList.SelectedItem = null;
         _configuration.Workflows.Remove(w);
         _vault.Delete(w.Id);
-        _selected = null;
+        _editorSession.Select(null);
         _loadingEditor = false;
         RefreshWorkflowList(_configuration.Workflows.FirstOrDefault());
         _store.Save(_configuration);

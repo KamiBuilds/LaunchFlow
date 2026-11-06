@@ -126,8 +126,8 @@ public partial class MainWindow
             workflow.Steps.RemoveRange(previousCount, workflow.Steps.Count - previousCount);
             throw;
         }
-        if (ReferenceEquals(_selected, workflow)) RefreshSteps();
-        if (!_hasUnsavedChanges) MarkSaved();
+        if (ReferenceEquals(_editorSession.Selection, workflow)) RefreshSteps();
+        if (!_editorSession.IsDirty) MarkSaved();
         AppendLog($"Saved {recorder.RecordedSteps.Count} taught action(s) for '{workflow.Name}'.");
     }
 
@@ -144,9 +144,9 @@ public partial class MainWindow
 
     private async void RecordSteps_Click(object sender, RoutedEventArgs e)
     {
-        if (_teachingInProgress || _runInProgress || _vaultLockInProgress || _windowsLocked || _exiting ||
-            _selected is null || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(_selected) || !SaveAll()) return;
-        var workflow = _selected;
+        if (_teachingInProgress || _runUi.IsRunning || _vaultLockInProgress || _windowsLocked || _exiting ||
+            _editorSession.Selection is null || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(_editorSession.Selection) || !SaveAll()) return;
+        var workflow = _editorSession.Selection;
         var admittedConfiguration = _configuration;
         var admittedRevision = _workspaceRevision;
         var admittedVaultSession = VaultDatabase.Current.SessionGeneration;
@@ -175,7 +175,7 @@ public partial class MainWindow
 
     private async void RepairLogin_Click(object sender, RoutedEventArgs e)
     {
-        if (_teachingInProgress || _runInProgress || _vaultLockInProgress || _windowsLocked || _exiting) return;
+        if (_teachingInProgress || _runUi.IsRunning || _vaultLockInProgress || _windowsLocked || _exiting) return;
         try { await RepairLoginCoreAsync(); }
         catch (Exception ex)
         {
@@ -208,8 +208,8 @@ public partial class MainWindow
 
     private async Task RepairLoginCoreAsync(WebsiteWorkflow? target = null)
     {
-        var workflow = target ?? _selected;
-        if (_teachingInProgress || _runInProgress || _runner.IsRunning ||
+        var workflow = target ?? _editorSession.Selection;
+        if (_teachingInProgress || _runUi.IsRunning || _runner.IsRunning ||
             _vaultLockInProgress || _windowsLocked || _exiting ||
             workflow is null || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow)) return;
 
@@ -220,7 +220,7 @@ public partial class MainWindow
         UpdateRunButtons();
         try
         {
-            if (!SaveAll() || _runInProgress || _runner.IsRunning ||
+            if (!SaveAll() || _runUi.IsRunning || _runner.IsRunning ||
                 !RecorderOwnerIsCurrent(workflow, admittedConfiguration, admittedRevision,
                     admittedVaultSession)) return;
 
@@ -242,16 +242,16 @@ public partial class MainWindow
 
     private void Stop_Click(object sender, RoutedEventArgs e)
     {
-        _runCancellation?.Cancel();
+        _runUi.RequestStop();
         UpdateRunButtons();
     }
 
     private async Task RunEnabledAsync(bool onlySelected = false, WorkspaceProfile? workspace = null)
     {
-        if (_runInProgress || _runner.IsRunning || _vaultLockInProgress || _windowsLocked || _teachingInProgress || _exiting || !AutomationAllowed()) return;
+        if (_runUi.IsRunning || _runner.IsRunning || _vaultLockInProgress || _windowsLocked || _teachingInProgress || _exiting || !AutomationAllowed()) return;
         // Own the UI operation before any modal prompt can pump another hotkey/tray event.
         var launchRevision = _workspaceRevision;
-        _runInProgress = true;
+        if (!_runUi.TryBeginRun(out var runLease)) return;
         UpdateRunButtons();
         CancellationTokenSource? cancellation = null;
         try
@@ -270,14 +270,14 @@ public partial class MainWindow
             }
             if (!SaveAll()) return;
             var toRun = onlySelected
-                ? (_selected is null ? new List<WebsiteWorkflow>() : new List<WebsiteWorkflow> { _selected })
+                ? (_editorSession.Selection is null ? new List<WebsiteWorkflow>() : new List<WebsiteWorkflow> { _editorSession.Selection })
                 : workspace is not null
                     ? workspace.Resolve(_configuration).ToList()
                     : _configuration.Workflows.Where(workflow => workflow.Enabled).ToList();
             if (toRun.Count == 0) { AppendLog("No enabled workflows to run."); return; }
             if (!WorkspaceCatalog.PendingRunIsCurrent(
                     _configuration, toRun, onlySelected, workspace, launchRevision, _workspaceRevision) ||
-                (onlySelected && !ReferenceEquals(_selected, toRun[0])) ||
+                (onlySelected && !ReferenceEquals(_editorSession.Selection, toRun[0])) ||
                 (workspace is not null && (!ReferenceEquals(WorkspaceCombo.SelectedItem, workspace) ||
                     !WorkspaceCatalog.IsCurrentSelection(_configuration, workspace, WorkspaceNameBox.Text))))
             {
@@ -290,7 +290,7 @@ public partial class MainWindow
             if (_windowsLocked || _vaultLockInProgress || _exiting || !VaultDatabase.Current.IsUnlocked ||
                 !WorkspaceCatalog.PendingRunIsCurrent(
                     _configuration, toRun, onlySelected, workspace, launchRevision, _workspaceRevision) ||
-                (onlySelected && !ReferenceEquals(_selected, toRun[0])) ||
+                (onlySelected && !ReferenceEquals(_editorSession.Selection, toRun[0])) ||
                 (workspace is not null && (!ReferenceEquals(WorkspaceCombo.SelectedItem, workspace) ||
                     !WorkspaceCatalog.IsCurrentSelection(_configuration, workspace, WorkspaceNameBox.Text))) ||
                 toRun.Any(workflow => !AutomationAllowed(workflow)))
@@ -302,14 +302,16 @@ public partial class MainWindow
             foreach (var workflow in toRun)
                 workflow.MonitorIndex = MonitorService.Resolve(workflow, monitors).Index;
             cancellation = new CancellationTokenSource();
-            _runCancellation = cancellation;
+            if (!_runUi.AttachCancellation(runLease, cancellation)) return;
             UpdateRunButtons();
             WorkflowStatusLabel.Text = LocalizationService.Text("Running", _configuration.UiLanguage);
-            _runStatusActive = true;
-            _activeRunTask = _runner.RunAsync(toRun, cancellation.Token,
+            _runUi.BeginStatus(runLease);
+            var engineTask = _runner.RunAsync(toRun, cancellation.Token,
                 includeDisabled: onlySelected, configuration: _configuration, keepassMasterPassword: _keepassMasterPassword);
-            var result = await _activeRunTask;
-            _runStatusActive = false;
+            if (!_runUi.TrackTask(runLease, engineTask))
+                throw new InvalidOperationException("UI lease changed during engine task registration.");
+            var result = await engineTask;
+            _runUi.EndStatus(runLease);
             if (cancellation.IsCancellationRequested || _windowsLocked || _vaultLockInProgress || _exiting) return;
             var attention = result.LoginNeedsAttention;
             var steps = result.StepsNeedAttention;
@@ -340,13 +342,11 @@ public partial class MainWindow
         }
         finally
         {
-            _runStatusActive = false;
+            _runUi.EndStatus(runLease);
             if (cancellation?.IsCancellationRequested == true)
                 WorkflowStatusLabel.Text = LocalizationService.Text("Stopped", _configuration.UiLanguage);
-            if (ReferenceEquals(_runCancellation, cancellation)) _runCancellation = null;
+            _runUi.Complete(runLease);
             cancellation?.Dispose();
-            _activeRunTask = null;
-            _runInProgress = false;
             UpdateRunButtons();
         }
     }
@@ -362,7 +362,7 @@ public partial class MainWindow
         foreach (var item in items)
         {
             if (_vaultLockInProgress || _windowsLocked || _exiting ||
-                !VaultDatabase.Current.IsUnlocked || _runCancellation?.IsCancellationRequested == true)
+                !VaultDatabase.Current.IsUnlocked || _runUi.Cancellation?.IsCancellationRequested == true)
                 break;
             var workflow = _configuration.Workflows.FirstOrDefault(w => w.Id == item.WorkflowId);
             if (workflow is null) continue;
@@ -432,7 +432,7 @@ public partial class MainWindow
             return;
         }
 
-        if (_runInProgress || _runner.IsRunning || _teachingInProgress ||
+        if (_runUi.IsRunning || _runner.IsRunning || _teachingInProgress ||
             !TeachAllowed(workflow)) return;
         try { await RepairLoginCoreAsync(workflow); }
         catch (Exception ex)
@@ -447,7 +447,7 @@ public partial class MainWindow
         foreach (var item in items)
         {
             if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked ||
-                _runCancellation?.IsCancellationRequested == true) return;
+                _runUi.Cancellation?.IsCancellationRequested == true) return;
             var workflow = _configuration.Workflows.FirstOrDefault(w => w.Id == item.WorkflowId);
             if (workflow is null) continue;
             ShowFromTray();

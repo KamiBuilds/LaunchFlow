@@ -49,6 +49,12 @@ jobs:
         run: python3 tests/ui/verify_guide.py
       - name: Validate source invariants
         run: python3 tools/Verify-LaunchFlow-Source.py
+      - name: Verify structural controllers, mapping and production test links
+        run: python3 tests/architecture/check_partials.py
+      - name: Verify source-linked independent service boundaries
+        run: dotnet run --project tests/architecture/ServiceContracts.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
+      - name: Verify encrypted configuration Save/reopen and rejection contracts
+        run: dotnet run --project tests/save/EncryptedSaveTests.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
       - name: Verify S3 ciphertext ownership and tamper rejection
         run: dotnet run --project tests/s3-binding/S3Binding.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
       - name: Verify credential transactions and master-key rotation

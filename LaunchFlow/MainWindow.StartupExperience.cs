@@ -52,7 +52,7 @@ public partial class MainWindow
         try
         {
             WorkflowList.SelectedItem = selected;
-            _selected = selected;
+            _editorSession.Select(selected);
         }
         finally
         {
