@@ -49,19 +49,23 @@ public partial class MainWindow
             website = new WebsiteEditDraft(
                 index, _selected.Id,
                 EnabledCheck.IsChecked == true,
-                string.IsNullOrWhiteSpace(NameBox.Text) ? "Unnamed website" : NameBox.Text.Trim(),
-                StartUrlBox.Text.Trim(), DestinationUrlBox.Text.Trim(), browser,
+                WebsiteEditMapper.NormalizeName(NameBox.Text),
+                WebsiteEditMapper.NormalizeText(StartUrlBox.Text),
+                WebsiteEditMapper.NormalizeText(DestinationUrlBox.Text), browser,
                 replaceMonitor, monitor?.Index ?? _selected.MonitorIndex,
                 monitor?.DeviceName ?? _selected.MonitorDeviceName,
                 SelectedLoginMode(LoginModeCombo.SelectedIndex),
                 WebsiteLoginMode.UsesSavedPassword(SelectedLoginMode(LoginModeCombo.SelectedIndex)),
-                UsernameContinueBox.Text.Trim(), PasswordOriginBox.Text.Trim(),
-                KeepassEntryBox.Text.Trim(), UsernameSelectorBox.Text.Trim(),
-                PasswordSelectorBox.Text.Trim(), SubmitSelectorBox.Text.Trim(),
-                CredentialOriginBox.Text.Trim(), LoginSuccessSelectorBox.Text.Trim(),
-                LoginSuccessUrlBox.Text.Trim(),
-                int.TryParse(LoginWaitBox.Text, out var seconds)
-                    ? Math.Clamp(seconds, 5, 180) : 60);
+                WebsiteEditMapper.NormalizeText(UsernameContinueBox.Text),
+                WebsiteEditMapper.NormalizeText(PasswordOriginBox.Text),
+                WebsiteEditMapper.NormalizeText(KeepassEntryBox.Text),
+                WebsiteEditMapper.NormalizeText(UsernameSelectorBox.Text),
+                WebsiteEditMapper.NormalizeText(PasswordSelectorBox.Text),
+                WebsiteEditMapper.NormalizeText(SubmitSelectorBox.Text),
+                WebsiteEditMapper.NormalizeText(CredentialOriginBox.Text),
+                WebsiteEditMapper.NormalizeText(LoginSuccessSelectorBox.Text),
+                WebsiteEditMapper.NormalizeText(LoginSuccessUrlBox.Text),
+                WebsiteEditMapper.NormalizeWait(LoginWaitBox.Text));
         }
         var tip = showNotification && !_configuration.ShortcutTipShown &&
             _configuration.Workflows.Any(w => w.Enabled &&
@@ -81,33 +85,26 @@ public partial class MainWindow
     {
         if (_selected is null || _loadingEditor) return;
         var w = _selected;
-        w.Enabled = EnabledCheck.IsChecked == true;
-        w.Name = string.IsNullOrWhiteSpace(NameBox.Text) ? "Unnamed website" : NameBox.Text.Trim();
-        w.StartUrl = StartUrlBox.Text.Trim();
-        w.DestinationUrl = DestinationUrlBox.Text.Trim();
+        // Preserve the original staged navigation contract: leading fields are
+        // applied before browser validation, and the AutoLogin UI event may run
+        // before the later selector inputs are read.
+        WebsiteEditMapper.ApplyLeading(w, EnabledCheck.IsChecked == true,
+            NameBox.Text, StartUrlBox.Text, DestinationUrlBox.Text);
         var selectedBrowser = BrowserSelection(BrowserCombo);
-        if (string.IsNullOrWhiteSpace(selectedBrowser))
-            throw new InvalidOperationException("Choose an installed browser before saving this website.");
-        w.Browser = selectedBrowser;
-        if (MonitorCombo.SelectedItem is MonitorChoice monitor &&
-            (_monitorSelectionChanged || string.IsNullOrWhiteSpace(w.MonitorDeviceName)))
-        {
-            w.MonitorIndex = monitor.Index;
-            w.MonitorDeviceName = monitor.DeviceName;
-        }
-        w.LoginMode = SelectedLoginMode(LoginModeCombo.SelectedIndex);
-        w.UsernameContinueSelector = UsernameContinueBox.Text.Trim();
-        w.PasswordCredentialOrigin = PasswordOriginBox.Text.Trim();
-        w.AutoLogin = WebsiteLoginMode.UsesSavedPassword(w.LoginMode);
+        var selectedMonitor = MonitorCombo.SelectedItem as MonitorChoice;
+        WebsiteEditMapper.ApplyBrowser(w, selectedBrowser,
+            selectedMonitor is not null &&
+            (_monitorSelectionChanged || string.IsNullOrWhiteSpace(w.MonitorDeviceName)),
+            selectedMonitor?.Index ?? w.MonitorIndex,
+            selectedMonitor?.DeviceName ?? w.MonitorDeviceName);
+        var loginMode = SelectedLoginMode(LoginModeCombo.SelectedIndex);
+        WebsiteEditMapper.ApplyLogin(w, loginMode, UsernameContinueBox.Text,
+            PasswordOriginBox.Text, WebsiteLoginMode.UsesSavedPassword(loginMode));
         AutoLoginCheck.IsChecked = w.AutoLogin;
-        w.KeepassEntryPath = KeepassEntryBox.Text.Trim();
-        w.UsernameSelector = UsernameSelectorBox.Text.Trim();
-        w.PasswordSelector = PasswordSelectorBox.Text.Trim();
-        w.SubmitSelector = SubmitSelectorBox.Text.Trim();
-        w.CredentialOrigin = CredentialOriginBox.Text.Trim();
-        w.LoginSuccessSelector = LoginSuccessSelectorBox.Text.Trim();
-        w.LoginSuccessUrlContains = LoginSuccessUrlBox.Text.Trim();
-        w.LoginWaitSeconds = int.TryParse(LoginWaitBox.Text, out int seconds) ? Math.Clamp(seconds, 5, 180) : 60;
+        WebsiteEditMapper.ApplyDetails(w, KeepassEntryBox.Text,
+            UsernameSelectorBox.Text, PasswordSelectorBox.Text, SubmitSelectorBox.Text,
+            CredentialOriginBox.Text, LoginSuccessSelectorBox.Text,
+            LoginSuccessUrlBox.Text, WebsiteEditMapper.NormalizeWait(LoginWaitBox.Text));
 
         // Credentials are NOT implicitly saved by Save All, tab navigation, or shutdown.
         // The Settings → Passwords category has an explicit Save credentials button. This avoids
