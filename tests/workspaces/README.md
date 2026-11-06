@@ -49,3 +49,5 @@ Windows Registry/DPAPI, browser dispatch cancellation or installer assurance.
 ## 2026-11-06 source-linked structural ownership regressions
 
 `OperationOwnershipTests.cs` executes the actual dispatcher-owned RunUiOperationController and WorkflowEditorSession for lease admission before a prompt/token, stale queued callback, Stop, real engine task identity, and imported same-GUID object/revision invalidation. `WebsiteEditMapperTests.cs` executes the production WebsiteEditDraft mapper and staged navigation groups, including every editable field, default wait, missing browser's prior partial update and disconnected monitor preservation. These fixtures do not exercise the installed WPF event dispatcher or actual Windows browser.
+
+`95c0b866` adds a focused A → B → same A re-selection case: a captured token must not acknowledge a later selection even without a new text edit; a fresh token remains valid. The live `SaveAll` ownership predicate checks the same captured token.

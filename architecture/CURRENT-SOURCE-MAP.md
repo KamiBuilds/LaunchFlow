@@ -15,6 +15,8 @@
 
 **Before/after physical source sizes** (GitHub recursive-tree blob byte sizes; not an assertion of fewer LOC): 18 MainWindow C# partials, **166,577 → 167,627 bytes**; new Controllers, **0 → 3,644 bytes**; three extracted login collaboration files, **0 → 23,353 bytes**; tracked files **261 → 269**. Responsibility extraction, not a universal line budget, is the measure; MainWindow remains the WPF dialog, rendering, dispatcher and platform lifecycle adapter.
 
+**Reentrant save hardening at `95c0b866`:** `WorkflowEditorSession.CaptureOwnership` records the workflow reference, edit revision and a separate selection epoch. The epoch changes when selecting another object, so an A → B → same A transition without intervening edits cannot reuse an earlier durable-save owner. `SaveAll` tests the entire token when committing and before marking that revision saved. The run lease and editor selection epoch remain separate from vault/workspace generation.
+
 **Former mutable responsibilities removed from MainWindow:** run admission (`_runInProgress`), status phase (`_runStatusActive`), run cancellation (`_runCancellation`) and engine task (`_activeRunTask`) are accessed via RunUiOperationController. Selected workflow (`_selected`), edit generation (`_editGeneration`) and dirty acknowledgement (`_hasUnsavedChanges`) are accessed via WorkflowEditorSession. Readers/writers: RunEnabledAsync admits/registers/completes a lease, Stop/lock/exit cancel through it, queued workflow status checks its captured lease; website selection selects the editor object, edit events mark a revision, SaveAll acknowledges only its captured revision. Existing config/workspace/vault/session authorities stay separate.
 
 ### Editable website field-to-consumer contract
