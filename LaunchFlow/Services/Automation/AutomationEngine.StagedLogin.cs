@@ -47,7 +47,7 @@ public sealed partial class AutomationEngine
         return await page.Locator(workflow.PasswordSelector).CountAsync().ConfigureAwait(false) > 0;
     }
 
-    private async Task<bool> AdvanceToPasswordStageAsync(
+    private async Task<IElementHandle?> AdvanceToPasswordStageAsync(
         WebsiteWorkflow workflow, IPage page, CredentialFieldBinding usernameOwner,
         bool hadPasswordField, CancellationToken ct)
     {
@@ -63,7 +63,7 @@ public sealed partial class AutomationEngine
         {
             var passwordCandidates = page.Locator(workflow.PasswordSelector);
             var passwordCount = await passwordCandidates.CountAsync().ConfigureAwait(false);
-            if (passwordCount > 32) return false;
+            if (passwordCount > 32) return null;
             for (var i = 0; i < passwordCount; i++)
             {
                 ct.ThrowIfCancellationRequested();
@@ -139,7 +139,7 @@ public sealed partial class AutomationEngine
                         if (candidates.Count > 1)
                         {
                             Log($"Multiple possible first-stage actions for '{workflow.Name}'. Sign in manually.");
-                            return false;
+                            return null;
                         }
                         if (candidates.Count == 1 && await candidates[0].IsEnabledAsync().ConfigureAwait(false))
                         {
@@ -155,7 +155,7 @@ public sealed partial class AutomationEngine
                 }
 
                 if (target is not null) break;
-                if (DateTimeOffset.UtcNow >= deadline) return false;
+                if (DateTimeOffset.UtcNow >= deadline) return null;
                 await Task.Delay(150, ct).ConfigureAwait(false);
             } while (true);
 
@@ -163,7 +163,7 @@ public sealed partial class AutomationEngine
             {
                 if (!await ClickApprovedLoginElementAsync(
                     page, target, usernameOwner.Origin, ct, usernameOwner,
-                    requireOwnedForm: !explicitSelector).ConfigureAwait(false)) return false;
+                    requireOwnedForm: !explicitSelector).ConfigureAwait(false)) return null;
             }
 
             // Navigation can be same-document React state, another path, or a
@@ -180,50 +180,127 @@ public sealed partial class AutomationEngine
                 // cross-origin navigation invalidates it. Never approve/fill a
                 // replacement on the foreign document during that attempt.
                 if (hadPasswordField && !OriginsMatch(usernameOwner.Origin, GetOrigin(page.Url)))
-                    return false;
+                    return null;
                 try
                 {
                     var automaticPassword = LoginFieldDiscovery.UsesAutomaticPasswordDiscovery(workflow) &&
                         LoginFieldDiscovery.UsesAutomaticUsernameDiscovery(workflow);
-                    await using var nextPassword = automaticPassword
-                        ? await ResolveSupportedResumedPasswordStageAsync(workflow, page, ct).ConfigureAwait(false)
+                    var nextPassword = automaticPassword
+                        ? await ResolveSupportedResumedPasswordStageAsync(workflow, page, ct).ConfigureAwait(false) ??
+                            await ResolvePasswordAfterOwnedContinuationAsync(
+                                workflow, page, usernameOwner.Origin, ct).ConfigureAwait(false)
                         : await ResolveConfiguredPasswordStageAsync(workflow, page, ct).ConfigureAwait(false);
-                    if (nextPassword is not null &&
-                        await nextPassword.IsVisibleAsync().ConfigureAwait(false) &&
-                        await nextPassword.IsEditableAsync().ConfigureAwait(false))
+                    if (nextPassword is null)
                     {
-                        var existedBeforeNext = false;
-                        foreach (var prior in previouslyReadyPasswords)
+                        await Task.Delay(250, ct).ConfigureAwait(false);
+                        continue;
+                    }
+                    var transferred = false;
+                    try
+                    {
+                        if (await nextPassword.IsVisibleAsync().ConfigureAwait(false) &&
+                            await nextPassword.IsEditableAsync().ConfigureAwait(false))
                         {
-                            try
+                            var existedBeforeNext = false;
+                            foreach (var prior in previouslyReadyPasswords)
                             {
-                                if (await nextPassword.EvaluateAsync<bool>(
-                                    "(field, prior) => field === prior && field.isConnected", prior)
-                                    .ConfigureAwait(false))
+                                try
                                 {
-                                    existedBeforeNext = true;
-                                    break;
+                                    if (await nextPassword.EvaluateAsync<bool>(
+                                        "(field, prior) => field === prior && field.isConnected", prior)
+                                        .ConfigureAwait(false))
+                                    {
+                                        existedBeforeNext = true;
+                                        break;
+                                    }
                                 }
+                                catch (PlaywrightException) { /* old document navigated */ }
                             }
-                            catch (PlaywrightException) { /* old document navigated */ }
+                            if (!existedBeforeNext)
+                            {
+                                Log($"Password stage is ready for '{workflow.Name}'.");
+                                transferred = true;
+                                return nextPassword;
+                            }
                         }
-                        if (!existedBeforeNext)
-                        {
-                            Log($"Password stage is ready for '{workflow.Name}'.");
-                            return true;
-                        }
+                    }
+                    finally
+                    {
+                        if (!transferred) await nextPassword.DisposeAsync().ConfigureAwait(false);
                     }
                 }
                 catch (PlaywrightException) { /* page may be navigating */ }
                 await Task.Delay(250, ct).ConfigureAwait(false);
             }
-            return false;
+            return null;
         }
         finally
         {
             foreach (var prior in previouslyReadyPasswords)
                 await prior.DisposeAsync().ConfigureAwait(false);
         }
+    }
+
+    // This fallback is available only after an owned first-stage action has
+    // actually advanced the login. It never applies to a password-only page or
+    // generic email/newsletter field, where ordinary strict classification wins.
+    private static async Task<IElementHandle?> ResolvePasswordAfterOwnedContinuationAsync(
+        WebsiteWorkflow workflow, IPage page, string identifierOrigin, CancellationToken ct)
+    {
+        var matches = page.Locator(workflow.PasswordSelector);
+        var count = await matches.CountAsync().ConfigureAwait(false);
+        if (count == 0 || count > 16) return null;
+        IElementHandle? selected = null;
+        for (var i = 0; i < count; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var locator = matches.Nth(i);
+            if (!await locator.IsVisibleAsync().ConfigureAwait(false) ||
+                !await locator.IsEditableAsync().ConfigureAwait(false)) continue;
+            var field = await locator.ElementHandleAsync().ConfigureAwait(false);
+            if (field is null) continue;
+            var keep = false;
+            try
+            {
+                var fieldOrigin = await field.EvaluateAsync<string>(
+                    "field => field.ownerDocument.location.origin").ConfigureAwait(false);
+                if (!OriginsMatch(identifierOrigin, fieldOrigin) &&
+                    (string.IsNullOrWhiteSpace(workflow.PasswordCredentialOrigin) ||
+                     !OriginsMatch(GetOrigin(workflow.PasswordCredentialOrigin), fieldOrigin)))
+                    continue;
+                var eligible = await field.EvaluateAsync<bool>("""
+                    field => {
+                      if (!(field instanceof HTMLInputElement) || field.type !== 'password' ||
+                          !field.isConnected ||
+                          field.ownerDocument.defaultView?.document !== field.ownerDocument ||
+                          /new-password|one-time-code/i.test(field.autocomplete || '')) return false;
+                      const form = field.form;
+                      if (!form?.isConnected) return false;
+                      const forbidden = /(?:sign[ -]?up|register|create.?account|forgot|reset|change.?password)/i;
+                      if (forbidden.test([form.id, form.getAttribute('action'),
+                          form.getAttribute('aria-label')].join(' '))) return false;
+                      const passwords = Array.from(form.elements).filter(el =>
+                        el instanceof HTMLInputElement && el.type === 'password');
+                      return passwords.length === 1 && passwords[0] === field;
+                    }
+                    """).ConfigureAwait(false);
+                if (!eligible || !await HasOwnedStageActionAsync(workflow, page, field, ct)
+                    .ConfigureAwait(false)) continue;
+                if (selected is not null)
+                {
+                    await selected.DisposeAsync().ConfigureAwait(false);
+                    selected = null;
+                    return null;
+                }
+                selected = field;
+                keep = true;
+            }
+            finally
+            {
+                if (!keep) await field.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+        return selected;
     }
 
     // An explicit submit selector takes precedence. This fallback is used

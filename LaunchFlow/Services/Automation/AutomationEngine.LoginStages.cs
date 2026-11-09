@@ -238,12 +238,10 @@ public sealed partial class AutomationEngine
                      !await field.IsEditableAsync().ConfigureAwait(false)))
                 {
                     await field.DisposeAsync().ConfigureAwait(false);
-                    state.StageReached = await AdvanceToPasswordStageAsync(
-                        workflow, page, owner, hadPasswordField: true, ct).ConfigureAwait(false);
-                    if (state.StageReached)
-                        state.ObservedRecipe = LoginRecipe.EmailThenPassword;
-                    else
-                        state.FailureCode = "no-password-stage";
+                    state.StageReached = await AdvanceAndCompletePasswordAsync(
+                        workflow, page, credential, owner, state,
+                        hadPasswordField: true, ct).ConfigureAwait(false);
+                    if (!state.StageReached) state.FailureCode = "no-password-stage";
                     return;
                 }
                 var origin = await FillCredentialAsync(
@@ -334,12 +332,30 @@ public sealed partial class AutomationEngine
                 return;
             }
         }
-        state.StageReached = await AdvanceToPasswordStageAsync(
-            workflow, page, owner, hadPasswordField, ct).ConfigureAwait(false);
-        if (state.StageReached)
+        state.StageReached = await AdvanceAndCompletePasswordAsync(
+            workflow, page, credential, owner, state, hadPasswordField, ct).ConfigureAwait(false);
+        if (!state.StageReached) state.FailureCode ??= "no-password-stage";
+    }
+
+    private async Task<bool> AdvanceAndCompletePasswordAsync(
+        WebsiteWorkflow workflow, IPage page, SiteCredential credential,
+        CredentialFieldBinding usernameOwner, LoginAttemptState state,
+        bool hadPasswordField, CancellationToken ct)
+    {
+        var selected = await AdvanceToPasswordStageAsync(
+            workflow, page, usernameOwner, hadPasswordField, ct).ConfigureAwait(false);
+        if (selected is null) return false;
+        // The continuation selects an exact admitted field. The protected fill
+        // boundary still independently validates its live document, frame,
+        // destination origin, vault authorization and cancellation.
+        var origin = await FillCredentialAsync(workflow, page, workflow.PasswordSelector,
+            credential.Password, ct,
+            passwordOwner => SubmitFinalBoundAsync(workflow, page, passwordOwner, state, ct),
+            selected, isPassword: true).ConfigureAwait(false);
+        state.PasswordHandledInsideUsername = origin is not null;
+        if (state.PasswordHandledInsideUsername)
             state.ObservedRecipe = LoginRecipe.EmailThenPassword;
-        else
-            state.FailureCode ??= "no-password-stage";
+        return state.PasswordHandledInsideUsername;
     }
 
     private async Task SubmitFinalBoundAsync(

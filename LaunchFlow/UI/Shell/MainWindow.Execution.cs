@@ -373,6 +373,17 @@ public partial class MainWindow
                 break;
             var workflow = _configuration.Workflows.FirstOrDefault(w => w.Id == item.WorkflowId);
             if (workflow is null) continue;
+            // A visible password challenge is evidence sign-in is incomplete,
+            // not a question about whether the user reached the dashboard.
+            // Leave the browser available and report the failure without a
+            // misleading "I'm signed in" confirmation popup.
+            if (item.Reason.StartsWith("Password stage still visible", StringComparison.Ordinal))
+            {
+                WorkflowList.SelectedItem = workflow;
+                WorkflowStatusLabel.Text = "Auto sign-in incomplete · Password step still open";
+                AppendLog($"Auto sign-in for '{workflow.Name}' stopped at the password step. Use Repair login if needed.");
+                continue;
+            }
             if (_openSignInDecisions.TryGetValue(workflow.Id, out var existing))
             {
                 // Do not flood the user with identical windows on repeated runs.

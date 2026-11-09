@@ -353,5 +353,16 @@ check("event.key === 'Enter'" in teachjs and
       "keyboard recorder rejects changed modifiers and sensitive/shadow-root contexts")
 check("https://api.github.com/repos/KamiBuilds/LaunchFlow/releases/latest" in info,
       "updater still targets published stable GitHub releases")
+sign_in = ET.parse(root / "LaunchFlow/UI/Dialogs/SignInDecisionWindow.xaml").getroot()
+sign_in_markup = ET.tostring(sign_in, encoding="unicode")
+check(int(sign_in.get("Height", "0")) >= 340 and
+      "VerticalScrollBarVisibility=\"Auto\"" in sign_in_markup and
+      'x:Name="ReasonText"' not in sign_in_markup and
+      "ReasonText" in sign_in_markup and
+      "Not now" in sign_in_markup and "Repair login" in sign_in_markup,
+      "sign-in assistance window has enough height, a scrolling reason and visible actions")
+check('item.Reason.StartsWith("Password stage still visible"' in source and
+      'Auto sign-in incomplete' in source,
+      "visible password challenges never trigger misleading signed-in confirmation dialogs")
 print(f"{len(errors)} visual/release contract errors")
 sys.exit(bool(errors))

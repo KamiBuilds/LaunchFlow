@@ -15,6 +15,8 @@ internal static class ReliableStageLoginTests
         await TwoDocumentAsync(playwright, "continue", "Continue", "Continue", false, false);
         await TwoDocumentAsync(playwright, "thousandeyes-shape", "Log In", "Next", true, false);
         await TwoDocumentAsync(playwright, "delayed-action", "Log In", "Next", true, true);
+        await OwnedNeutralPasswordStageAsync(playwright, registrationForm: false);
+        await OwnedNeutralPasswordStageAsync(playwright, registrationForm: true);
         await PasswordOnlyNextAsync(playwright);
         await SameUrlAppAsync(playwright);
         await FalseSuccessAsync(playwright);
@@ -109,6 +111,87 @@ internal static class ReliableStageLoginTests
         Console.WriteLine($"STAGE_LF {scenario} first={firstCount} last={lastCount} path={new Uri(page.Url).AbsolutePath} finished={result.FinishedCount} attention={result.LoginNeedsAttention.Count} followed={followed}");
         EngineBehaviorTests.Check(ok,
             $"LF multi-step {scenario}: both owned buttons fired exactly once and app verification permitted follow-up");
+    }
+
+    // Neutral second-stage form names are common after identifier-first routing.
+    // Without the owned-Next proof, these forms must not become global password
+    // candidates; a registration password remains forbidden even after Next.
+    private static async Task OwnedNeutralPasswordStageAsync(
+        IPlaywright playwright, bool registrationForm)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(4_000);
+        const string origin = "https://neutral-stage.stage-test";
+        var nextClicks = 0;
+        var submits = 0;
+        var wrongInput = 0;
+        await context.RouteAsync(origin + "/**", async route =>
+        {
+            var path = new Uri(route.Request.Url).AbsolutePath;
+            if (path == "/next-hit")
+            {
+                Interlocked.Increment(ref nextClicks);
+                await route.FulfillAsync(new() { Status = 204 });
+                return;
+            }
+            if (path == "/submit-hit")
+            {
+                Interlocked.Increment(ref submits);
+                await route.FulfillAsync(new() { Status = 204 });
+                return;
+            }
+            var body = path switch
+            {
+                "/login" => """
+                    <form id="ssoForm" action="/v2/login">
+                      <input id="email" type="text">
+                      <button type="button" id="first" onclick="sessionStorage.setItem('email-ok',document.getElementById('email').value==='test@example.invalid'?'1':'0');fetch('/next-hit',{method:'POST'});location.href='/step-two'">Log In</button>
+                    </form>
+                    """,
+                "/step-two" when registrationForm => """
+                    <form id="register" action="/create-account">
+                      <input id="secret" type="password" autocomplete="new-password"
+                             oninput="document.body.dataset.wrong='yes'">
+                      <button type="button" onclick="location.href='/oops'">Log In</button>
+                    </form>
+                    """,
+                "/step-two" => """
+                    <form id="checkpoint" action="/continue">
+                      <input id="secret" type="password" autocomplete="off">
+                      <button type="button" id="last" onclick="sessionStorage.setItem('pass-ok',document.getElementById('secret').value==='synthetic-password-never-send-outside-test'?'1':'0');fetch('/submit-hit',{method:'POST'});location.href='/application'">Log In</button>
+                    </form>
+                    """,
+                _ => "<nav><button aria-label='Account'>Account</button><a href='/logout'>Sign out</a></nav>"
+            };
+            await route.FulfillAsync(new() { ContentType = "text/html", Body = body });
+        });
+        var page = await context.NewPageAsync();
+        await page.GotoAsync(origin + "/login");
+        var workflow = Workflow(origin + "/login");
+        await using var engine = new AutomationEngine(Vault());
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        var emailOk = await page.EvaluateAsync<string>(
+            "() => sessionStorage.getItem('email-ok')") == "1";
+        var passwordOk = await page.EvaluateAsync<string>(
+            "() => sessionStorage.getItem('pass-ok')") == "1";
+        if (registrationForm)
+        {
+            if (page.Url == origin + "/step-two")
+                wrongInput = await page.GetAttributeAsync("body", "data-wrong") == "yes" ? 1 : 0;
+            EngineBehaviorTests.Check(emailOk && !passwordOk && nextClicks == 1 &&
+                submits == 0 && wrongInput == 0 && result.FinishedCount == 0 &&
+                result.LoginNeedsAttention.Count == 1,
+                "LF staged discovery rejects registration password after the owned email Next");
+        }
+        else
+        {
+            EngineBehaviorTests.Check(emailOk && passwordOk && nextClicks == 1 &&
+                submits == 1 && result.FinishedCount == 1 &&
+                result.LoginNeedsAttention.Count == 0 && page.Url == origin + "/application",
+                "LF local second stage completes in a neutral named form after an owned email Next");
+        }
     }
 
     private static async Task PasswordOnlyNextAsync(IPlaywright playwright)
