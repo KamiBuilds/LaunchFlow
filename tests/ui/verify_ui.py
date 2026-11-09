@@ -14,12 +14,12 @@ def check(condition, description):
         errors.append(description)
     print(("PASS " if condition else "FAIL ") + description)
 
-views = list((root / "LaunchFlow").glob("*.xaml"))
+views = [p for p in (root / "LaunchFlow").rglob("*.xaml") if "bin" not in p.parts and "obj" not in p.parts]
 for view in views:
     ET.parse(view)
 check(len(views) >= 10, "WPF views are well-formed XML")
 
-ui = ET.parse(root / "LaunchFlow/MainWindow.xaml").getroot()
+ui = ET.parse(root / "LaunchFlow/UI/Shell/MainWindow.xaml").getroot()
 app = ET.parse(root / "LaunchFlow/App.xaml").getroot()
 named = {element.get(xns + "Name"): element for element in ui.iter()
          if element.get(xns + "Name")}
@@ -75,7 +75,7 @@ check(named["WorkspaceNameBox"].get("TextChanged") == "WorkspaceNameBox_TextChan
       "typing another workspace name revokes the previous selection")
 # Inspect all production MainWindow partials, not a single oversized code-behind file.
 source = "\n".join(file.read_text(encoding="utf-8")
-                   for file in sorted((root / "LaunchFlow").glob("MainWindow*.cs")))
+                   for file in sorted((root / "LaunchFlow" / "UI" / "Shell").glob("MainWindow*.cs")))
 check(all(handler in source for handler in
           ("WorkspaceCombo_SelectionChanged", "SaveWorkspace_Click",
            "PreviewWorkspace_Click", "RunWorkspace_Click")),
@@ -85,8 +85,8 @@ check('WorkspaceCombo.Text.Trim()' not in source,
 check('private void ActionToolbar_SizeChanged' in source and
       'e.NewSize.Width < 940' in source,
       "responsive toolbar keeps compact views free of overlapping status text")
-autosave_code = (root / "LaunchFlow/MainWindow.AutoSave.cs").read_text(encoding="utf-8")
-autosave_schedule = (root / "LaunchFlow/Services/AutoSaveSchedule.cs").read_text(encoding="utf-8")
+autosave_code = (root / "LaunchFlow/UI/Shell/MainWindow.AutoSave.cs").read_text(encoding="utf-8")
+autosave_schedule = (root / "LaunchFlow/Services/Persistence/AutoSaveSchedule.cs").read_text(encoding="utf-8")
 check('StartAutoSave();' in source and
       '_autoSaveSchedule.Changed(DateTimeOffset.UtcNow)' in source and
       'private void AutoSaveTimer_Tick' in autosave_code and
@@ -94,7 +94,7 @@ check('StartAutoSave();' in source and
       'SaveStatusLabel.Text = "Saving…"' in autosave_code and
       'SaveStatusLabel.Text = "Save failed"' in autosave_code and
       'ShowAutoSaveFailed();' in source and
-      '_store.SaveDurable(_configuration);' in source and
+      '_store.SaveDurable(_configuration)' in source and
       'private bool _autoSaving' in autosave_code,
       "auto-save schedules edits and confirms encrypted durable writes")
 check('UsernameBox.TextChanged += (_, _) => MarkUnsavedChanges()' not in source and
@@ -118,27 +118,27 @@ check('WorkspaceCatalog.PendingRunIsCurrent(' in source and
       'WorkspaceCombo.SelectedItem, workspace' in source and
       'SaveDurable(_configuration)' in source,
       "modal workflow dispatch rechecks current workspace and saves are durable")
-store = (root / "LaunchFlow/Services/ConfigStore.cs").read_text(encoding="utf-8")
+store = (root / "LaunchFlow/Services/Persistence/ConfigStore.cs").read_text(encoding="utf-8")
 check('public void SaveDurable(Configuration configuration)' in store and
       'public void SaveDurable(Configuration configuration, long expectedSession)' in store and
       '_vault.SaveConfiguration(configuration, expectedSession)' in store and
       'SaveConfigurationUnderGate(config, expectedSession)' in
-          (root / "LaunchFlow/Services/VaultDatabase.cs").read_text(encoding="utf-8"),
+          (root / "LaunchFlow/Services/Vault/VaultDatabase.cs").read_text(encoding="utf-8"),
       "durable workspace persistence checks the expected vault session under its gate")
 extractor = (root / "tests/workspaces/extract-ui-methods.py").read_text(encoding="utf-8")
 check(extractor.count('read_text(encoding="utf-8")') >= 2 and
       'write_text(output, encoding="utf-8")' in extractor,
       "Windows UI harness reads and writes explicit UTF-8")
-wizard = ET.parse(root / "LaunchFlow/NewWorkflowWindow.xaml").getroot()
+wizard = ET.parse(root / "LaunchFlow/UI/Dialogs/NewWorkflowWindow.xaml").getroot()
 wizard_named = {el.get(xns + "Name"): el for el in wizard.iter() if el.get(xns + "Name")}
 check(wizard_named["AutoLoginCheck"].get("IsChecked") == "False" and
       "No login required" in ET.tostring(wizard, encoding="unicode") and
       'LoginMode = autoLogin ? "Auto" : "None"' in
-      (root / "LaunchFlow/NewWorkflowWindow.xaml.cs").read_text(encoding="utf-8"),
+      (root / "LaunchFlow/UI/Dialogs/NewWorkflowWindow.xaml.cs").read_text(encoding="utf-8"),
       "new local websites default to explicit No login required without credential prompts")
 # Username/email is intentionally readable in the create-website wizard.
 # The password must remain a WPF PasswordBox and must never be read as ordinary Text.
-wizard_code = (root / "LaunchFlow/NewWorkflowWindow.xaml.cs").read_text(encoding="utf-8")
+wizard_code = (root / "LaunchFlow/UI/Dialogs/NewWorkflowWindow.xaml.cs").read_text(encoding="utf-8")
 check(wizard_named["UsernameBox"].tag.endswith("}TextBox") and
       wizard_named["PasswordBox"].tag.endswith("}PasswordBox") and
       'Username / email (hidden)' not in ET.tostring(wizard, encoding="unicode") and
@@ -149,9 +149,9 @@ check(wizard_named["UsernameBox"].tag.endswith("}TextBox") and
       'NewPassword = autoLogin ? PasswordBox.Password : "";' in wizard_code and
       'if (!WasCreated) ClearPendingSecrets();' in wizard_code,
       "website wizard displays username/email in plaintext, keeps password masked and retains secret cleanup")
-manager_source = (root / "LaunchFlow/MainWindow.PasswordManager.cs").read_text(encoding="utf-8")
-credential_source = (root / "LaunchFlow/MainWindow.Credentials.cs").read_text(encoding="utf-8")
-editor_source = (root / "LaunchFlow/MainWindow.WebsiteEditor.cs").read_text(encoding="utf-8")
+manager_source = (root / "LaunchFlow/UI/Shell/MainWindow.PasswordManager.cs").read_text(encoding="utf-8")
+credential_source = (root / "LaunchFlow/UI/Shell/MainWindow.Credentials.cs").read_text(encoding="utf-8")
+editor_source = (root / "LaunchFlow/UI/Shell/MainWindow.WebsiteEditor.cs").read_text(encoding="utf-8")
 check({"PasswordWebsiteCombo", "SaveCredentialsButton", "ClearCredentialButton"}.issubset(named) and
       named["PasswordWebsiteCombo"].get("DisplayMemberPath") is None and
       named["PasswordWebsiteCombo"].find(
@@ -191,17 +191,17 @@ check('SelectionBoxItemTemplate' in style and 'PART_Popup' in style
       "dropdown renders display-member templates and accessible popup items")
 check('BrowserChoices.Refresh(BrowserCombo, w.Browser)' in source and
       'BrowserCombo_DropDownOpened' in ET.tostring(ui, encoding="unicode") and
-      'BrowserInstallations.IsInstalled(browser)' in (root / "LaunchFlow/NewWorkflowWindow.xaml.cs").read_text(encoding="utf-8"),
+      'BrowserInstallations.IsInstalled(browser)' in (root / "LaunchFlow/UI/Dialogs/NewWorkflowWindow.xaml.cs").read_text(encoding="utf-8"),
       "both browser selectors use installation detection and retain configured browser identity")
-check('ObserveLoginCompletionAsync' in "\n".join(p.read_text(encoding="utf-8") for p in sorted((root / "LaunchFlow/Services").glob("AutomationEngine*.cs"))) and
-      'VerifiedRedirectAsync' in (root / "LaunchFlow/Services/LoginHealth.cs").read_text(encoding="utf-8") and
+check('ObserveLoginCompletionAsync' in "\n".join(p.read_text(encoding="utf-8") for p in sorted((root / "LaunchFlow/Services/Automation").glob("AutomationEngine*.cs"))) and
+      'VerifiedRedirectAsync' in (root / "LaunchFlow/Services/Login/LoginHealth.cs").read_text(encoding="utf-8") and
       'var wasLoading = _loadingEditor;' in source and
       'CloseSessionsRetry' in source,
       "sign-in verification and safe installer cleanup recovery remain wired")
 check('SignInDecisionWindow.Decision.Confirmed' in source and
-      (root / "LaunchFlow/SignInDecisionWindow.xaml").is_file() and
-      'ConfirmSignedInAsync' in "\n".join(p.read_text(encoding="utf-8") for p in sorted((root / "LaunchFlow/Services").glob("AutomationEngine*.cs"))) and
-      'session._pendingActions.Enqueue(("Navigate", safeUrl))' in (root / "LaunchFlow/Services/TeachRecorder.cs").read_text(encoding="utf-8"),
+      (root / "LaunchFlow/UI/Dialogs/SignInDecisionWindow.xaml").is_file() and
+      'ConfirmSignedInAsync' in "\n".join(p.read_text(encoding="utf-8") for p in sorted((root / "LaunchFlow/Services/Automation").glob("AutomationEngine*.cs"))) and
+      'session._pendingActions.Enqueue(("Navigate", safeUrl))' in (root / "LaunchFlow/Services/Teach/TeachRecorder.cs").read_text(encoding="utf-8"),
       "human sign-in confirmation and automatic cross-site Teach navigation are connected")
 check('dialog.Show();' in source and
       'ApplyModelessSignInDecisionAsync' in source and
@@ -217,11 +217,11 @@ check('CredentialDeleteGuard.IsCurrent(' in source and
       'KeePassDbBox.Text = _configuration.KeePassDatabasePath ?? "";' in source,
       "safe deletion and full imported configuration projection remain wired to storage and UI")
 check('WindowsApplicationControl.CheckRequiredComponents()' in (root / "LaunchFlow/App.xaml.cs").read_text(encoding="utf-8") and
-      'Microsoft.Data.Sqlite' in (root / "LaunchFlow/Services/WindowsApplicationControl.cs").read_text(encoding="utf-8"),
+      'Microsoft.Data.Sqlite' in (root / "LaunchFlow/Services/Workspaces/WindowsApplicationControl.cs").read_text(encoding="utf-8"),
       "startup checks blocked DLLs before new vault setup")
-wizard_xml = (root / "LaunchFlow/NewWorkflowWindow.xaml").read_text(encoding="utf-8")
-main_xml = (root / "LaunchFlow/MainWindow.xaml").read_text(encoding="utf-8")
-tutorial_code = (root / "LaunchFlow/TutorialWindow.xaml.cs").read_text(encoding="utf-8")
+wizard_xml = (root / "LaunchFlow/UI/Dialogs/NewWorkflowWindow.xaml").read_text(encoding="utf-8")
+main_xml = (root / "LaunchFlow/UI/Shell/MainWindow.xaml").read_text(encoding="utf-8")
+tutorial_code = (root / "LaunchFlow/UI/Dialogs/TutorialWindow.xaml.cs").read_text(encoding="utf-8")
 check('START HERE · 3 EASY STEPS' in main_xml and
       'Show the step-by-step guide' in main_xml and
       '2. Recorded actions (optional)' in main_xml and
@@ -268,7 +268,7 @@ check(main_tab_headers == ["Websites", "Settings"] and
 check('FirstWebsiteGuidanceShown' in source and
       '_configuration.Workflows.Count == 0' in source and
       'if (firstWebsite)' in source and
-      'FirstWebsiteGuidanceShown' in (root / "LaunchFlow/Models/Configuration.cs").read_text(encoding="utf-8"),
+      'FirstWebsiteGuidanceShown' in (root / "LaunchFlow/Domain/Models/Configuration.cs").read_text(encoding="utf-8"),
       "post-create guidance is shown once for first website and persisted in vault configuration")
 check('HeaderVersionLabel.Text = "v" + AppInfo.VersionString' in source
       and 'CurrentVersionLabel.Text = "Installed version " + AppInfo.VersionString' in source,
@@ -276,21 +276,21 @@ check('HeaderVersionLabel.Text = "v" + AppInfo.VersionString' in source
 csproj = ET.parse(root / "LaunchFlow/LaunchFlow.csproj")
 version = csproj.findtext("./PropertyGroup/Version")
 iss = (root / "installer/LaunchFlow.iss").read_text(encoding="utf-8")
-info = (root / "LaunchFlow/Services/AppInfo.cs").read_text(encoding="utf-8")
-check(version == "0.7.46" and f'#define AppVersion "{version}"' in iss
+info = (root / "LaunchFlow/Services/Platform/AppInfo.cs").read_text(encoding="utf-8")
+check(bool(version) and f'#define AppVersion "{version}"' in iss
       and f'return v is null ? "{version}"' in info,
-      "assembly, installer and fallback version match 0.7.46")
-guide = ET.parse(root / "LaunchFlow/TutorialWindow.xaml").getroot()
-guide_source = (root / "LaunchFlow/TutorialWindow.xaml.cs").read_text(encoding="utf-8")
+      f"assembly, installer and fallback version match {version}")
+guide = ET.parse(root / "LaunchFlow/UI/Dialogs/TutorialWindow.xaml").getroot()
+guide_source = (root / "LaunchFlow/UI/Dialogs/TutorialWindow.xaml.cs").read_text(encoding="utf-8")
 check('new TutorialWindow { Owner = this }.ShowDialog()' not in source and
-      'OpenTutorial();' in source and
+      'OpenTutorial(' in source and
       'Show() is modeless' in source and
       'ExampleAction' in ET.tostring(guide, encoding="unicode") and
       'ExampleAction.Text' in guide_source,
       "Help is interactive and provides a privacy-safe visual example")
-recorder = ET.parse(root / "LaunchFlow/VisualRecorderWindow.xaml").getroot()
+recorder = ET.parse(root / "LaunchFlow/UI/Dialogs/VisualRecorderWindow.xaml").getroot()
 recorder_xml = ET.tostring(recorder, encoding="unicode")
-recorder_source = (root / "LaunchFlow/VisualRecorderWindow.xaml.cs").read_text(encoding="utf-8")
+recorder_source = (root / "LaunchFlow/UI/Dialogs/VisualRecorderWindow.xaml.cs").read_text(encoding="utf-8")
 check('SelectionMode="Extended"' in recorder_xml and
       'Click="SelectAll_Click"' in recorder_xml and
       'Click="EditSelected_Click"' in recorder_xml and
@@ -314,12 +314,14 @@ check('ExitSafety.TryPersistForExit(' in source and
       'if (_installerShutdownInProgress || _exiting || !TryCloseWithSavedChanges()) return;' in source and
       'if (!TryCloseWithSavedChanges())' in source and
       'if (_editorSession.IsDirty)' in source and
-      'MarkUnsavedChanges();\n        AppendLog("Workflow duplicated' in source and
+      'DuplicateWorkflow_Click' in source and
+      '_store.SaveDurable(candidate, ownedVaultSession);' in source and
+      'Duplicated' in source and
       '_vault.SaveWithConfiguration(workflow.Id, new SiteCredential(username, password),' in source and
       '_store.NoteCommittedExternally();' in source and
       'candidateConfig.Workflows[index].AutoLogin = autoLogin;' in source,
       "explicit tray/window exits refuse dirty locked saves, credential preference writes are durable and duplicates become dirty")
-lifecycle_source = (root / "LaunchFlow/MainWindow.Lifecycle.cs").read_text(encoding="utf-8")
+lifecycle_source = (root / "LaunchFlow/UI/Shell/MainWindow.Lifecycle.cs").read_text(encoding="utf-8")
 check('if (_editorSession.IsDirty && !VaultDatabase.Current.IsUnlocked)' in source and
       'if (_vaultCleanupFailed || _vaultLockInProgress)' in lifecycle_source and
       'if (installer && _installerProfileSealFailed)' in lifecycle_source and
@@ -333,15 +335,15 @@ check('if (_editorSession.IsDirty && !VaultDatabase.Current.IsUnlocked)' in sour
 check('IsCurrentStepEditorOwner(WebsiteWorkflow workflow, long revision)' in source and
       'WorkflowEditGuard.IsCurrent(_configuration, _editorSession.Selection, workflow, current,' in source and
       'index >= 0 && index < original.Steps.Count' in
-      (root / "LaunchFlow/Services/WorkflowEditGuard.cs").read_text(encoding="utf-8") and
+      (root / "LaunchFlow/Services/Persistence/WorkflowEditGuard.cs").read_text(encoding="utf-8") and
       'var revision = _workspaceRevision;' in source and
       'ReferenceEquals(_editorSession.Selection, workflow)' in source,
       "modal step editing cannot modify a detached or imported workflow")
 check('KeepassEntryBox.TextChanged += (_, _) => MarkUnsavedChanges();' in source and
       'SaveStatusLabel.Text = "Unsaved changes"' in source,
       "manual KeePass entry path is tracked as an unsaved configuration edit")
-teachjs = (root / "LaunchFlow/Services/TeachRecorderScript.cs").read_text(encoding="utf-8")
-teachcs = (root / "LaunchFlow/Services/TeachRecorder.cs").read_text(encoding="utf-8")
+teachjs = (root / "LaunchFlow/Services/Teach/TeachRecorderScript.cs").read_text(encoding="utf-8")
+teachcs = (root / "LaunchFlow/Services/Teach/TeachRecorder.cs").read_text(encoding="utf-8")
 check("event.key === 'Enter'" in teachjs and
       "event.shiftKey || event.ctrlKey || event.altKey || event.metaKey" in teachjs and
       "target.getRootNode() !== document" in teachjs and

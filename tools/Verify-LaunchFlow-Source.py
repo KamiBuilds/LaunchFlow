@@ -20,14 +20,14 @@ check('#define AppVersion "'+version+'"' in iss,'installer matches project versi
 check('AppId={{9B1A7C15-093B-4DBA-BDA7-BF43A2E67320}' in iss,'stable upgrade AppId')
 check('VersionInfoVersion={#AppVersion}.0' in iss,'installer Windows version')
 check('return v is null ? "'+version+'"' in
-      (root/'LaunchFlow/Services/AppInfo.cs').read_text(encoding='utf-8'),
+      (root/'LaunchFlow/Services/Platform/AppInfo.cs').read_text(encoding='utf-8'),
       'display version fallback matches installer and project')
-cs=(root/'LaunchFlow/Services/DarkWindowChrome.cs').read_text(encoding='utf-8')
+cs=(root/'LaunchFlow/Services/Platform/DarkWindowChrome.cs').read_text(encoding='utf-8')
 check('System.Windows.Media.Color.FromRgb' in cs,'WPF Color disambiguation')
 app=(root/'LaunchFlow/App.xaml.cs').read_text(encoding='utf-8')
 check(app.count('_ = Dispatcher.BeginInvoke(')>=3,'dispatcher callbacks handle file opening, activation and build shutdown')
-auto='\n'.join(p.read_text(encoding='utf-8') for p in sorted((root/'LaunchFlow/Services').glob('AutomationEngine*.cs')))
-browser_engine=(root/'LaunchFlow/Services/AutomationEngine.Browser.cs').read_text(encoding='utf-8')
+auto='\n'.join(p.read_text(encoding='utf-8') for p in sorted((root/'LaunchFlow/Services/Automation').glob('AutomationEngine*.cs')))
+browser_engine=(root/'LaunchFlow/Services/Automation/AutomationEngine.Browser.cs').read_text(encoding='utf-8')
 check(browser_engine.count('new Dictionary<string, object>')>=2 and
       'Browser.setWindowBounds' in browser_engine,
       'Playwright CDP uses correctly typed browser-window arguments')
@@ -35,28 +35,29 @@ workflow=(root/'.github/workflows/windows.yml').read_text(encoding='utf-8')
 check('LaunchFlow-Setup-v${{ env.LF_VERSION }}-x64.exe' in workflow and 'publish_release' in workflow, 'CI artifact and manual release use csproj version')
 check((root/'BUILD-INSTALLER.cmd').is_file() and (root/'BUILD-INSTALLER.ps1').is_file(),'installer builders included')
 check((root/'LaunchFlow/Assets/LaunchFlow.ico').is_file(),'app icon present')
-for xaml in (root/'LaunchFlow').glob('*.xaml'):
+xaml_files=[p for p in (root/'LaunchFlow').rglob('*.xaml') if 'bin' not in p.parts and 'obj' not in p.parts]
+for xaml in xaml_files:
     try: ET.parse(xaml)
     except ET.ParseError as ex: errors.append(f'Invalid XAML XML {xaml.name}: {ex}')
-check(len(list((root/'LaunchFlow').glob('*.xaml')))>=5,'XAML files parsed')
-check('IsEditable="False"' in (root/'LaunchFlow/MainWindow.xaml').read_text(encoding='utf-8') and
-      'x:Name="WorkspaceNameBox"' in (root/'LaunchFlow/MainWindow.xaml').read_text(encoding='utf-8'),
+check(len(xaml_files)>=5,'XAML files parsed')
+check('IsEditable="False"' in (root/'LaunchFlow/UI/Shell/MainWindow.xaml').read_text(encoding='utf-8') and
+      'x:Name="WorkspaceNameBox"' in (root/'LaunchFlow/UI/Shell/MainWindow.xaml').read_text(encoding='utf-8'),
       'workspace selection remains separate from workspace naming')
-main_code='\n'.join(p.read_text(encoding='utf-8') for p in sorted((root/'LaunchFlow').glob('MainWindow*.cs')))
-recorder_code=(root/'LaunchFlow/VisualRecorderWindow.xaml.cs').read_text(encoding='utf-8')
+main_code='\n'.join(p.read_text(encoding='utf-8') for p in sorted((root/'LaunchFlow/UI/Shell').glob('MainWindow*.cs')))
+recorder_code=(root/'LaunchFlow/UI/Dialogs/VisualRecorderWindow.xaml.cs').read_text(encoding='utf-8')
 check('ShowRecorderAsync(recorder)' in main_code and 'recorder.ShowDialog()' not in main_code,
       'Teach runs modeless so windows can move')
-teach_service=(root/'LaunchFlow/Services/TeachRecorder.cs').read_text(encoding='utf-8')
-teach_script=(root/'LaunchFlow/Services/TeachRecorderScript.cs').read_text(encoding='utf-8')
+teach_service=(root/'LaunchFlow/Services/Teach/TeachRecorder.cs').read_text(encoding='utf-8')
+teach_script=(root/'LaunchFlow/Services/Teach/TeachRecorderScript.cs').read_text(encoding='utf-8')
 check('ExposeBindingAsync' in teach_service and 'AddInitScriptAsync' in teach_service,
       'Teach records clicks through page navigation')
-check((root/'LaunchFlow/TutorialWindow.xaml').is_file() and 'new TutorialWindow' in main_code,
+check((root/'LaunchFlow/UI/Dialogs/TutorialWindow.xaml').is_file() and 'new TutorialWindow' in main_code,
       'beginner tutorial is available')
-main_code='\n'.join(p.read_text(encoding='utf-8') for p in sorted((root/'LaunchFlow').glob('MainWindow*.cs')))
+main_code='\n'.join(p.read_text(encoding='utf-8') for p in sorted((root/'LaunchFlow/UI/Shell').glob('MainWindow*.cs')))
 check('EnsureStartupWorkflowVisible();' in main_code and 'MainTabs.SelectedIndex = -1;' in main_code,
       'initial Workflows content is forced to render after Loaded')
-main_code='\n'.join(p.read_text(encoding='utf-8') for p in sorted((root/'LaunchFlow').glob('MainWindow*.cs')))
-recorder_code=(root/'LaunchFlow/VisualRecorderWindow.xaml.cs').read_text(encoding='utf-8')
+main_code='\n'.join(p.read_text(encoding='utf-8') for p in sorted((root/'LaunchFlow/UI/Shell').glob('MainWindow*.cs')))
+recorder_code=(root/'LaunchFlow/UI/Dialogs/VisualRecorderWindow.xaml.cs').read_text(encoding='utf-8')
 build_script=(root/'BUILD-INSTALLER.ps1').read_text(encoding='utf-8')
 check('RecorderOwnerIsCurrent(' in main_code and
       'ReferenceEquals(w, workflow)' in main_code and
@@ -64,17 +65,19 @@ check('RecorderOwnerIsCurrent(' in main_code and
       'VaultDatabase.Current.SessionGeneration == originalVaultSession' in main_code and
       '_store.SaveDurable(originalConfiguration, originalVaultSession)' in main_code and
       'FirstOrDefault(w => w.Id == workflow.Id)' not in
-          (root/'LaunchFlow/MainWindow.Execution.cs').read_text(encoding='utf-8'),
+          (root/'LaunchFlow/UI/Shell/MainWindow.Execution.cs').read_text(encoding='utf-8'),
       'Teach publication binds the original workflow reference, revision and vault session')
-check('_teachingInProgress' in main_code, 'overlapping Teach sessions are blocked')
+check('TeachUiOperationController' in main_code and '_teachUi' in main_code and
+      '_teachUi.TryBegin' in main_code and '_teachUi.IsBusy' in main_code,
+      'overlapping Teach sessions are blocked by TeachUiOperationController')
 check('TeachRecorderScript.Install' in teach_service and 'internal const string Install' in teach_script,
       'recorder page-initialization script is invoked')
 check('Get-LaunchFlowSetupPath -Root $PSScriptRoot -Version $projectVersion' in build_script,
       'builder selects the exact versioned installer')
 check('coreclr.dll' in build_script and 'Microsoft.Playwright.dll' in build_script,
       'builder validates bundled application components')
-new_workflow=(root/'LaunchFlow/NewWorkflowWindow.xaml.cs').read_text(encoding='utf-8')
-new_workflow_xaml=(root/'LaunchFlow/NewWorkflowWindow.xaml').read_text(encoding='utf-8')
+new_workflow=(root/'LaunchFlow/UI/Dialogs/NewWorkflowWindow.xaml.cs').read_text(encoding='utf-8')
+new_workflow_xaml=(root/'LaunchFlow/UI/Dialogs/NewWorkflowWindow.xaml').read_text(encoding='utf-8')
 check('using Microsoft.Playwright;' in main_code, 'Playwright IPage namespace imported')
 check('await ShowNewWorkflowAsync(wizard)' in main_code and 'wizard.ShowDialog()' not in main_code,
       'New Workflow is modeless')
@@ -89,9 +92,9 @@ check('System.Windows.Clipboard.GetText()' in new_workflow,
 check('Building artifacts must not stop the installed app' in build_script and
       'AppMutex=LaunchFlow.Windows.SingleInstance' in iss,
       'build leaves running installations alone and setup manages app closure')
-main_xaml=(root/'LaunchFlow/MainWindow.xaml').read_text(encoding='utf-8')
-keepass_code=(root/'LaunchFlow/Services/KeePassXcService.cs').read_text(encoding='utf-8')
-picker_code=(root/'LaunchFlow/KeePassEntryPickerWindow.xaml.cs').read_text(encoding='utf-8')
+main_xaml=(root/'LaunchFlow/UI/Shell/MainWindow.xaml').read_text(encoding='utf-8')
+keepass_code=(root/'LaunchFlow/Services/KeePass/KeePassXcService.cs').read_text(encoding='utf-8')
+picker_code=(root/'LaunchFlow/UI/Dialogs/KeePassEntryPickerWindow.xaml.cs').read_text(encoding='utf-8')
 check('WorkflowEnabledToggle' in main_xaml and 'x:Name="EnabledCheck"' in main_xaml,
       'workflow enabled toggle retains existing binding')
 check('FindDatabases()' in keepass_code and 'SearchOption.TopDirectoryOnly' in keepass_code,
@@ -100,11 +103,11 @@ check('ListEntriesAsync' in keepass_code and 'ArgumentList.Add("ls")' in keepass
       'KeePassXC login picker lists entry names')
 check('ChooseKeePassEntry_Click' in main_code and 'FirstOrDefault(w => w.Id == workflowId)' in main_code,
       'selected KeePassXC login belongs to the original workflow')
-check('ArgumentList.Add("show")' not in keepass_code and (root/'LaunchFlow/KeePassEntryPickerWindow.xaml').exists(),
+check('ArgumentList.Add("show")' not in keepass_code and (root/'LaunchFlow/UI/Dialogs/KeePassEntryPickerWindow.xaml').exists(),
       'entry picker does not display KeePassXC secrets')
-main_xaml=(root/'LaunchFlow/MainWindow.xaml').read_text(encoding='utf-8')
+main_xaml=(root/'LaunchFlow/UI/Shell/MainWindow.xaml').read_text(encoding='utf-8')
 styles=(root/'LaunchFlow/App.xaml').read_text(encoding='utf-8')
-db=(root/'LaunchFlow/Services/VaultDatabase.cs').read_text(encoding='utf-8')
+db=(root/'LaunchFlow/Services/Vault/VaultDatabase.cs').read_text(encoding='utf-8')
 check('Header="Activity"' not in main_xaml and 'LogBox' not in main_xaml,
       'activity screen removed')
 check('Local backups' not in main_xaml and 'BackupVault_Click' not in main_xaml,
@@ -129,7 +132,7 @@ check('VerifiedRedirectAsync' in auto and
       'ObserveLoginCompletionAsync' in auto and
       'LoginHealth.VerifiedRedirectAsync' in auto,
       'automatic login requires validated dashboard transitions rather than one outdated selector')
-check((root/'LaunchFlow/SignInDecisionWindow.xaml').is_file() and
+check((root/'LaunchFlow/UI/Dialogs/SignInDecisionWindow.xaml').is_file() and
       'ConfirmSignedInAsync' in auto and
       'SignInDecisionWindow.Decision.Confirmed' in main_code and
       'ManuallyConfirmedAsync' in auto,
@@ -148,7 +151,7 @@ check('BrowserChoices.Refresh(BrowserCombo, w.Browser)' in main_code and
       'browser selectors enumerate detected browsers and preserve saved missing choices')
 check('x:Name="Check"' not in styles and 'x:Name="Thumb"' in styles,
       'checkbox controls have no checkmark glyph')
-recorder=(root/'LaunchFlow/VisualRecorderWindow.xaml.cs').read_text(encoding='utf-8')
+recorder=(root/'LaunchFlow/UI/Dialogs/VisualRecorderWindow.xaml.cs').read_text(encoding='utf-8')
 check('ExposeBindingAsync' in teach_service and 'AddInitScriptAsync' in teach_service,
       'Teach installs navigation-safe listeners')
 check("document.addEventListener('pointerdown'" in teach_script and
@@ -166,7 +169,7 @@ check('CredentialDeleteGuard.IsCurrent(' in main_code and
       'import and destructive credential deletion use identity and one authoritative configuration projection')
 app_startup=(root/'LaunchFlow/App.xaml.cs').read_text(encoding='utf-8')
 builder=(root/'BUILD-INSTALLER.ps1').read_text(encoding='utf-8')
-compat=(root/'LaunchFlow/Services/WindowsApplicationControl.cs').read_text(encoding='utf-8')
+compat=(root/'LaunchFlow/Services/Workspaces/WindowsApplicationControl.cs').read_text(encoding='utf-8')
 check('WindowsApplicationControl.CheckRequiredComponents()' in app_startup and
       app_startup.index('WindowsApplicationControl.CheckRequiredComponents()') <
       app_startup.index('InitializeVault())'),
@@ -180,8 +183,8 @@ check('Get-AuthenticodeSignature' in builder and
       'if ($RequireSignedDistribution)' in builder and
       'Signed distribution requested but the Setup signature is not valid' in builder,
       'trusted distribution gate covers nested PE dependencies, preflight and setup signature')
-wizard_xaml=(root/'LaunchFlow/NewWorkflowWindow.xaml').read_text(encoding='utf-8')
-main_ui=(root/'LaunchFlow/MainWindow.xaml').read_text(encoding='utf-8')
+wizard_xaml=(root/'LaunchFlow/UI/Dialogs/NewWorkflowWindow.xaml').read_text(encoding='utf-8')
+main_ui=(root/'LaunchFlow/UI/Shell/MainWindow.xaml').read_text(encoding='utf-8')
 check('Advanced: connection type and port (optional)' in wizard_xaml and
       'DataTrigger Binding="{Binding IsChecked, ElementName=AutoLoginCheck}" Value="True"' in wizard_xaml and
       'More actions (advanced)' in main_ui and

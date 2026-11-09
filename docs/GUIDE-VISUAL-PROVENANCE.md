@@ -8,7 +8,7 @@
 
 The step locator in `TutorialWindow.xaml` is a **WPF-generated schematic based on source-verified labels**, not a screenshot of a running Windows application. It displays the window/section and one target label per step.
 
-A user-initiated **Show target in app** can outline a currently visible WPF element using its stable `x:Name`. It cannot click the element, change a selection, save settings, read credentials or execute automation. If the target window/tab is not open and visible, it gives a recovery message instead of navigating unsaved editor state.
+A user-initiated **Show target in app** (or **Open this area**) may safely switch to a matching MainWindow tab/category when the editor is clean, then outline a currently visible WPF element using its stable `x:Name`. It cannot click the element, change website selection, save settings, read credentials or execute automation. Dirty editors, open setup windows, or locked vaults refuse navigation and expand recovery text instead.
 
 | Route | Step IDs | Current source UI | Locator / focus target |
 |---|---|---|---|
@@ -16,11 +16,11 @@ A user-initiated **Show target in app** can outline a currently visible WPF elem
 | Website credentials (optional) | PASS-01–08 | `MainWindow.xaml`, Settings → Passwords | `SettingsNav`, `PasswordsSettingsTab`, `PasswordWebsiteCombo`, `LoginModeCombo`, `UsernameBox`, `PasswordInput`, `SaveCredentialsButton`, `CredentialStatus` |
 | Record clicks (optional) | RECORD-01–06 | `MainWindow.xaml`, `VisualRecorderWindow.xaml` | `WorkflowList`, `TeachButton`, `CaptureStatus`, `StepList`, `SaveStepsButton`; browser click is manually observed, not highlighted |
 | Startup and background (optional) | STARTUP-01–05 | `MainWindow.xaml`, Settings → Startup | `SettingsNav`, `StartupSettingsTab`, `StartupCheck`, `UnlockCheck`, `TrayCheck` |
-| Recover safely | HELP-01–05 | Main, browser-readiness dialog | `BrowserCheckAgainButton`, `WorkflowList`, `RepairButton`, `SaveChangesButton`, `RetryVaultLockButton` |
+| Recover safely | HELP-01–06 | Main, browser-readiness dialog, startup recovery | `BrowserCheckAgainButton`, `WorkflowList`, `RepairButton`, `SaveChangesButton`, `RetryVaultLockButton`; HELP-06 is startup recovery (no live outline) |
 
 ## Content ownership and localization
 
-The single maintained content source is `LaunchFlow/TutorialWindow.xaml.cs` (37 step records). `docs/GETTING-STARTED.md` is generated from that source. `tests/ui/verify_guide.py` checks exact source labels, real target names, guide markup, and documentation parity. It must pass in CI.
+The single maintained content source is `LaunchFlow/UI/Dialogs/TutorialWindow.xaml.cs` (39 step records). `docs/GETTING-STARTED.md` is generated from that source. `tests/ui/verify_guide.py` checks exact source labels, real target names, guide markup, and documentation parity. It must pass in CI.
 
 English labels come from the v0.7.46 XAML and applicable code-behind. Runtime Dutch navigation changes `Settings` to `Instellingen`; the guide resolves that label using `LocalizationService`. Not every dialog is fully translated. A real native screenshot and completed localization parity review remain outstanding.
 

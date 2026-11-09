@@ -22,15 +22,15 @@
     <Compile Include="LegacyCompatibilityProgram.cs" />
     <Compile Include="PlatformStubs.cs" />
     <Compile Include="CompatibilityTests.cs" />
-    <Compile Include="../../LaunchFlow/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
-    <Compile Include="../../LaunchFlow/Services/EnterprisePolicy.cs" Link="EnterprisePolicy.cs" />
-    <Compile Include="../../LaunchFlow/Services/CrashLog.cs" Link="CrashLog.cs" />
+    <Compile Include="../../LaunchFlow/Domain/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
+    <Compile Include="../../LaunchFlow/Services/Policy/EnterprisePolicy.cs" Link="EnterprisePolicy.cs" />
+    <Compile Include="../../LaunchFlow/Services/Diagnostics/CrashLog.cs" Link="CrashLog.cs" />
     <Compile Include="$(VaultDatabaseSource)" Link="VaultDatabase.cs" />
     <Compile Include="$(LegacyConfigStoreSource)" Link="ConfigStore.cs" />
     <Compile Include="$(LegacyCredentialVaultSource)" Link="CredentialVault.cs" />
     <Compile Include="$(LegacyTransferSource)" Link="SecureTransferService.cs" />
-    <Compile Include="../../LaunchFlow/Services/PortableExport.cs" Link="PortableExport.cs" />
-    <Compile Include="../../LaunchFlow/Services/PasswordStrength.cs" Link="PasswordStrength.cs" />
+    <Compile Include="../../LaunchFlow/Services/Transfer/PortableExport.cs" Link="PortableExport.cs" />
+    <Compile Include="../../LaunchFlow/Services/Vault/PasswordStrength.cs" Link="PasswordStrength.cs" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.31" />
     <PackageReference Include="Konscious.Security.Cryptography.Argon2" Version="1.3.1" />
   </ItemGroup>

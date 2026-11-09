@@ -2,8 +2,8 @@
 """Source-linked exit contract; this cannot substitute for native Windows acceptance."""
 from pathlib import Path
 root = Path(__file__).resolve().parents[2]
-src = (root / "LaunchFlow/MainWindow.xaml.cs").read_text(encoding="utf-8")
-module = (root / "LaunchFlow/MainWindow.Lifecycle.cs").read_text(encoding="utf-8")
+src = (root / "LaunchFlow/UI/Shell/MainWindow.xaml.cs").read_text(encoding="utf-8")
+module = (root / "LaunchFlow/UI/Shell/MainWindow.Lifecycle.cs").read_text(encoding="utf-8")
 closing = src.split("private void OnClosing(", 1)[1].split("private IntPtr HotkeyHook(", 1)[0]
 closed = src.split("private void OnClosed(", 1)[1]
 tray = src.split("private void ExitFromTray(", 1)[1].split("internal void RequestCrashCleanup(", 1)[0]

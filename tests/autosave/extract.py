@@ -4,9 +4,9 @@ from pathlib import Path
 import re
 
 root = Path(__file__).resolve().parents[2]
-autosave = (root / "LaunchFlow/MainWindow.AutoSave.cs").read_text(encoding="utf-8")
-persistence = (root / "LaunchFlow/MainWindow.Persistence.cs").read_text(encoding="utf-8")
-mainwindow = (root / "LaunchFlow/MainWindow.xaml.cs").read_text(encoding="utf-8")
+autosave = (root / "LaunchFlow/UI/Shell/MainWindow.AutoSave.cs").read_text(encoding="utf-8")
+persistence = (root / "LaunchFlow/UI/Shell/MainWindow.Persistence.cs").read_text(encoding="utf-8")
+mainwindow = (root / "LaunchFlow/UI/Shell/MainWindow.xaml.cs").read_text(encoding="utf-8")
 
 def extract_method(source, name):
     pattern = r"^    private [^\n]+\\b" + re.escape(name) + r"\\([^\n]*\\)\\s*\n    \\{"

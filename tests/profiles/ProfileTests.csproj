@@ -6,6 +6,6 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="../../LaunchFlow/Services/ProfileVaultService.cs" Link="ProfileVaultService.cs" />
+    <Compile Include="../../LaunchFlow/Services/Vault/ProfileVaultService.cs" Link="ProfileVaultService.cs" />
   </ItemGroup>
 </Project>

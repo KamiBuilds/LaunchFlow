@@ -167,12 +167,12 @@ var tests = new List<(string Name, Func<Task> Body)>
         ui._editorSession.Select(ui._configuration.Workflows[0]);
         ui._runner.CloseRelease.SetResult();
         var teaching = AsyncVoidTracker.Run(ui.Record);
-        Check(ui.Recorder is not null && ui._activeTeachTask is { IsCompleted: false },
+        Check(ui.Recorder is not null && ui._teachUi.ActiveTask is { IsCompleted: false },
             "LIFE-R03 fixture failed to hold full recording operation");
-        var active = ui._activeTeachTask;
+        var active = ui._teachUi.ActiveTask;
         await ui.Lock().WaitAsync(TimeSpan.FromSeconds(3));
         await teaching.WaitAsync(TimeSpan.FromSeconds(3));
-        Check(ui.Recorder!.ClosedByLock && active!.IsCompleted && !ui._teachingInProgress &&
+        Check(ui.Recorder!.ClosedByLock && active!.IsCompleted && !ui._teachUi.IsBusy &&
               ui._store.DurableSaves == 0 && ProfileVaultService.Seals == 1,
             "LIFE-R03 lock left live recorder or sealed before its completion");
     }),
@@ -187,7 +187,7 @@ var tests = new List<(string Name, Func<Task> Body)>
         var locking = ui.Lock();
         await ui._runner.CloseEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
         Check(!locking.IsCompleted && ProfileVaultService.Seals == 0 &&
-              ui._activeTeachTask is { IsCompleted: false },
+              ui._teachUi.ActiveTask is { IsCompleted: false },
               "LIFE-R03 browser close bypassed pending recorder callback drain");
         ui.RecorderDrainRelease.TrySetResult();
         await Task.WhenAll(recording, locking).WaitAsync(TimeSpan.FromSeconds(3));
@@ -201,7 +201,7 @@ var tests = new List<(string Name, Func<Task> Body)>
         var pending = AsyncVoidTracker.Run(ui.Record);
         Check(ui.Recorder is not null && !pending.IsCompleted,
             "LIFE-R03 fixture must reach a modeless recorder before completing");
-        var task = ui._activeTeachTask;
+        var task = ui._teachUi.ActiveTask;
         try
         {
             Check(task is { IsCompleted: false },
@@ -212,7 +212,7 @@ var tests = new List<(string Name, Func<Task> Body)>
             ui.RecorderResult.TrySetResult(false);
             await pending.WaitAsync(TimeSpan.FromSeconds(3));
         }
-        Check(ui._activeTeachTask is null && !ui._teachingInProgress,
+        Check(ui._teachUi.ActiveTask is null && !ui._teachUi.IsBusy,
             "LIFE-R03 completion did not release ownership");
     }),
     ("LIFE-R01 modeless Teach refuses same-ID imported replacement", async () =>
@@ -451,7 +451,7 @@ var tests = new List<(string Name, Func<Task> Body)>
         Check(index is not null && selected is not null, "exact login mode UI mapping is missing");
         foreach (var mode in new[] { "Auto", "None", "SSO" })
             Check((string)selected!.Invoke(null, new[] { index!.Invoke(null, new object[] { mode }) })! == mode, "login mode changed on save: " + mode);
-        var xaml = System.Xml.Linq.XDocument.Load("LaunchFlow/MainWindow.xaml");
+        var xaml = System.Xml.Linq.XDocument.Load("LaunchFlow/UI/Shell/MainWindow.xaml");
         var combo = xaml.Descendants().Single(e => (string?)e.Attribute(System.Xml.Linq.XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")) == "LoginModeCombo");
         Check((string?)combo.Attribute("Visibility") != "Collapsed" && combo.Elements().Count() == 3, "SSO choice is hidden or missing");
         return Task.CompletedTask;
@@ -514,8 +514,8 @@ var tests = new List<(string Name, Func<Task> Body)>
                 "fixture B must be a genuinely active production-linked run");
             var beforeSaves = ui.SaveAllCalls;
             dialog!.Choose(SignInDecisionWindow.Decision.Repair);
-            Check(ui._runner.TeachCalls == 0 && !ui._teachingInProgress &&
-                  ui._activeTeachTask is null && ui.SaveAllCalls == beforeSaves,
+            Check(ui._runner.TeachCalls == 0 && !ui._teachUi.IsBusy &&
+                  ui._teachUi.ActiveTask is null && ui.SaveAllCalls == beforeSaves,
                 "stale modeless Repair acquired a recorder or saved while run B was active");
         }
         finally
@@ -572,7 +572,9 @@ var tests = new List<(string Name, Func<Task> Body)>
         ui._runner.CloseCancelsDispatch = true;
         var run = ui.Run();
         await ui._runner.RunEntered.Task;
-        ui._activeTeachTask = ui._runner.PendingTeach.Task;
+        if (!ui._teachUi.TryBegin(out var stalledTeachLease) ||
+            !ui._teachUi.TrackTask(stalledTeachLease, ui._runner.PendingTeach.Task))
+            throw new Exception("could not stage stalled Teach task");
         var pending = ui.Lock();
         await ui._runner.CloseEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
         Check(!pending.IsCompleted && !VaultDatabase.Current.IsUnlocked && ProfileVaultService.Seals == 0, "lock bypassed a stalled dispatch barrier");
@@ -721,12 +723,12 @@ partial class UiFixture
     public readonly Configuration _configuration = new() { Workflows = new() { new WebsiteWorkflow() } };
     public readonly WorkflowEditorSession _editorSession = new(new WebsiteWorkflow());
     public readonly RunUiOperationController _runUi = new();
+    public readonly TeachUiOperationController _teachUi = new();
     public bool _vaultCleanupFailed = false, _profileSealFailed = false;
     public bool _installerShutdownInProgress = false, _installerProfileSealFailed = false;
     public long _workspaceRevision;
     public readonly Control RetryVaultLockButton = new();
-    public bool _windowsLocked = false, _vaultLockInProgress = false, _teachingInProgress = false, _exiting = false;
-    public Task? _activeTeachTask = null;
+    public bool _windowsLocked = false, _vaultLockInProgress = false, _exiting = false;
     public VisualRecorderWindow? _activeRecorder;
     public Task _vaultLockTask = Task.CompletedTask;
     public string? _keepassMasterPassword;
@@ -779,6 +781,8 @@ partial class UiFixture
     public bool EnsureKeePass() => EnsureKeePassPasswordForRun(_configuration.Workflows);
     public void ShowFromTray() { }
     public void MarkSaved() { }
+    public void MarkSaved(long? committedRevision) { }
+    public void RefreshLoginRecipeLabel(WebsiteWorkflow? workflow = null) { }
     public bool IsLoaded => true;
     public static void AppendLog(string _) { }
     public void ClearCredentialEditor() { Cleared = true; UsernameBox.Clear(); PasswordInput.Clear(); _loadedCredentialWorkflowId = null; }
@@ -947,6 +951,21 @@ namespace LaunchFlow.Services
             SaveCredential(id, credential);
         }
         public void DeleteCredential(Guid id) => Credentials.Remove(id);
+        public void DeleteCredentialAndConfiguration(Guid id, Configuration configuration, long expectedSession)
+        {
+            if (!IsUnlocked || SessionGeneration != expectedSession ||
+                configuration.Workflows.Count(w => w.Id == id) != 1)
+                throw new InvalidOperationException("Synthetic vault ownership changed.");
+            Credentials.Remove(id);
+        }
+        public void DeleteWorkflowAndCredential(Guid workflowId, Configuration configurationWithoutWorkflow,
+            long expectedSession)
+        {
+            if (!IsUnlocked || SessionGeneration != expectedSession ||
+                configurationWithoutWorkflow.Workflows.Any(w => w.Id == workflowId))
+                throw new InvalidOperationException("Synthetic vault ownership changed.");
+            Credentials.Remove(workflowId);
+        }
         public Dictionary<Guid, SiteCredential> ExportCredentials() => new(Credentials);
         public (Configuration Config, Dictionary<Guid, SiteCredential> Credentials) CaptureExportSnapshot(
             bool includePasswords, long expectedSession)
@@ -1017,6 +1036,7 @@ namespace LaunchFlow.Services
         {
             public List<LoginAttention> LoginNeedsAttention { get; } = new();
             public List<StepAttention> StepsNeedAttention { get; } = new();
+            public List<Guid> LoginRecipesUpdated { get; } = new();
             public int FinishedCount { get; set; }
             public int FailedCount { get; set; }
         }

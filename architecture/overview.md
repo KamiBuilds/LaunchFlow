@@ -54,12 +54,12 @@ Do not introduce a separate process, many new projects or generic interfaces per
 | Transfer | `SecureTransferService`, `LegacyMigration`, imports/exports | Detached parse, staging, compatibility/recovery | Implicit destructive reset |
 | Distribution/diagnostics | `bootstrapper/`, `installer/`, `scripts/`, CI, diagnostics | Artifact identity, signing, trust, limited sanitized evidence | Claiming native/vendor acceptance from Linux simulation |
 
-## Confirmed responsibility collisions requiring tests
+## Responsibility collisions — current source status
 
-1. **A1 ordinary Exit:** `ExitFromTray` sets `_exiting` and calls `Close()` after a durability gate; `OnClosing` returns when `_exiting` is true, and the asynchronous `OnClosed` awaits the run/Teach/engine disposal after the WPF close. Installer `RequestShutdownForInstallAsync` already awaits `SecureVaultLockAsync` and checks failed cleanup before closing. Characterize ordinary/tray close with a delayed browser and failed cleanup, then route both through one awaited close permit.
-2. **A2 modeless Repair:** a retained `SignInDecisionWindow.Closed` schedules `ApplyModelessSignInDecisionAsync`. Its action validates workflow/reference/revision/vault, but `RepairLoginCoreAsync` does not check `_runInProgress` or `_runner.IsRunning`, unlike the visible Repair click. Test dialog A, run B, then choose Repair in A; reject before `SaveAll`/recorder acquisition.
-3. **A3 credential/preferences save:** `MainWindow.Credentials.SaveCredentials_Click` writes `_vault.Save` before updating `_selected.AutoLogin`/`KeepassEntryPath` and calling `_store.SaveDurable`. A later preference failure may leave the credential committed while showing generic save failure. Choose atomic persistence or an explicitly partial, retryable outcome; prove cold reopen.
-4. **Historical repository notes:** `AGENTS.md` still directs development to the now-deleted `hermes` branch. The user-directed cleanup preserved a Git bundle but the previous branch tips are no longer live. Treat `validated/v0.7.46-three-checks-20261103` as the current development baseline, not the obsolete instructions; do not silently recreate deleted branches.
+1. **A1 ordinary Exit:** source repaired via `ExitCompletionGate` + `MainWindow.Lifecycle.CompleteOwnedExitAsync`. Native WPF/OS-kill acceptance remains separate. Unexpected `OnClosed` without a permit stays best-effort.
+2. **A2 modeless Repair:** source repaired — Run/Teach admission blocks stale modeless Repair; Teach uses `TeachUiOperationController`. Native WPF timing still pending.
+3. **A3 credential/preferences save:** source repaired — `SaveCredentialAndConfiguration` for password-manager saves; website create uses the compound path when a password is supplied; credential clear uses `DeleteCredentialAndConfiguration` and resets AutoLogin/KeePass/LoginMode.
+4. **Historical repository notes:** Treat `validated/v0.7.46-three-checks-20261103` (and later repair/structure branches) as development baselines. Do not silently recreate deleted branches.
 
 ## Extraction policy
 
@@ -69,4 +69,4 @@ Do not introduce a separate process, many new projects or generic interfaces per
 - Every extraction must record current + target dependencies, ownership/lease handoff, compatibility risk and linked tests.
 - Require independent review and exact-tree full gates before calling a slice complete. Native WPF/installer and authorized vendor sign-in are separate gates.
 
-**M0 status:** dependency-direction sketch and responsibility map drafted; detailed per-file consumer map and behavioral architecture review remain open. No runtime refactoring has occurred in this document-only milestone.
+**M0+ status:** Controllers, WebsiteEditMapper, LoginFlowCoordinator, ExitCompletionGate, compound vault saves, TeachUiOperationController, and KISS guide coaching are in source. **v0.7.50** also places those owners under `UI/`, `Domain/`, and domain folders inside `Services/` (namespaces unchanged). See `LaunchFlow/STRUCTURE.md`. Native Windows acceptance remains the release gate.

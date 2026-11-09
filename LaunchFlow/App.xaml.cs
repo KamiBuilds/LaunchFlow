@@ -204,23 +204,162 @@ public partial class App : Application
         return null;
     }
 
+    /// <summary>
+    /// Guided recovery when InspectStorage reports IncompleteOrUnsupported.
+    /// Never silently deletes the broken file; restores only verified backups.
+    /// </summary>
+    private static bool TryRecoverIncompleteVault()
+    {
+        var copies = VaultRecoveryService.ListSqliteRecoveryCopies();
+        var newest = copies.FirstOrDefault();
+        var choice = MessageBox.Show(
+            "An existing LaunchFlow vault file is incomplete, unsupported or cannot be read safely. " +
+            "Your encrypted data has NOT been deleted.\n\n" +
+            (newest is null
+                ? "No automatic recovery copies were found under %LOCALAPPDATA%\\LaunchFlow\\recovery.\n\n"
+                : "A recovery SQLite copy was found. Click Yes to restore the newest verified-looking copy.\n\n") +
+            "Yes = restore a SQLite recovery copy\n" +
+            "No = choose a .launchflow portable backup (creates a new vault after quarantining the broken file)\n" +
+            "Cancel = open the recovery folder and exit without changing files",
+            "Vault recovery required",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Warning);
+
+        if (choice == MessageBoxResult.Cancel)
+        {
+            try { VaultRecoveryService.OpenRecoveryFolder(); } catch { /* optional */ }
+            MessageBox.Show(
+                "Preserve copies of launchflow.db and any -wal/-shm files before manual troubleshooting. " +
+                "LaunchFlow will not create a new vault over the broken file.",
+                "Vault unchanged", MessageBoxButton.OK, MessageBoxImage.Information);
+            return false;
+        }
+
+        if (choice == MessageBoxResult.Yes)
+        {
+            var pick = newest;
+            if (pick is null ||
+                MessageBox.Show(
+                    "Restore this recovery file?\n\n" + pick +
+                    "\n\nThe broken vault will be moved aside first (not deleted).",
+                    "Restore SQLite backup", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            {
+                var dialog = new Microsoft.Win32.OpenFileDialog
+                {
+                    Title = "Choose a LaunchFlow SQLite recovery copy",
+                    Filter = "SQLite vault (*.db)|*.db|All files (*.*)|*.*",
+                    InitialDirectory = VaultRecoveryService.RecoveryDirectory
+                };
+                if (dialog.ShowDialog() != true) return false;
+                pick = dialog.FileName;
+            }
+
+            try
+            {
+                var quarantine = VaultRecoveryService.RestoreSqliteBackup(pick);
+                MessageBox.Show(
+                    "Vault file restored. Unlock with your master password next.\n\n" +
+                    "Previous broken file kept at:\n" + quarantine,
+                    "Vault restored", MessageBoxButton.OK, MessageBoxImage.Information);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                CrashLog.Write("VaultRestore", ex);
+                MessageBox.Show(
+                    "Could not restore that backup. Your broken vault was left in place when possible.\n\n" +
+                    ex.Message,
+                    "Restore failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                return false;
+            }
+        }
+
+        // Portable .launchflow import → quarantine broken → Initialize new vault.
+        var exportDialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Choose a LaunchFlow portable backup",
+            Filter = "LaunchFlow file (*.launchflow)|*.launchflow"
+        };
+        if (exportDialog.ShowDialog() != true) return false;
+
+        var exportPassword = new SecretPromptWindow("Portable backup password",
+            "Enter the password used when this .launchflow file was exported.");
+        if (exportPassword.ShowDialog() != true) return false;
+
+        PortableExport.PortablePackage package;
+        try { package = SecureTransferService.Read(exportDialog.FileName, exportPassword.Secret); }
+        catch (Exception ex)
+        {
+            MessageBox.Show("Could not read that portable backup: " + ex.Message,
+                "Import failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        var master = new SecretPromptWindow("New vault master password",
+            $"Choose a new master password (at least {PasswordStrength.MinimumLength} characters). " +
+            "This unlocks LaunchFlow on this PC after the broken vault is moved aside.");
+        if (master.ShowDialog() != true) return false;
+        if (!PasswordStrength.MeetsMinimum(master.Secret))
+        {
+            MessageBox.Show(PasswordStrength.Evaluate(master.Secret).Hint,
+                "Password too weak", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+        var confirm = new SecretPromptWindow("Confirm new master password",
+            "Enter the same new master password again.");
+        if (confirm.ShowDialog() != true || confirm.Secret != master.Secret)
+        {
+            MessageBox.Show("Passwords did not match.", "Import canceled",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        try
+        {
+            var quarantine = VaultRecoveryService.QuarantineLiveVault();
+            foreach (var workflow in package.Config.Workflows)
+                workflow.Enabled = false;
+            VaultDatabase.Current.Initialize(master.Secret, package.Config, package.Credentials);
+            MessageBox.Show(
+                "Portable backup imported into a new vault. Automatic website launches are disabled until you review them.\n\n" +
+                "Broken vault kept at:\n" + quarantine,
+                "Vault recovered", MessageBoxButton.OK, MessageBoxImage.Information);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("VaultPortableRestore", ex);
+            MessageBox.Show(
+                "Could not import the portable backup after quarantining the broken file.\n\n" + ex.Message,
+                "Import failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            return false;
+        }
+    }
+
     private static bool InitializeVault()
     {
         // After a "forgot password" reset, fall through to first-run setup.
-        for (int round = 0; round < 2; round++)
+        for (int round = 0; round < 3; round++)
         {
             var db = VaultDatabase.Current;
             var diskState = db.InspectStorage();
             if (diskState == VaultStorageState.IncompleteOrUnsupported)
             {
-                MessageBox.Show(
-                    "An existing LaunchFlow vault file is incomplete, unsupported or cannot be read safely. " +
-                    "Your encrypted data has NOT been deleted, reset or replaced.\n\n" +
-                    "Close LaunchFlow and preserve a copy of %LOCALAPPDATA%\\LaunchFlow\\launchflow.db " +
-                    "and its associated -wal/-shm files, if present, before troubleshooting or restoring a known good backup. " +
-                    "LaunchFlow will not create a new vault over this file.",
-                    "Vault recovery required", MessageBoxButton.OK, MessageBoxImage.Error);
-                return false;
+                if (!TryRecoverIncompleteVault())
+                    return false;
+                // Portable import initializes+unlocks immediately; SQLite restore still needs Unlock.
+                if (VaultDatabase.Current.IsUnlocked)
+                {
+                    try { ProfileVaultService.UnsealAll(); }
+                    catch (Exception ex)
+                    {
+                        CrashLog.Write("ProfileUnseal", ex);
+                        MessageBox.Show("Some browser sessions could not be restored; encrypted files were retained.",
+                            "Browser sessions need attention", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                    return true;
+                }
+                continue; // re-inspect after SQLite restore
             }
             if (diskState == VaultStorageState.LegacyUpgradeRequired)
             {

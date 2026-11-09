@@ -20,7 +20,8 @@ namespace LaunchFlow
         public Configuration _configuration;
         public long _workspaceRevision;
         public bool _windowsLocked, _vaultLockInProgress, _exiting, _loadingEditor;
-        public string _activeShortcut = "Ctrl+M";
+        public ShortcutState _shortcuts = new() { ActiveShortcut = "Ctrl+M" };
+        public sealed class ShortcutState { public string ActiveShortcut { get; set; } = ""; }
         public string? _keepassMasterPassword;
         public readonly FakeRunner _runner = new();
         public readonly FixtureControl SettingsTabs = new(), MainTabs = new();

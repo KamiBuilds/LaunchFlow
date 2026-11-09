@@ -1,6 +1,6 @@
 # LaunchFlow
 
-> **v0.7.46 — corrected per-website credential dropdown preview (not release-approved).** Local Windows desktop automation with an encrypted credential vault. Native Windows verification and Hermes lifecycle integration remain required before a stable publish.
+> **v0.7.53 — remembered-login classification + recovery/guide hardening (not release-approved).** Local Windows desktop automation with an encrypted credential vault. Native Windows verification remains required before a stable publish.
 
 LaunchFlow opens your websites on the chosen screen, optionally signs in using local encrypted credentials, and replays recorded safe clicks.
 
@@ -20,6 +20,6 @@ The recorder captures safe browser clicks and navigation keys (Enter, Tab, Escap
 
 ## Development
 
-Use `BUILD-INSTALLER.ps1` on Windows with the .NET 8 SDK and Inno Setup. People installing the EXE do not need build tools. See `docs/REMAINING-GATES-0.7.34.md` for release gates and `CODE-SIGNING.md` for Authenticode signing.
+Use `BUILD-INSTALLER.ps1` on Windows with the .NET 8 SDK and Inno Setup. People installing the EXE do not need build tools. See `docs/NATIVE-WINDOWS-ACCEPTANCE.md` for release gates and `CODE-SIGNING.md` for Authenticode signing.
 
 No stable merge, official release or machine-policy compatibility approval is implied by a CI installer artifact.

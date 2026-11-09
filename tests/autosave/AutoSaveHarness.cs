@@ -8,10 +8,13 @@ using System.Windows.Controls;
 var folder = Path.Combine(Path.GetTempPath(), "launchflow-autosave-integration-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(folder);
 Environment.SetEnvironmentVariable("XDG_DATA_HOME", folder);
+var vaultFile = Path.Combine(folder, "LaunchFlow", "launchflow.db");
+Directory.CreateDirectory(Path.GetDirectoryName(vaultFile)!);
+Environment.SetEnvironmentVariable("LAUNCHFLOW_TEST_VAULT_PATH", vaultFile);
 const string password = "SyntheticAutosaveOnly-73!";
 var vault = VaultDatabase.Current;
 if (!Path.GetFullPath(vault.DatabasePath).StartsWith(Path.GetFullPath(folder) + Path.DirectorySeparatorChar,
-        StringComparison.Ordinal))
+        StringComparison.OrdinalIgnoreCase))
     throw new InvalidOperationException("Autosave test must never use real user vault.");
 vault.Initialize(password, BaseConfiguration());
 
@@ -80,10 +83,18 @@ try
             "actual SaveAll did not clear dirty state on durable success");
         Check(ReferenceEquals(original, ui.Selected) && ReferenceEquals(worklist, ui.Configuration.Workflows),
             "production save broke selection/list identity");
+        Check(original.Name == "NOC dashboard" && original.KeepassEntryPath == "Ops/Shared",
+            "durable save did not publish the draft onto the live workflow identity");
+        ui.VaultTimeoutBox.Text = "17";
+        ui.StartupCheck.IsChecked = true;
+        WaitAndTick(ui);
+        Check(ui.Configuration.VaultLockMinutes == 17 && ui.Configuration.StartWithWindows,
+            "settings draft must publish onto live configuration, not only the detached candidate");
         var read = ColdRead();
         Check(read.Workflows.Single().Name == "NOC dashboard" &&
-              read.Workflows.Single().KeepassEntryPath == "Ops/Shared",
-              "cold SQLite reopen lost website or KeePass changes");
+              read.Workflows.Single().KeepassEntryPath == "Ops/Shared" &&
+              read.VaultLockMinutes == 17 && read.StartWithWindows,
+              "cold SQLite reopen lost website, KeePass or published settings changes");
         Check(read.AdditionalSettings!.ContainsKey("future_setting") &&
               read.Workflows.Single().Steps.Single().AdditionalSettings!.ContainsKey("future_action"),
               "unknown configuration/action fields were discarded");
@@ -205,10 +216,14 @@ try
         WaitAndTick(ui);
         var read = ColdRead();
         Check(read.Workflows.Single().Name == "Non-secret change" &&
-              !vault.HasCredential(read.Workflows.Single().Id) &&
-              !System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(vault.DatabasePath))
+              !vault.HasCredential(read.Workflows.Single().Id),
+              "save unexpectedly stored a credential row");
+        vault.Lock();
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        Check(!System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(vault.DatabasePath))
                   .Contains("never-persist-implicitly", StringComparison.Ordinal),
-              "save unexpectedly stored credential data");
+              "save unexpectedly left credential plaintext in the database file");
+        Check(vault.Unlock(password), "reopen after credential-byte inspection");
     });
     Run("post-commit OS failure remains saved; reentrant UI edit remains dirty", () =>
     {

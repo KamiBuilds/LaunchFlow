@@ -1,3 +1,59 @@
+# v0.7.53 — Remembered login classification + recovery/guide hardening
+
+- Remembered `CustomSelectors` no longer disables automatic form classification while default username selectors remain (`LoginFieldDiscovery` + `LoginFieldDefaults`).
+- Review probe covers registration-before-login with a remembered CustomSelectors recipe.
+- Vault recovery stages and inspects the backup before quarantining live db/wal/shm; rollback restores the full set; path-explicit API for harnesses.
+- Getting-started verify script follows the UI folder layout; delete/credential dialogs capture config/session/revision before confirmation.
+- Development preview only; native Windows verification remains the release gate.
+
+# v0.7.52 — Fix save publication + destructive-dialog ownership
+
+- `SaveAll` publishes the validated draft onto the **live** configuration (no longer re-applies only onto the detached candidate).
+- Website delete requires the confirmed workflow instance to still be a member of the owned config and a unique ID in the snapshot.
+- Multi-step delete revalidates editor ownership and step membership after confirmation.
+- Autosave/architecture regressions assert live publication. Development preview only.
+
+# v0.7.51 — Cleanup pass: archive clutter, peel MainWindow helpers
+
+- Archived obsolete Hermes/BOTH/version handoff docs under `docs/archive/` (current guides stay in `docs/` + `architecture/`).
+- Extracted `WindowWorkAreaConstraint`, `RunOutcomeSummary`, `PasswordSessionPolicy`, and `GlobalShortcutRegistrar` so maximize math, run tray wording, password-tab timing, and hotkey registration are not buried in MainWindow.
+- Removed obsolete `tools/Verify-MaskedCredentialSave.py` (v0.7.8 UI asserts).
+- Added pure architecture checks for the new helpers. Vault format and AppId unchanged. Development preview only.
+
+# v0.7.50 — Domain folder restructure
+
+- Physical layout: `UI/Shell`, `UI/Dialogs`, `UI/Controllers`, `Domain/Models`, and domain folders under `Services/` (Vault, Automation, Login, Teach, Persistence, Browser, Transfer, Workspaces, KeePass, Platform, Diagnostics, Policy).
+- Namespaces unchanged (`LaunchFlow.Services` / `.Models` / `.Controllers`) so behavior and test type names stay stable.
+- Test/tool path links and architecture checks updated; see `LaunchFlow/STRUCTURE.md`.
+- Synced installer + AppInfo display fallback with csproj version.
+- Preserve vault crypto format and AppId. Development preview only.
+
+# v0.7.49 — Login recipes + clearer sign-in failures
+
+- Remember successful Auto login shapes per website (`SamePage`, `EmailThenPassword`, `CustomSelectors`) and prefer them on later runs; Forget shape resets discovery.
+- Sign-in attention messages name MFA, missing password stage, ambiguous submit, and missing secrets more clearly; tray shows the single-site reason.
+- Duplicate website now durable-saves immediately (no silent unsaved draft).
+- Getting started adds **Work sites (ThousandEyes / GitHub / npm)** coaching route.
+- Preserve vault crypto format and AppId. Development preview only.
+
+# v0.7.48 — Vault recovery UX + atomic website delete
+
+- Delete website removes workflow + credential (+ workspace ID refs) in one encrypted SQLite transaction.
+- Incomplete/corrupt vault startup offers restore from `%LOCALAPPDATA%\LaunchFlow\recovery`, or quarantine + `.launchflow` portable import — never silent overwrite.
+- Unlock “forgot password” copy prefers backup/restore before destructive reset.
+- Troubleshooting guide adds HELP-06 for broken vault recovery.
+- Added `docs/NATIVE-WINDOWS-ACCEPTANCE.md` checklist for real PC gates.
+- Preserve vault crypto format and AppId. Development preview only.
+
+# v0.7.47 — KISS help coach + durability/Teach ownership
+
+- Getting started coaches one action at a time: first-run hides optional routes, main window shows a live guide strip, **Show target** / **Open this area** safely open the matching tab when the editor is clean, and misses auto-expand recovery help.
+- New website create writes credential + configuration in one vault transaction when a password is supplied (no orphan secret on failed config save).
+- Removing a website password also clears AutoLogin / KeePass / login-mode prefs in the same encrypted transaction.
+- Teach/Repair admission moves to `TeachUiOperationController` (mirrors Run lease ownership); lock/drain uses the controller’s active task.
+- Empty-state “3 easy steps” aligned with Add → Test → optional later.
+- Preserve vault format, AppId, workflow IDs and Argon2id/AES-GCM envelope. Development preview only.
+
 # v0.7.45 — Clearly scoped website password manager
 
 - Add an explicit website-account selector at the top of Settings → Passwords. The manager synchronizes with the workflow editor so login mode, KeePass entry and credential operations target the same website.

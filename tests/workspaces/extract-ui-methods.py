@@ -7,8 +7,8 @@ root = pathlib.Path(__file__).resolve().parents[2]
 # Compile the exact original production method bodies across cohesive partial modules.
 # Do not adapt their implementation for tests: behavioral seams stay source-linked.
 source = "\n".join(path.read_text(encoding="utf-8")
-                   for path in sorted((root / "LaunchFlow").glob("MainWindow*.cs")))
-names = ["RunEnabledAsync", "RequestCrashCleanup", "RunTeachOperationAsync", "RunRepairOperationAsync", "CloseActiveRecorderForLock", "RecordSteps_Click", "SecureVaultLockAsync", "SecureVaultLockCoreAsync", "UpdateRunButtons", "RequireMasterPassword", "RecorderOwnerIsCurrent", "SaveTaughtStepsAsync", "ChooseKeePassEntry_Click", "DescribeCredentialStatus", "NeedsKeePassForRun", "EnsureKeePassPasswordForRun", "LoadCredentialEditor", "SaveCredentials_Click", "ConfirmLoginOriginAsync", "AutomationAllowed", "TeachAllowed", "CredentialReadAllowed", "LoginModeIndex", "SelectedLoginMode", "QueueWorkflowStatus", "OfferRepairForLoginAttentionAsync", "ApplyModelessSignInDecisionAsync", "OfferRepairForStepAttention", "RepairLoginCoreAsync"]
+                   for path in sorted((root / "LaunchFlow" / "UI" / "Shell").glob("MainWindow*.cs")))
+names = ["RunEnabledAsync", "RequestCrashCleanup", "RunTeachOperationAsync", "RunRepairOperationAsync", "CloseActiveRecorderForLock", "RecordSteps_Click", "SecureVaultLockAsync", "SecureVaultLockCoreAsync", "UpdateRunButtons", "RequireMasterPassword", "RecorderOwnerIsCurrent", "SaveTaughtStepsAsync", "ChooseKeePassEntry_Click", "DescribeCredentialStatus", "NeedsKeePassForRun", "EnsureKeePassPasswordForRun", "LoadCredentialEditor", "SaveCredentials_Click", "ConfirmLoginOriginAsync", "AutomationAllowed", "TeachAllowed", "CredentialReadAllowed", "LoginModeIndex", "SelectedLoginMode", "QueueWorkflowStatus", "OfferRepairForLoginAttentionAsync", "ApplyModelessSignInDecisionAsync", "OfferRepairForStepAttention", "RepairLoginCoreAsync", "PersistLearnedLoginRecipes"]
 methods = []
 for name in names:
     match = re.search(r"^    (?:private|internal) (?:async )?[^\n]+\b" + name + r"\([^)]*\)\s*\n    \{", source, re.M)

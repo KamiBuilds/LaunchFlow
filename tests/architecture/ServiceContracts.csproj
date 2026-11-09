@@ -9,12 +9,14 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="ServiceContracts.cs" />
-    <Compile Include="../../LaunchFlow/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
-    <Compile Include="../../LaunchFlow/Services/WorkflowConfigurationService.cs" Link="Services/WorkflowConfigurationService.cs" />
-    <Compile Include="../../LaunchFlow/Services/StartupRegistrationService.cs" Link="Services/StartupRegistrationService.cs" />
-    <Compile Include="../../LaunchFlow/Services/SessionLockPolicy.cs" Link="Services/SessionLockPolicy.cs" />
-    <Compile Include="../../LaunchFlow/Services/AutoSaveSchedule.cs" Link="Services/AutoSaveSchedule.cs" />
-    <Compile Include="../../LaunchFlow/Services/ConfigurationSaveTransaction.cs" Link="Services/ConfigurationSaveTransaction.cs" />
-    <Compile Include="../../LaunchFlow/Services/WebsiteLoginMode.cs" Link="Services/WebsiteLoginMode.cs" />
+    <Compile Include="../../LaunchFlow/Domain/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
+    <Compile Include="../../LaunchFlow/Services/Persistence/WorkflowConfigurationService.cs" Link="Services/WorkflowConfigurationService.cs" />
+    <Compile Include="../../LaunchFlow/Services/Platform/StartupRegistrationService.cs" Link="Services/StartupRegistrationService.cs" />
+    <Compile Include="../../LaunchFlow/Services/Platform/SessionLockPolicy.cs" Link="Services/SessionLockPolicy.cs" />
+    <Compile Include="../../LaunchFlow/Services/Persistence/AutoSaveSchedule.cs" Link="Services/AutoSaveSchedule.cs" />
+    <Compile Include="../../LaunchFlow/Services/Persistence/ConfigurationSaveTransaction.cs" Link="Services/ConfigurationSaveTransaction.cs" />
+    <Compile Include="../../LaunchFlow/Services/Login/WebsiteLoginMode.cs" Link="Services/WebsiteLoginMode.cs" />
+    <Compile Include="../../LaunchFlow/Services/Workspaces/RunOutcomeSummary.cs" Link="Services/RunOutcomeSummary.cs" />
+    <Compile Include="../../LaunchFlow/Services/Vault/PasswordSessionPolicy.cs" Link="Services/PasswordSessionPolicy.cs" />
   </ItemGroup>
 </Project>

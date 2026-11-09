@@ -63,6 +63,29 @@ After unlocking, click Getting started. This modeless guide does not click, save
    - **You should see:** The application acknowledges a successful durable save, or shows a failure to correct.
    - **Can't find it?** Only press this if you have changes to keep. If saving fails or the vault is locked, leave edits pending and retry after resolving the cause.
 
+## Work sites (ThousandEyes / GitHub / npm)
+
+1. **Open Websites** (WORK-01): Select Websites at the top of LaunchFlow.
+   - **Where:** LaunchFlow → Top navigation. Look for **Websites**.
+   - **You should see:** Your website list is visible.
+   - **Can't find it?** If Settings is selected, click Websites in the top navigation.
+2. **ThousandEyes-style login** (WORK-02): Add or select your ThousandEyes site. Use Sign-in mode: saved password (Auto). Test this site once — email first, then password is automatic.
+   - **Where:** LaunchFlow → Websites · selected site. Look for **▶ Test this site**.
+   - **You should see:** LaunchFlow fills email, continues to password, then submits when safe.
+   - **Can't find it?** If MFA appears, finish it yourself. Remembered login shape becomes 'Email first, then password' after a successful Auto run.
+3. **GitHub-style login** (WORK-03): Add or select GitHub. Keep saved password (Auto). Test this site — username and password on one page.
+   - **Where:** LaunchFlow → Websites · selected site. Look for **▶ Test this site**.
+   - **You should see:** Both fields fill on the same form when discovery succeeds.
+   - **Can't find it?** Use Fix sign-in if GitHub shows only SSO buttons or passkeys. MFA stays manual.
+4. **Your own / npm-style login** (WORK-04): Add your npm or custom site. Prefer Auto first; if fields are unusual, open Advanced sign-in and set username/password CSS selectors.
+   - **Where:** LaunchFlow → Websites · selected site. Look for **Advanced sign-in…**.
+   - **You should see:** Custom selectors or a successful Auto run remember a CustomSelectors or SamePage shape.
+   - **Can't find it?** Do not paste real production passwords into this guide. Save credentials only under Settings → Passwords.
+5. **When sign-in needs you** (WORK-05): If the tray or status says MFA, SSO, or ambiguous Log In, finish that step in the browser, then use Fix sign-in only if Auto should relearn clicks.
+   - **Where:** LaunchFlow → Websites · Recorded actions (optional). Look for **Fix sign-in**.
+   - **You should see:** You understand why Auto paused and what to do next.
+   - **Can't find it?** LaunchFlow never guesses among multiple Log In buttons and never fills OTP/MFA codes.
+
 ## Saved website login — optional
 
 After PASS-04, Saved password continues with PASS-05–08. No login required and SSO skip password entry and use PASS-09 to save only the sign-in preference. The app's mode selection is read without accessing credentials.
@@ -176,6 +199,10 @@ After PASS-04, Saved password continues with PASS-05–08. No login required and
    - **Where:** LaunchFlow → Websites · top toolbar. Look for **Retry vault lock**.
    - **You should see:** The application retries a controlled vault lock and browser cleanup.
    - **Can't find it?** Do not force-delete profiles or assume browser sessions are closed if cleanup failed. This button appears only in the failure state.
+6. **Vault file looks broken** (HELP-06): If LaunchFlow says the vault is incomplete, choose Restore from a recovery copy or a .launchflow backup. Do not delete launchflow.db yourself.
+   - **Where:** LaunchFlow → Startup vault recovery. Look for **Vault recovery required**.
+   - **You should see:** LaunchFlow either restores a SQLite recovery copy, imports a portable backup after quarantining the broken file, or exits with the folder open.
+   - **Can't find it?** Recovery copies live under %LOCALAPPDATA%\LaunchFlow\recovery. Prefer restore over Reset. Reset permanently removes local secrets.
 
 ## Confirm a website survives close and reopen
 
@@ -183,4 +210,4 @@ Once LaunchFlow has confirmed a durable save, use its normal Exit path (not simp
 
 ## Visual provenance and limitations
 
-The in-app locator is a source-based schematic, not a native screenshot. The optional Show target in app action outlines an existing visible control without clicking or changing it. A confirmation checkbox records only the user's own in-memory observation, not evidence of completed storage or login. Native Windows captures, layout, keyboard, language, DPI and multi-monitor behavior require separate acceptance tests.
+The in-app locator is a source-based schematic, not a native screenshot. Show target in app / Open this area may safely open a matching clean tab, then outline a visible control without clicking or changing it. A confirmation checkbox records only the user's own in-memory observation, not evidence of completed storage or login. Native Windows captures, layout, keyboard, language, DPI and multi-monitor behavior require separate acceptance tests.

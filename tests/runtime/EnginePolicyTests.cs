@@ -13,6 +13,7 @@ internal static class EnginePolicyTests
             await InitialRedirectAsync(redirectBrowser);
             return;
         }
+        LoginFieldDiscoveryPolicy();
         await AdmissionAsync();
         await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
         await BlockedConfiguredUrlsAsync(browser);
@@ -26,7 +27,10 @@ internal static class EnginePolicyTests
         await StepRedirectAsync(browser);
         await DestinationRedirectAsync(browser);
         await RecorderAdmissionAsync(browser);
-        await LaunchRevocationAsync(playwright, browser);
+        if (OperatingSystem.IsLinux())
+            await LaunchRevocationAsync(playwright, browser);
+        else
+            Console.WriteLine("SKIP LaunchRevocationAsync: Linux XDG isolation harness only");
         await AllowedHttpsFrameAsync(browser);
         await RecordedFrameTargetAsync(browser);
         await FillResolutionRevocationAsync(browser);
@@ -48,6 +52,37 @@ internal static class EnginePolicyTests
         EngineBehaviorTests.Check(result.FailedCount == 0 && result.LoginNeedsAttention.Count == 0 &&
             await fixture.Page.GetAttributeAsync("body", "data-followed") == "yes",
             "explicit No login required skips sign-in health/repair but executes configured steps");
+    }
+
+    private static void LoginFieldDiscoveryPolicy()
+    {
+        var remembered = new WebsiteWorkflow
+        {
+            LoginRecipe = LoginRecipe.CustomSelectors,
+            UsernameSelector = LoginFieldDefaults.UsernameSelector,
+            PasswordSelector = LoginFieldDefaults.PasswordSelector
+        };
+        var customUsernameDefaultPassword = new WebsiteWorkflow
+        {
+            LoginRecipe = LoginRecipe.Unknown,
+            UsernameSelector = "#login_field",
+            PasswordSelector = LoginFieldDefaults.PasswordSelector
+        };
+        var bothCustom = new WebsiteWorkflow
+        {
+            UsernameSelector = "#custom-user",
+            PasswordSelector = "#custom-pass"
+        };
+        EngineBehaviorTests.Check(
+            LoginFieldDiscovery.UsesAutomaticUsernameDiscovery(remembered) &&
+            LoginFieldDiscovery.UsesAutomaticPasswordDiscovery(remembered) &&
+            LoginFieldDiscovery.UsesAutomaticDiscovery(new WebsiteWorkflow()) &&
+            !LoginFieldDiscovery.UsesAutomaticUsernameDiscovery(customUsernameDefaultPassword) &&
+            LoginFieldDiscovery.UsesAutomaticPasswordDiscovery(customUsernameDefaultPassword) &&
+            !LoginFieldDiscovery.UsesAutomaticDiscovery(customUsernameDefaultPassword) &&
+            !LoginFieldDiscovery.UsesAutomaticPasswordDiscovery(bothCustom) &&
+            remembered.UsernameSelector == LoginFieldDiscovery.StandardUsernameSelector,
+            "custom username must not disable password classification while the default password selector remains");
     }
 
     private static async Task AdmissionAsync()

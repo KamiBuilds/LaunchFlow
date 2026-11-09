@@ -7,6 +7,6 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="../../LaunchFlow/Services/DiagnosticReportService.cs" Link="DiagnosticReportService.cs"/>
+    <Compile Include="../../LaunchFlow/Services/Diagnostics/DiagnosticReportService.cs" Link="DiagnosticReportService.cs"/>
   </ItemGroup>
 </Project>

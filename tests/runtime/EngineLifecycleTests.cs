@@ -13,6 +13,11 @@ internal static class EngineLifecycleTests
         await ClosedPageOwnershipAsync(playwright);
         await CloseFromRunningStatusAsync();
         await CloseActiveRunAsync(playwright);
+        if (!OperatingSystem.IsLinux())
+        {
+            Console.WriteLine("SKIP LaunchRaceAsync: Linux XDG isolation harness only");
+            return;
+        }
         await LaunchRaceAsync(playwright, teach: false);
         await LaunchRaceAsync(playwright, teach: true);
         await LaunchRaceAsync(playwright, teach: false, cleanupFailure: true);

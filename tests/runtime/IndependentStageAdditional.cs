@@ -63,7 +63,8 @@ internal static partial class IndependentStageProbes
         var vault=new CredentialVault(){Credential=new SiteCredential("fixture@example.invalid","owned-synthetic-secret")};
         await using var engine=new AutomationEngine(vault);engine.ApproveLoginOriginAsync=(_,_)=>Task.FromResult(false);EngineBehaviorTests.Track(engine,wf,context,page);
         var login=typeof(AutomationEngine).GetMethod("TryAutoLoginAsync",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance)!;
-        var completed=await (Task<bool>)login.Invoke(engine,new object?[]{wf,page,CancellationToken.None,null,null})!;
+        var flow=await (Task<LoginFlowResult>)login.Invoke(engine,new object?[]{wf,page,CancellationToken.None,null,null})!;
+        var completed=flow.Succeeded;
         var expectSuccess=mapped && approved;
         Check(expectSuccess?matched&&submits==1&&completed:!matched&&submits==0&&!completed,
             mapped?"COMBINED_MAPPED_IDP_CONTROL":approved?"COMBINED_UNMAPPED_IDP_MUST_BLOCK":"COMBINED_DENIED_IDP_CONTROL",$"mapped={mapped} originApproved={approved} syntheticPasswordMatchedAtIdp={matched} submitRequests={submits} completed={completed}");

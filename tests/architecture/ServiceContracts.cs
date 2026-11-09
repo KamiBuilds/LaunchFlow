@@ -184,6 +184,30 @@ Check(applied.State == SaveTransactionState.CommittedAndPublished &&
       ReferenceEquals(txLive.Workflows[0], liveWorkflow) &&
       liveWorkflow.Name == "Saved" && txLive.AdditionalSettings!.ContainsKey("future_config"),
       "committed draft publishes in place and preserves configuration extension data");
+// Guard the MainWindow wiring mistake: publish(candidate) with draft.Apply would
+// only re-touch the clone and leave live unchanged after a successful commit.
+var liveOnly = new Configuration
+{
+    UiLanguage = "en",
+    Workflows = new() { new WebsiteWorkflow { Name = "Live", StartUrl = "https://valid.example.test" } }
+};
+var liveOnlyWorkflow = liveOnly.Workflows[0];
+var cloneTouched = false;
+var publishLive = new ConfigurationSaveTransaction(
+    (candidate, _) => Check(candidate.Workflows[0].Name == "Candidate", "writer must see drafted candidate"),
+    _ => { });
+var published = publishLive.Commit(liveOnly,
+    candidate => candidate.Workflows[0].Name = "Candidate",
+    () => true, 12,
+    candidate =>
+    {
+        cloneTouched = ReferenceEquals(candidate.Workflows[0], liveOnlyWorkflow);
+        liveOnlyWorkflow.Name = candidate.Workflows[0].Name;
+        liveOnly.UiLanguage = "nl";
+    });
+Check(published.Published && !cloneTouched && liveOnlyWorkflow.Name == "Candidate" &&
+      liveOnly.UiLanguage == "nl",
+    "publication callback must update live identity, not only re-apply onto the candidate");
 var tokenRejected = tx.Commit(txLive, c => c.UiLanguage = "nl", () => true, 11,
     _ => throw new Exception("stale session must never publish"));
 Check(tokenRejected.State == SaveTransactionState.StorageRejected &&
@@ -193,5 +217,25 @@ var dto = new ConfigurationEditDraft(null, "nl", false, false, false, true, true
 dto.Apply(txLive);
 Check(txLive.UiLanguage == "nl" && txLive.AdditionalSettings.ContainsKey("future_config"),
     "immutable draft applies known fields without dropping unknown configuration data");
+
+var traySingle = RunOutcomeSummary.TrayDetail(0, 1, 0, "MFA required");
+Check(traySingle == "MFA required", "single sign-in attention keeps the specific reason");
+var trayMixed = RunOutcomeSummary.TrayDetail(1, 1, 1, "MFA required");
+Check(trayMixed.Contains("1 workflow(s) failed") && trayMixed.Contains("1 sign-in"),
+    "mixed failures keep the count summary instead of only the sign-in reason");
+Check(RunOutcomeSummary.FinishedTray(1, "Ops") == "Finished “Ops”.",
+    "single finished tray names the website");
+Check(RunOutcomeSummary.FinishedTray(3, null).Contains("3 workflows"),
+    "multi finished tray reports count");
+
+var sessionNow = new DateTimeOffset(2026, 11, 8, 12, 0, 0, TimeSpan.Zero);
+Check(PasswordSessionPolicy.IsActive(true, true, sessionNow.AddMinutes(5), sessionNow),
+    "active password-manager session is accepted");
+Check(!PasswordSessionPolicy.IsActive(true, true, sessionNow.AddSeconds(-1), sessionNow),
+    "expired password-manager session is refused");
+Check(!PasswordSessionPolicy.IsActive(true, false, sessionNow.AddHours(1), sessionNow),
+    "password-manager session dies when the vault locks");
+Check(PasswordSessionPolicy.RenewFrom(sessionNow) == sessionNow.Add(PasswordSessionPolicy.Duration),
+    "password-manager renew uses the fixed duration");
 
 Console.WriteLine("PASS all pure architecture contracts");

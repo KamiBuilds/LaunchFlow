@@ -761,8 +761,369 @@ Test("credential storage restriction refuses conversion without silently droppin
     }
     finally { SqliteConnection.ClearAllPools(); Directory.Delete(root, true); }
 });
+Test("recovery healthy restore cold-opens replacement and quarantined original", () =>
+{
+    using var fx = new RecoveryFixture();
+    var backupBytes = ReadDatabaseBytes(fx.Backup);
+    SqliteConnection.ClearAllPools();
+    var quarantine = VaultRecoveryService.RestoreSqliteBackup(fx.Backup, fx.Live, fx.Root);
+    Require(File.Exists(quarantine), "successful restore did not quarantine the previous live vault");
+    Require(!Directory.EnumerateFiles(fx.Root, ".restore-stage-*.db").Any(),
+        "successful restore left a stage file behind");
+    Require(ReadDatabaseBytes(fx.Backup).SequenceEqual(backupBytes), "selected backup bytes changed");
+    using (var quarantined = new ColdVault(quarantine))
+    {
+        Require(quarantined.Vault.Unlock(OldMaster) &&
+            quarantined.Vault.LoadConfiguration().UiLanguage == "en",
+            "quarantine is not the previous live vault");
+    }
+    using var restored = new ColdVault(fx.Live);
+    Require(restored.Vault.InspectStorage() == VaultStorageState.PresentNeedsAuthentication,
+        "restored live vault is not unlockable");
+    Require(restored.Vault.Unlock(NewMaster), "restored vault did not accept the backup master");
+    Require(restored.Vault.LoadConfiguration().UiLanguage == "nl", "restored configuration mismatch");
+});
+Test("recovery refuses invalid backup before original files move", () =>
+{
+    using var fx = new RecoveryFixture(createBackup: false);
+    File.WriteAllText(fx.Backup, "not-a-vault");
+    var liveBefore = ReadDatabaseBytes(fx.Live);
+    var backupBytes = File.ReadAllBytes(fx.Backup);
+    bool refused = false;
+    try { VaultRecoveryService.RestoreSqliteBackup(fx.Backup, fx.Live, fx.Root); }
+    catch (InvalidDataException) { refused = true; }
+    Require(refused && ReadDatabaseBytes(fx.Live).SequenceEqual(liveBefore) &&
+        File.Exists(fx.Live + "-wal-marker") && File.Exists(fx.Live + "-shm-marker") &&
+        !Directory.Exists(System.IO.Path.Combine(fx.Root, "recovery")) &&
+        File.ReadAllBytes(fx.Backup).SequenceEqual(backupBytes),
+        "invalid backup mutated live vault, markers, quarantine, or backup bytes");
+});
+Test("recovery staging-copy failure before quarantine leaves original untouched", () =>
+{
+    using var fx = new RecoveryFixture();
+    var liveBefore = ReadDatabaseBytes(fx.Live);
+    var backupBytes = ReadDatabaseBytes(fx.Backup);
+    var ops = new ScriptedRestoreIO();
+    ops.FailCopyMatching(path => path.Contains(".restore-stage-", StringComparison.Ordinal) &&
+        !path.EndsWith("-wal", StringComparison.Ordinal) &&
+        !path.EndsWith("-shm", StringComparison.Ordinal),
+        new IOException("synthetic staging copy refusal"));
+    bool failed = false;
+    Exception? seen = null;
+    try { VaultRecoveryService.RestoreSqliteBackup(fx.Backup, fx.Live, fx.Root, ops); }
+    catch (Exception ex) { failed = true; seen = ex; }
+    Require(failed && seen is not null && ops.StageCopyAttempts > 0 &&
+        File.Exists(fx.Live) && ReadDatabaseBytes(fx.Live).SequenceEqual(liveBefore) &&
+        File.Exists(fx.Live + "-wal-marker") && File.Exists(fx.Live + "-shm-marker") &&
+        !Directory.EnumerateFiles(System.IO.Path.Combine(fx.Root, "recovery"), "broken-*").Any() &&
+        !Directory.EnumerateFiles(fx.Root, ".restore-stage-*.db").Any() &&
+        ReadDatabaseBytes(fx.Backup).SequenceEqual(backupBytes),
+        "staging-copy failure deleted or quarantined the original vault");
+    using var cold = new ColdVault(fx.Live);
+    Require(cold.Vault.Unlock(OldMaster) && cold.Vault.LoadConfiguration().UiLanguage == "en",
+        "original live vault no longer decrypts after staging failure");
+});
+Test("recovery staged-copy validation rejection before quarantine", () =>
+{
+    using var fx = new RecoveryFixture();
+    var liveBefore = ReadDatabaseBytes(fx.Live);
+    var backupBytes = ReadDatabaseBytes(fx.Backup);
+    var ops = new ScriptedRestoreIO();
+    ops.AfterStageDbCopy = destination => File.WriteAllText(destination, "truncated-stage");
+    bool refused = false;
+    try { VaultRecoveryService.RestoreSqliteBackup(fx.Backup, fx.Live, fx.Root, ops); }
+    catch (InvalidDataException) { refused = true; }
+    Require(refused && File.Exists(fx.Live) && ReadDatabaseBytes(fx.Live).SequenceEqual(liveBefore) &&
+        File.Exists(fx.Live + "-wal-marker") && File.Exists(fx.Live + "-shm-marker") &&
+        !Directory.EnumerateFiles(System.IO.Path.Combine(fx.Root, "recovery"), "broken-*").Any() &&
+        !Directory.EnumerateFiles(fx.Root, ".restore-stage-*.db").Any() &&
+        ReadDatabaseBytes(fx.Backup).SequenceEqual(backupBytes),
+        "staged validation failure moved or deleted the original vault");
+});
+Test("recovery failure partway through quarantining restores moved originals only", () =>
+{
+    using var fx = new RecoveryFixture();
+    File.WriteAllText(fx.Live + "-wal", "live-wal-bytes");
+    File.WriteAllText(fx.Live + "-shm", "live-shm-bytes");
+    var liveBefore = ReadDatabaseBytes(fx.Live);
+    var backupBytes = ReadDatabaseBytes(fx.Backup);
+    var ops = new ScriptedRestoreIO();
+    ops.FailMoveWhen((source, _) => source == fx.Live + "-wal",
+        new IOException("synthetic quarantine companion refusal"));
+    bool failed = false;
+    try { VaultRecoveryService.RestoreSqliteBackup(fx.Backup, fx.Live, fx.Root, ops); }
+    catch (Exception) { failed = true; }
+    Require(failed && File.Exists(fx.Live) && ReadDatabaseBytes(fx.Live).SequenceEqual(liveBefore) &&
+        File.Exists(fx.Live + "-wal") && File.ReadAllText(fx.Live + "-wal") == "live-wal-bytes" &&
+        File.Exists(fx.Live + "-shm") && File.ReadAllText(fx.Live + "-shm") == "live-shm-bytes" &&
+        !Directory.EnumerateFiles(fx.Root, ".restore-stage-*.db").Any() &&
+        ReadDatabaseBytes(fx.Backup).SequenceEqual(backupBytes),
+        "partial quarantine rollback did not restore the owned original set");
+    using var cold = new ColdVault(fx.Live);
+    Require(cold.Vault.Unlock(OldMaster), "partial quarantine left an undecryptable original");
+});
+Test("recovery failure partway through promotion restores quarantined originals", () =>
+{
+    using var fx = new RecoveryFixture();
+    File.WriteAllText(fx.Live + "-wal", "live-wal-bytes");
+    File.WriteAllText(fx.Backup + "-wal", "backup-wal-bytes");
+    var liveBefore = ReadDatabaseBytes(fx.Live);
+    var backupBytes = ReadDatabaseBytes(fx.Backup);
+    var ops = new ScriptedRestoreIO();
+    ops.FailMoveWhen((source, _) =>
+        source.Contains(".restore-stage-", StringComparison.Ordinal) &&
+        source.EndsWith("-wal", StringComparison.Ordinal),
+        new IOException("synthetic promotion companion refusal"));
+    bool failed = false;
+    try { VaultRecoveryService.RestoreSqliteBackup(fx.Backup, fx.Live, fx.Root, ops); }
+    catch (Exception) { failed = true; }
+    Require(failed && File.Exists(fx.Live) && ReadDatabaseBytes(fx.Live).SequenceEqual(liveBefore) &&
+        File.Exists(fx.Live + "-wal") && File.ReadAllText(fx.Live + "-wal") == "live-wal-bytes" &&
+        !Directory.EnumerateFiles(fx.Root, ".restore-stage-*.db").Any() &&
+        ReadDatabaseBytes(fx.Backup).SequenceEqual(backupBytes),
+        "partial promotion rollback did not restore the original vault set");
+    using var cold = new ColdVault(fx.Live);
+    Require(cold.Vault.Unlock(OldMaster) && cold.Vault.LoadConfiguration().UiLanguage == "en",
+        "partial promotion left an undecryptable original");
+});
+Test("recovery rollback failure retains recoverable originals and reports honestly", () =>
+{
+    using var fx = new RecoveryFixture();
+    File.WriteAllText(fx.Live + "-wal", "live-wal-bytes");
+    var backupBytes = ReadDatabaseBytes(fx.Backup);
+    var ops = new ScriptedRestoreIO();
+    // Quarantine the main db, then fail while quarantining the WAL companion.
+    ops.FailMoveWhen((source, destination) =>
+        source == fx.Live + "-wal",
+        new IOException("synthetic quarantine companion refusal"));
+    // Then fail while moving the quarantined original back during rollback.
+    ops.FailMoveWhen((source, destination) =>
+        source.Contains("broken-", StringComparison.Ordinal) &&
+        destination == fx.Live,
+        new IOException("synthetic rollback restore refusal"));
+    Exception? seen = null;
+    try { VaultRecoveryService.RestoreSqliteBackup(fx.Backup, fx.Live, fx.Root, ops); }
+    catch (Exception ex) { seen = ex; }
+    var recoveryDir = System.IO.Path.Combine(fx.Root, "recovery");
+    var quarantined = Directory.Exists(recoveryDir)
+        ? Directory.EnumerateFiles(recoveryDir, "broken-*.db").ToArray()
+        : Array.Empty<string>();
+    Require(seen is AggregateException &&
+        quarantined.Length == 1 && File.Exists(quarantined[0]) &&
+        File.Exists(fx.Live + "-wal") && File.ReadAllText(fx.Live + "-wal") == "live-wal-bytes" &&
+        File.Exists(fx.Live + "-wal-marker") && File.Exists(fx.Live + "-shm-marker") &&
+        ReadDatabaseBytes(fx.Backup).SequenceEqual(backupBytes),
+        "rollback failure lost recoverable originals or the selected backup");
+    using var cold = new ColdVault(quarantined[0]);
+    Require(cold.Vault.Unlock(OldMaster) && cold.Vault.LoadConfiguration().UiLanguage == "en",
+        "quarantined original after incomplete rollback is not cold-openable");
+});
+Test("recovery failed promoted-main deletion explicitly reports incomplete rollback", () =>
+{
+    using var fx = new RecoveryFixture();
+    File.WriteAllText(fx.Live + "-wal", "original-wal-marker");
+    File.WriteAllText(fx.Backup + "-wal", "replacement-wal-marker");
+    var original = ReadDatabaseBytes(fx.Live);
+    var replacement = ReadDatabaseBytes(fx.Backup);
+    var ops = new ScriptedRestoreIO();
+    var promotion = new IOException("synthetic companion promotion refusal");
+    var deletion = new IOException("synthetic replacement removal refusal");
+    ops.FailMoveWhen((source, destination) =>
+        source.Contains(".restore-stage-", StringComparison.Ordinal) &&
+        source.EndsWith("-wal", StringComparison.Ordinal) && destination == fx.Live + "-wal", promotion);
+    ops.FailDeleteWhen(path => path == fx.Live, deletion);
+    Exception? seen = null;
+    try { VaultRecoveryService.RestoreSqliteBackup(fx.Backup, fx.Live, fx.Root, ops); }
+    catch (Exception ex) { seen = ex; }
+    var quarantined = Directory.EnumerateFiles(System.IO.Path.Combine(fx.Root, "recovery"), "broken-*.db").Single();
+    Require(ops.PromotionRefusals == 1 && ops.DeleteRefusals == 1 &&
+        seen is AggregateException aggregate &&
+        aggregate.Flatten().InnerExceptions.Any(ex => ex.Message.Contains(promotion.Message)) &&
+        aggregate.Flatten().InnerExceptions.Any(ex => ex.Message.Contains(deletion.Message)) &&
+        File.Exists(fx.Live) && ReadDatabaseBytes(fx.Live).SequenceEqual(replacement) &&
+        !File.Exists(fx.Live + "-wal") &&
+        File.Exists(quarantined) && ReadDatabaseBytes(quarantined).SequenceEqual(original) &&
+        File.Exists(quarantined + "-wal") &&
+        File.ReadAllText(quarantined + "-wal") == "original-wal-marker" &&
+        !Directory.EnumerateFiles(fx.Root, ".restore-stage-*").Any(),
+        "incomplete rollback was not explicit, or originals mixed with the replacement");
+    using var cold = new ColdVault(quarantined);
+    Require(cold.Vault.Unlock(OldMaster), "quarantined original must remain recoverable");
+});
+Test("recovery partial main copy is cleaned without touching originals", () =>
+{
+    using var fx = new RecoveryFixture();
+    var original = ReadDatabaseBytes(fx.Live);
+    var ops = new ScriptedRestoreIO();
+    ops.FailCopyAfterPartialWhen(path => path.Contains(".restore-stage-") &&
+        path.EndsWith(".db", StringComparison.Ordinal),
+        new IOException("synthetic partial main copy"));
+    Exception? seen = null;
+    try { VaultRecoveryService.RestoreSqliteBackup(fx.Backup, fx.Live, fx.Root, ops); }
+    catch (Exception ex) { seen = ex; }
+    Require(ops.PartialCopyRefusals == 1 && seen is IOException &&
+        File.Exists(fx.Live) && ReadDatabaseBytes(fx.Live).SequenceEqual(original) &&
+        !Directory.EnumerateFiles(fx.Root, ".restore-stage-*").Any() &&
+        !Directory.EnumerateFiles(System.IO.Path.Combine(fx.Root, "recovery"), "broken-*").Any(),
+        "partial main copy left an owned staging artifact or modified the live set");
+});
+foreach (var companion in new[] { "-wal", "-shm" })
+{
+    Test("recovery partial companion copy is cleaned: " + companion, () =>
+    {
+        using var fx = new RecoveryFixture();
+        File.WriteAllText(fx.Backup + companion, "synthetic-companion-payload");
+        var original = ReadDatabaseBytes(fx.Live);
+        var ops = new ScriptedRestoreIO();
+        ops.FailCopyAfterPartialWhen(path => path.Contains(".restore-stage-") &&
+            path.EndsWith(companion, StringComparison.Ordinal),
+            new IOException("synthetic partial companion copy " + companion));
+        Exception? seen = null;
+        try { VaultRecoveryService.RestoreSqliteBackup(fx.Backup, fx.Live, fx.Root, ops); }
+        catch (Exception ex) { seen = ex; }
+        Require(ops.PartialCopyRefusals == 1 && seen is IOException &&
+            File.Exists(fx.Live) && ReadDatabaseBytes(fx.Live).SequenceEqual(original) &&
+            !Directory.EnumerateFiles(fx.Root, ".restore-stage-*").Any() &&
+            !Directory.EnumerateFiles(System.IO.Path.Combine(fx.Root, "recovery"), "broken-*").Any(),
+            "partial companion copy left staging files or modified original");
+    });
+}
+Test("recovery staging cleanup refusal preserves the primary error", () =>
+{
+    using var fx = new RecoveryFixture();
+    var original = ReadDatabaseBytes(fx.Live);
+    var ops = new ScriptedRestoreIO();
+    var primary = new IOException("synthetic partial copy failure");
+    var cleanup = new IOException("synthetic staging deletion refusal");
+    ops.FailCopyAfterPartialWhen(path => path.Contains(".restore-stage-") &&
+        path.EndsWith(".db", StringComparison.Ordinal), primary);
+    ops.FailDeleteWhen(path => path.Contains(".restore-stage-"), cleanup);
+    Exception? seen = null;
+    try { VaultRecoveryService.RestoreSqliteBackup(fx.Backup, fx.Live, fx.Root, ops); }
+    catch (Exception ex) { seen = ex; }
+    Require(ops.PartialCopyRefusals == 1 && ops.DeleteRefusals == 1 &&
+        seen is AggregateException aggregate &&
+        IncludesException(aggregate, primary) &&
+        IncludesException(aggregate, cleanup) &&
+        File.Exists(fx.Live) && ReadDatabaseBytes(fx.Live).SequenceEqual(original) &&
+        Directory.EnumerateFiles(fx.Root, ".restore-stage-*.db").Count() == 1 &&
+        !Directory.EnumerateFiles(System.IO.Path.Combine(fx.Root, "recovery"), "broken-*").Any(),
+        "staging cleanup limitation was hidden or primary failure lost");
+});
 Console.WriteLine($"STORAGE_INTEGRITY_SUMMARY passed={total - failures} failed={failures}");
 return failures == 0 ? 0 : 1;
+
+static bool IncludesException(Exception exception, Exception target)
+{
+    if (ReferenceEquals(exception, target)) return true;
+    if (exception is AggregateException aggregate &&
+        aggregate.InnerExceptions.Any(inner => IncludesException(inner, target))) return true;
+    return exception.InnerException is not null &&
+        IncludesException(exception.InnerException, target);
+}
+
+sealed class RecoveryFixture : IDisposable
+{
+    public string Root { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+        "launchflow-recovery-fx-" + Guid.NewGuid().ToString("N"));
+    public string Live => System.IO.Path.Combine(Root, "vault.db");
+    public string Backup => System.IO.Path.Combine(Root, "good-backup.db");
+    public RecoveryFixture(bool createBackup = true)
+    {
+        Directory.CreateDirectory(Root);
+        var liveVault = new VaultDatabase(Live);
+        liveVault.Initialize("Synthetic!Vault-Master9", new Configuration { UiLanguage = "en" },
+            new Dictionary<Guid, SiteCredential>());
+        liveVault.Lock();
+        // Companion markers prove rollback never deletes untouched sidecars.
+        File.WriteAllText(Live + "-wal-marker", "wal-marker");
+        File.WriteAllText(Live + "-shm-marker", "shm-marker");
+        if (createBackup)
+        {
+            var backupVault = new VaultDatabase(Backup);
+            backupVault.Initialize("Changed!Vault-Master8", new Configuration { UiLanguage = "nl" },
+                new Dictionary<Guid, SiteCredential>());
+            backupVault.Lock();
+            // Checkpointed/self-contained backup: no live WAL/SHM so inspection
+            // cannot allocate companions before the staging File.Copy seam.
+            TryDelete(Backup + "-wal");
+            TryDelete(Backup + "-shm");
+        }
+        SqliteConnection.ClearAllPools();
+    }
+    public void Dispose()
+    {
+        SqliteConnection.ClearAllPools();
+        try { Directory.Delete(Root, true); } catch { /* best effort */ }
+    }
+    private static void TryDelete(string path)
+    {
+        try { if (File.Exists(path)) File.Delete(path); } catch { /* ignore */ }
+    }
+}
+
+sealed class ScriptedRestoreIO : VaultRestoreFileOperations
+{
+    private readonly List<(Func<string, bool> Match, Exception Error)> _copyFails = new();
+    private readonly List<(Func<string, string, bool> Match, Exception Error)> _moveFails = new();
+    private readonly List<(Func<string, bool> Match, Exception Error)> _partialCopyFails = new();
+    private readonly List<(Func<string, bool> Match, Exception Error)> _deleteFails = new();
+    public int PartialCopyRefusals { get; private set; }
+    public int PromotionRefusals { get; private set; }
+    public int DeleteRefusals { get; private set; }
+    public int StageCopyAttempts { get; private set; }
+    public Action<string>? AfterStageDbCopy { get; set; }
+
+    public void FailCopyMatching(Func<string, bool> match, Exception error) =>
+        _copyFails.Add((match, error));
+    public void FailMoveWhen(Func<string, string, bool> match, Exception error) =>
+        _moveFails.Add((match, error));
+    public void FailCopyAfterPartialWhen(Func<string, bool> match, Exception error) =>
+        _partialCopyFails.Add((match, error));
+    public void FailDeleteWhen(Func<string, bool> match, Exception error) =>
+        _deleteFails.Add((match, error));
+
+    public override void CopyFile(string source, string destination, bool overwrite)
+    {
+        if (destination.Contains(".restore-stage-", StringComparison.Ordinal) &&
+            !destination.EndsWith("-wal", StringComparison.Ordinal) &&
+            !destination.EndsWith("-shm", StringComparison.Ordinal))
+            StageCopyAttempts++;
+        foreach (var (match, error) in _copyFails)
+            if (match(destination) || match(source)) throw error;
+        foreach (var (match, error) in _partialCopyFails)
+            if (match(destination))
+            {
+                File.WriteAllBytes(destination, new byte[] { 0x53, 0x54, 0x41, 0x47, 0x45 });
+                PartialCopyRefusals++;
+                throw error;
+            }
+        base.CopyFile(source, destination, overwrite);
+        if (AfterStageDbCopy is not null &&
+            destination.Contains(".restore-stage-", StringComparison.Ordinal) &&
+            !destination.EndsWith("-wal", StringComparison.Ordinal) &&
+            !destination.EndsWith("-shm", StringComparison.Ordinal))
+            AfterStageDbCopy(destination);
+    }
+
+    public override void MoveFile(string source, string destination)
+    {
+        foreach (var (match, error) in _moveFails)
+            if (match(source, destination))
+            {
+                if (source.Contains(".restore-stage-", StringComparison.Ordinal)) PromotionRefusals++;
+                throw error;
+            }
+        base.MoveFile(source, destination);
+    }
+
+    public override void DeleteFile(string path)
+    {
+        foreach (var (match, error) in _deleteFails)
+            if (match(path)) { DeleteRefusals++; throw error; }
+        base.DeleteFile(path);
+    }
+}
 
 sealed class ColdVault : IDisposable
 {

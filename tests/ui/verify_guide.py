@@ -11,21 +11,23 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "LaunchFlow" / "TutorialWindow.xaml.cs"
+UI = ROOT / "LaunchFlow" / "UI"
+SOURCE = UI / "Dialogs" / "TutorialWindow.xaml.cs"
 DOC = ROOT / "docs" / "GETTING-STARTED.md"
 NS = "{http://schemas.microsoft.com/winfx/2006/xaml}"
 WINDOWS = {
-    "MainWindow": "MainWindow.xaml",
-    "NewWorkflowWindow": "NewWorkflowWindow.xaml",
-    "VisualRecorderWindow": "VisualRecorderWindow.xaml",
-    "BrowserSetupWindow": "BrowserSetupWindow.xaml",
+    "MainWindow": UI / "Shell" / "MainWindow.xaml",
+    "NewWorkflowWindow": UI / "Dialogs" / "NewWorkflowWindow.xaml",
+    "VisualRecorderWindow": UI / "Dialogs" / "VisualRecorderWindow.xaml",
+    "BrowserSetupWindow": UI / "Dialogs" / "BrowserSetupWindow.xaml",
 }
 ROUTES = {
     "BASIC": ("First website — no saved login", 13, "basic"),
+    "WORK": ("Work sites (ThousandEyes / GitHub / npm)", 5, "worksites"),
     "PASS": ("Saved website login — optional", 9, "passwords"),
     "RECORD": ("Record clicks — optional", 6, "recording"),
     "STARTUP": ("Startup and background — optional", 5, "startup"),
-    "HELP": ("Troubleshooting", 5, "recovery"),
+    "HELP": ("Troubleshooting", 6, "recovery"),
 }
 TOKEN = r'"(?:\\.|[^"\\])*"'
 STEP_RE = re.compile(r'\bnew\(\s*((?:' + TOKEN + r'\s*,?\s*){8,10})\)', re.S)
@@ -121,24 +123,25 @@ def markdown(groups):
         "follow that recovery path instead of forcing shutdown.", "",
         "## Visual provenance and limitations", "",
         "The in-app locator is a source-based schematic, not a native screenshot. "
-        "The optional Show target in app action outlines an existing visible "
-        "control without clicking or changing it. A confirmation checkbox records "
-        "only the user's own in-memory observation, not evidence of completed "
-        "storage or login. Native Windows captures, layout, keyboard, language, "
-        "DPI and multi-monitor behavior require separate acceptance tests.", "",
+        "Show target in app / Open this area may safely open a matching clean tab, "
+        "then outline a visible control without clicking or changing it. A "
+        "confirmation checkbox records only the user's own in-memory observation, "
+        "not evidence of completed storage or login. Native Windows captures, "
+        "layout, keyboard, language, DPI and multi-monitor behavior require "
+        "separate acceptance tests.", "",
     ])
     return "\n".join(out)
 
 
 def verify(groups):
     source = SOURCE.read_text(encoding="utf-8")
-    guide_xml = (ROOT / "LaunchFlow" / "TutorialWindow.xaml").read_text(encoding="utf-8")
+    guide_xml = (UI / "Dialogs" / "TutorialWindow.xaml").read_text(encoding="utf-8")
     guide_root = ET.fromstring(guide_xml)
     guide_named = {n.get(NS + "Name") for n in guide_root.iter() if n.get(NS + "Name")}
     assert {
         "RouteCombo", "ProgressLabel", "StepHeading", "StepDetails",
         "ExpectedResult", "ConfirmStepBox", "NextButton", "BackButton",
-        "CloseGuideButton", "ShowTargetButton", "RecoveryPanel",
+        "CloseGuideButton", "ShowTargetButton", "OpenAreaButton", "RecoveryPanel",
         "ExampleAction", "ExampleTitle", "ExampleWebsite"
     }.issubset(guide_named)
     assert "ILLUSTRATION" in guide_xml and "not a Windows screenshot" in guide_xml
@@ -150,7 +153,7 @@ def verify(groups):
     named_by_window = {}
     text_by_window = {}
     for kind, file in WINDOWS.items():
-        root = ET.parse(ROOT / "LaunchFlow" / file).getroot()
+        root = ET.parse(file).getroot()
         named_by_window[kind] = {
             n.get(NS + "Name"): n for n in root.iter() if n.get(NS + "Name")
         }
@@ -158,8 +161,8 @@ def verify(groups):
             value for node in root.iter() for attr, value in node.attrib.items()
             if attr.split("}")[-1] in ("Text", "Content", "Header", "Title", "Name", "ToolTip", "AutomationProperties.Name")
         )
-    credential_code = (ROOT / "LaunchFlow" / "MainWindow.Credentials.cs").read_text(encoding="utf-8")
-    autosave_code = (ROOT / "LaunchFlow" / "MainWindow.AutoSave.cs").read_text(encoding="utf-8")
+    credential_code = (UI / "Shell" / "MainWindow.Credentials.cs").read_text(encoding="utf-8")
+    autosave_code = (UI / "Shell" / "MainWindow.AutoSave.cs").read_text(encoding="utf-8")
     assert 'SaveChangesButton.Content = "Retry save"' in autosave_code
     assert "CurrentSaveButtonLabel()" in source and "ReadSelectedPasswordMode();" in source
     assert 'step.Id == "PASS-09"' in source
@@ -198,7 +201,7 @@ def verify(groups):
                     element.get("{http://schemas.microsoft.com/winfx/2006/xaml/presentation}AutomationProperties.Name")
                 }
                 assert label in own_labels, (step_id, "wrong control/label association", target, label)
-    assert total == 38
+    assert total == 44
     assert "Getting started" in text_by_window["MainWindow"]
     assert "Save for selected website" in text_by_window["MainWindow"]
     print(f"PASS guide parity: {total} steps, {len(WINDOWS)} source windows, bound control labels and no implicit actions")

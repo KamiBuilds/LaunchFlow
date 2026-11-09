@@ -9,8 +9,9 @@ import re
 
 ROOT = Path(__file__).resolve().parents[2]
 UI = ROOT / "LaunchFlow"
-ENGINE = UI / "Services"
-ui_sources = {p.name: p.read_text(encoding="utf-8") for p in UI.glob("MainWindow*.cs")}
+ENGINE = UI / "Services" / "Automation"
+LOGIN = UI / "Services" / "Login"
+ui_sources = {p.name: p.read_text(encoding="utf-8") for p in (UI / "UI" / "Shell").glob("MainWindow*.cs")}
 engine_sources = {p.name: p.read_text(encoding="utf-8") for p in ENGINE.glob("AutomationEngine*.cs")}
 required_ui = {
     "MainWindow.xaml.cs", "MainWindow.Websites.cs", "MainWindow.Persistence.cs",
@@ -58,19 +59,19 @@ for owner, names in owners.items():
 # than silently passing tests against copies of old methods.
 extractor = (ROOT / "tests/workspaces/extract-ui-methods.py").read_text(encoding="utf-8")
 ui_check = (ROOT / "tests/ui/verify_ui.py").read_text(encoding="utf-8")
-assert 'glob("MainWindow*.cs")' in extractor
-assert 'glob("MainWindow*.cs")' in ui_check
-assert 'glob("AutomationEngine*.cs")' in ui_check
+assert 'MainWindow*.cs' in extractor
+assert 'MainWindow*.cs' in ui_check
+assert 'AutomationEngine*.cs' in ui_check
 
 # Keep extracted state ownership real: old fields must not silently reappear
 # in a partial class alongside the new controller. Structural checks cannot
 # replace the executable dispatcher/browser tests linked by the harness.
-controllers = UI / "Controllers"
+controllers = UI / "UI" / "Controllers"
 run_owner = (controllers / "RunUiOperationController.cs").read_text(encoding="utf-8")
 editor_owner = (controllers / "WorkflowEditorSession.cs").read_text(encoding="utf-8")
-mapper = (UI / "Models" / "WebsiteEditMapper.cs").read_text(encoding="utf-8")
-login_coordinator = (ENGINE / "LoginFlowCoordinator.cs").read_text(encoding="utf-8")
-login_observer = (ENGINE / "LoginCompletionObserver.cs").read_text(encoding="utf-8")
+mapper = (UI / "Domain" / "Models" / "WebsiteEditMapper.cs").read_text(encoding="utf-8")
+login_coordinator = (LOGIN / "LoginFlowCoordinator.cs").read_text(encoding="utf-8")
+login_observer = (LOGIN / "LoginCompletionObserver.cs").read_text(encoding="utf-8")
 login_stages = (ENGINE / "AutomationEngine.LoginStages.cs").read_text(encoding="utf-8")
 combined_ui = "\n".join(ui_sources.values())
 for legacy in ("_runInProgress", "_runStatusActive", "_runCancellation",

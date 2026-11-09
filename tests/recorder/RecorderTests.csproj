@@ -7,16 +7,18 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Playwright" Version="1.63.0" />
-    <Compile Include="../../LaunchFlow/Services/TeachRecorder*.cs" Link="Services/%(Filename)%(Extension)" />
-    <Compile Include="../../LaunchFlow/VisualRecorderWindow.xaml.cs" Link="VisualRecorderWindow.xaml.cs" />
+    <Compile Include="../../LaunchFlow/Services/Teach/TeachRecorder*.cs" Link="Services/%(Filename)%(Extension)" />
+    <Compile Include="../../LaunchFlow/UI/Dialogs/VisualRecorderWindow.xaml.cs" Link="VisualRecorderWindow.xaml.cs" />
     <!-- Compile exactly the production engine partials, not a core-only approximation. -->
-    <Compile Include="../../LaunchFlow/Services/AutomationEngine*.cs" Link="Services/%(Filename)%(Extension)" />
-    <Compile Include="../../LaunchFlow/Services/BrowserInstallations.cs" Link="Services/BrowserInstallations.cs" />
-    <Compile Include="../../LaunchFlow/Services/LoginHealth.cs" Link="Services/LoginHealth.cs" />
-    <Compile Include="../../LaunchFlow/Services/LoginCompletionObserver.cs" Link="Services/LoginCompletionObserver.cs" />
-    <Compile Include="../../LaunchFlow/Services/LoginFlowCoordinator.cs" Link="Services/LoginFlowCoordinator.cs" />
-    <Compile Include="../../LaunchFlow/Services/EnterprisePolicy.cs" Link="Services/EnterprisePolicy.cs" />
-    <Compile Include="../../LaunchFlow/Services/MonitorService.cs" Link="Services/MonitorService.cs" />
-    <Compile Include="../../LaunchFlow/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
+    <Compile Include="../../LaunchFlow/Services/Automation/AutomationEngine*.cs" Link="Services/%(Filename)%(Extension)" />
+    <Compile Include="../../LaunchFlow/Services/Browser/BrowserInstallations.cs" Link="Services/BrowserInstallations.cs" />
+    <Compile Include="../../LaunchFlow/Services/Login/LoginHealth.cs" Link="Services/LoginHealth.cs" />
+    <Compile Include="../../LaunchFlow/Services/Login/LoginRecipe.cs" Link="Services/LoginRecipe.cs" />
+    <Compile Include="../../LaunchFlow/Services/Login/LoginFieldDiscovery.cs" Link="Services/LoginFieldDiscovery.cs" />
+    <Compile Include="../../LaunchFlow/Services/Login/LoginCompletionObserver.cs" Link="Services/LoginCompletionObserver.cs" />
+    <Compile Include="../../LaunchFlow/Services/Login/LoginFlowCoordinator.cs" Link="Services/LoginFlowCoordinator.cs" />
+    <Compile Include="../../LaunchFlow/Services/Policy/EnterprisePolicy.cs" Link="Services/EnterprisePolicy.cs" />
+    <Compile Include="../../LaunchFlow/Services/Browser/MonitorService.cs" Link="Services/MonitorService.cs" />
+    <Compile Include="../../LaunchFlow/Domain/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

@@ -3,7 +3,7 @@
 from pathlib import Path
 import re
 root = Path(__file__).resolve().parents[2]
-source = (root / "LaunchFlow/MainWindow.Transfer.cs").read_text(encoding="utf-8")
+source = (root / "LaunchFlow/UI/Shell/MainWindow.Transfer.cs").read_text(encoding="utf-8")
 match = re.search(r"^    private void ImportLaunchFlowFile\(string path\)\s*\n    \{", source, re.M)
 if match is None:
     raise SystemExit("Production import entrypoint not found")
