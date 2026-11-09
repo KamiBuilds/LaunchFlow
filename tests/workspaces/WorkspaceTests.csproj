@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" /><Compile Include="WorkspaceCatalogTests.cs" /><Compile Include="PlatformStubs.cs" />
+    <Compile Include="../../LaunchFlow/Domain/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
+    <Compile Include="../../LaunchFlow/UI/Controllers/*.cs" Link="Controllers/%(Filename)%(Extension)" />
+    <Compile Include="../../LaunchFlow/Services/Workspaces/WorkspaceCatalog.cs" Link="WorkspaceCatalog.cs" />
+    <Compile Include="../../LaunchFlow/Services/Persistence/WorkflowEditGuard.cs" Link="WorkflowEditGuard.cs" />
+    <Compile Include="../../LaunchFlow/Services/Workspaces/ExitSafety.cs" Link="ExitSafety.cs" />
+    <Compile Include="ExitSafetyTests.cs" />
+    <Compile Include="../../LaunchFlow/Services/Workspaces/ExitCompletionGate.cs" Link="ExitCompletionGate.cs" />
+    <Compile Include="ExitCompletionGateTests.cs" />
+    <Compile Include="../../LaunchFlow/Services/Vault/CredentialDeleteGuard.cs" Link="CredentialDeleteGuard.cs" />
+    <Compile Include="../../LaunchFlow/Services/Persistence/ImportConfigurationProjection.cs" Link="ImportConfigurationProjection.cs" />
+    <Compile Include="SafetyIntegrationTests.cs" />
+    <Compile Include="../../LaunchFlow/Services/Login/WebsiteLoginMode.cs" Link="WebsiteLoginMode.cs" />
+    <Compile Include="../../LaunchFlow/Services/Login/WebsiteNextStepGuidance.cs" Link="WebsiteNextStepGuidance.cs" />
+    <Compile Include="WebsiteLoginModeTests.cs" />
+    <Compile Include="WebsiteEditMapperTests.cs" />
+    <Compile Include="OperationOwnershipTests.cs" />
+    <Compile Include="../../LaunchFlow/Services/Workspaces/WindowsApplicationControl.cs" Link="WindowsApplicationControl.cs" />
+    <Compile Include="ApplicationControlTests.cs" />
+    <Compile Include="../../LaunchFlow/Services/Browser/BrowserInstallations.cs" Link="BrowserInstallations.cs" />
+    <Compile Include="BrowserInstallationTests.cs" />
+    <Compile Include="../../LaunchFlow/Services/Browser/MonitorService.cs" Link="MonitorService.cs" />
+    <Compile Include="../../LaunchFlow/Services/Platform/LocalizationService.cs" Link="LocalizationService.cs" Condition="Exists('../../LaunchFlow/Services/Platform/LocalizationService.cs')" />
+  </ItemGroup>
+</Project>

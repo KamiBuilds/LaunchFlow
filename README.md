@@ -1,35 +1,25 @@
 # LaunchFlow
 
-LaunchFlow is a Windows desktop application for automated website workflows, secure local credential storage, and multi-monitor browser sessions.
+> **v0.7.53 — remembered-login classification + recovery/guide hardening (not release-approved).** Local Windows desktop automation with an encrypted credential vault. Native Windows verification remains required before a stable publish.
 
-## Install LaunchFlow
+LaunchFlow opens your websites on the chosen screen, optionally signs in using local encrypted credentials, and replays recorded safe clicks.
 
-**Windows 10 or 11 · x64**
+## Requirements
 
-### [Download the LaunchFlow Universal Installer](https://github.com/KamiBuilds/LaunchFlow/releases/latest/download/LaunchFlow-Universal-Installer.exe)
+Windows 10 or 11 (x64), with an installed supported browser. This source preview is not a published stable release.
 
-1. Download and run `LaunchFlow-Universal-Installer.exe`.
-2. Click **Download and install**. The installer fetches the latest stable LaunchFlow version from the official GitHub release, checks the published SHA-256 digest, and launches Windows Setup.
-3. Complete setup and open LaunchFlow. Create your master password, choose startup behavior, and add your website workflows.
+## Quick start
 
-**No source archives, Git, Visual Studio, or developer SDKs are needed.** The first installation requires internet access. Windows may display an unknown-publisher warning until the release is digitally signed.
+1. In **Websites**, click **Add website**. Choose its URL, browser, and monitor.
+2. If the website needs login details, enable sign-in or open **Settings → Passwords** after creation. Otherwise choose **No login required**.
+3. Select the website and use **Record clicks** only if you want automated actions. Complete MFA yourself.
+4. Click **Test this site**, then use **Run all** for all enabled websites.
+5. Use **Getting started** at any time to reopen the guide.
 
-The versioned `LaunchFlow-Setup-vX.Y.Z-x64.exe` release asset is the payload the universal installer downloads automatically; normal users should download only the universal installer.
-
-This download becomes available once the first stable release is published. Draft releases are reserved for testing.
-
-## Updates
-
-Run the **same universal installer** again to find and install the latest stable version. The application also supports checking for newer versions. Existing encrypted vaults and workflow data are retained when upgrading.
+The recorder captures safe browser clicks and navigation keys (Enter, Tab, Escape and arrows), not arbitrary typed text, passwords, email addresses, or MFA codes. It watches the original browser tab opened by LaunchFlow and displays its connection status. The vault stays encrypted locally.
 
 ## Development
 
-The core application is in `LaunchFlow/`. The standalone updater is in `bootstrapper/`; Windows setup definitions are in `installer/`; build support is in `tools/`.
+Use `BUILD-INSTALLER.ps1` on Windows with the .NET 8 SDK and Inno Setup. People installing the EXE do not need build tools. See `docs/NATIVE-WINDOWS-ACCEPTANCE.md` for release gates and `CODE-SIGNING.md` for Authenticode signing.
 
-For a controlled build, open [Windows installer — manual build and release](https://github.com/KamiBuilds/LaunchFlow/actions/workflows/windows.yml), choose **Run workflow**, and leave **Publish stable release** unchecked. After installing and testing the resulting executables on Windows, run the workflow with **Publish stable release** checked to publish an update. Source changes do not start builds automatically.
-
-Windows developers can use `BUILD-INSTALLER.cmd` with .NET 8 SDK and Inno Setup. See [CHANGELOG.md](CHANGELOG.md) and [CODE-SIGNING.md](CODE-SIGNING.md) for development notes.
-
-## Privacy and security
-
-LaunchFlow keeps vault data locally. Do not commit credentials, encrypted databases, browser sessions, exported profiles, logs or signing certificates. Installer builds must be tested before public distribution.
+No stable merge, official release or machine-policy compatibility approval is implied by a CI installer artifact.

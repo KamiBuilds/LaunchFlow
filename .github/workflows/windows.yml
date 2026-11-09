@@ -1,79 +1,307 @@
-name: Windows installer — manual build and release
+name: Windows installer — build and gated draft release
 
 on:
+  push:
+    branches: [validated/v0.7.46-three-checks-20261103, repair/vault-backup-integrity-20261105]
+  pull_request:
   workflow_dispatch:
     inputs:
       publish_release:
-        description: 'Publish stable release after Windows installation testing (default: build only)'
+        description: 'Create a DRAFT only after native Windows testing (default: build only)'
         type: boolean
         required: false
         default: false
+      release_confirmation:
+        description: 'For a draft: DRAFT-v<VERSION>@<full selected commit SHA>'
+        type: string
+        required: false
+        default: ''
+      windows_test_evidence:
+        description: 'For a draft: reference to clean-PC, upgrade/vault, browser-consent and cancellation test evidence'
+        type: string
+        required: false
+        default: ''
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: windows-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
+  portable-regressions:
+    name: Linux browser regressions (Windows platform seams simulated)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Install .NET 8 SDK (builder only)
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+      - name: Validate WPF UI and v0.7.34 packaging contracts
+        run: python3 tests/ui/verify_ui.py
+      - name: Verify one-action guide parity and generated written walkthrough
+        run: python3 tests/ui/verify_guide.py
+      - name: Validate source invariants
+        run: python3 tools/Verify-LaunchFlow-Source.py
+      - name: Verify structural controllers, mapping and production test links
+        run: python3 tests/architecture/check_partials.py
+      - name: Verify source-linked independent service boundaries
+        run: dotnet run --project tests/architecture/ServiceContracts.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
+      - name: Verify encrypted configuration Save/reopen and rejection contracts
+        run: dotnet run --project tests/save/EncryptedSaveTests.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
+      - name: Verify S3 ciphertext ownership and tamper rejection
+        run: dotnet run --project tests/s3-binding/S3Binding.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
+      - name: Verify credential transactions and master-key rotation
+        run: dotnet run --project tests/storage-integrity/StorageIntegrity.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
+      - name: Verify modal import authorization against real encrypted SQLite
+        env:
+          XDG_DATA_HOME: ${{ runner.temp }}/launchflow-import-fixture/home
+          LAUNCHFLOW_FIXTURE_DATA_ROOT: ${{ runner.temp }}/launchflow-import-fixture
+        run: |
+          mkdir -p "$XDG_DATA_HOME/LaunchFlow"
+          python3 tests/import-integrity/extract.py
+          dotnet run --project tests/import-integrity/ImportIntegrity.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
+      - name: Verify encrypted backups and session-bound exports
+        env:
+          XDG_DATA_HOME: ${{ runner.temp }}/launchflow-backup-fixture/home
+          LAUNCHFLOW_FIXTURE_DATA_ROOT: ${{ runner.temp }}/launchflow-backup-fixture
+        run: |
+          mkdir -p "$XDG_DATA_HOME/LaunchFlow"
+          dotnet run --project tests/backup-integrity/BackupIntegrity.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
+      - name: Verify pinned legacy conversion and old-reader refusal
+        run: DOTNET=dotnet bash tests/policy/run-compatibility.sh
+      - name: Exercise production WPF autosave methods through encrypted SQLite
+        run: |
+          python3 tests/autosave/extract.py
+          dotnet run --project tests/autosave/AutosaveIntegrationTests.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
+      - name: Build runtime harness
+        run: dotnet build tests/runtime/RuntimeTests.csproj -c Release -warnaserror
+      - name: Install isolated development Chromium
+        shell: pwsh
+        run: |
+          ./tests/runtime/bin/Release/net8.0/playwright.ps1 install --with-deps chromium
+          if ($LASTEXITCODE -ne 0) { throw 'Development Chromium installation failed' }
+      - name: Exercise production automation with synthetic browser fixtures
+        run: dotnet run --project tests/runtime/RuntimeTests.csproj -c Release --no-build
+      - name: Exercise privacy-safe diagnostic export
+        run: dotnet run --project tests/diagnostics/DiagnosticTests.csproj -c Release
+      - name: Exercise profile recovery with simulated DPAPI
+        run: dotnet run --project tests/profiles/ProfileTests.csproj -c Release -p:TreatWarningsAsErrors=true
+      - name: Preserve encrypted profiles across partial filesystem cleanup failures
+        run: DOTNET=dotnet bash tests/profile-cleanup/run.sh
+      - name: Exercise recorder capture and production replay
+        run: dotnet run --project tests/recorder/RecorderTests.csproj -c Release -p:TreatWarningsAsErrors=true
+      - name: Exercise workspace, localization and UI behavioral seams
+        run: DOTNET=dotnet bash tests/workspaces/run.sh
+      - name: Exercise policy and production vault boundaries
+        run: DOTNET=dotnet bash tests/policy/run.sh -c Release
+
   windows:
+    needs: portable-regressions
     runs-on: windows-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
           fetch-depth: 1
-      - name: Install .NET 8 SDK
+      - name: Install .NET 8 SDK (builder only)
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
-      - name: Resolve project version
+      - name: Resolve project version and validate optional draft authorization
+        id: version
         shell: pwsh
+        env:
+          REQUEST_DRAFT: ${{ inputs.publish_release }}
+          RELEASE_CONFIRMATION: ${{ inputs.release_confirmation }}
+          WINDOWS_TEST_EVIDENCE: ${{ inputs.windows_test_evidence }}
         run: |
+          . ./BUILD-PACKAGING-HELPERS.ps1
           [xml]$p = Get-Content ./LaunchFlow/LaunchFlow.csproj
           $version = [string](@($p.Project.PropertyGroup.Version | Where-Object { $_ })[0])
-          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid project version: $version" }
-          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") { throw 'Release tag does not match project version.' }
+          Get-LaunchFlowSetupPath -Root $PWD -Version $version | Out-Null
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -cne "v$version") { throw 'Release tag does not match project version.' }
+          Assert-LaunchFlowDraftRelease -Requested ($env:REQUEST_DRAFT -eq 'true') -Version $version -Commit $env:GITHUB_SHA -Confirmation $env:RELEASE_CONFIRMATION -WindowsEvidence $env:WINDOWS_TEST_EVIDENCE
           "LF_VERSION=$version" >> $env:GITHUB_ENV
-          "LF_TAG=v$version" >> $env:GITHUB_ENV
-      - name: Install Inno Setup
+          "version=$version" >> $env:GITHUB_OUTPUT
+      - name: Run installer behavior tests
+        shell: pwsh
+        run: |
+          dotnet run --project ./tests/installer/Installer.Tests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Installer behavior tests failed' }
+          dotnet run --project ./tests/bootstrapper-form/FormTests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Bootstrapper form behavior tests failed' }
+          ./tests/installer/Packaging.Tests.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Packaging behavior tests failed' }
+          ./tests/installer/Parse.Tests.ps1
+      - name: Exercise encrypted SQLite storage and recovery on native Windows
+        shell: pwsh
+        run: |
+          dotnet run --project ./tests/storage-integrity/StorageIntegrity.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
+          if ($LASTEXITCODE -ne 0) { throw 'Windows encrypted SQLite/recovery regression tests failed' }
+      - name: Install Inno Setup (builder only)
         shell: pwsh
         run: |
           choco install innosetup --yes --no-progress
           if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
-      - name: Build Windows app installer
+      - name: Build self-contained Windows app installer
         shell: pwsh
         run: |
-          ./BUILD-INSTALLER.ps1 -Yes -NoAutoInstall
+          ./BUILD-INSTALLER.ps1 -NoAutoInstall
           if ($LASTEXITCODE -ne 0) { throw 'Windows setup compilation failed' }
           $setup = Join-Path $PWD "dist/LaunchFlow-Setup-v$env:LF_VERSION-x64.exe"
-          if (-not (Test-Path $setup)) { throw "Expected setup not found: $setup" }
-      - name: Build standalone universal installer
+          if (-not (Test-Path -LiteralPath $setup -PathType Leaf)) { throw "Expected setup not found: $setup" }
+      - name: Verify PowerShell installer smoke exit contract
         shell: pwsh
         run: |
-          Set-Content -Path ./bootstrapper/release-source.txt -Value 'KamiBuilds/LaunchFlow' -Encoding utf8
-          dotnet publish ./bootstrapper/LaunchFlow.UniversalInstaller.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishReadyToRun=false -p:DebugType=None -p:DebugSymbols=false -o ./dist/universal-publish
+          ./tests/native/ExitCodeContract.Tests.ps1
+      - name: Exercise actual Windows silent installation and safe removal
+        shell: pwsh
+        run: |
+          ./tests/native/InstallerSmoke.Tests.ps1 -SetupPath "dist/LaunchFlow-Setup-v$env:LF_VERSION-x64.exe" -Version $env:LF_VERSION
+          if ($LASTEXITCODE -ne 0) { throw 'Native silent installer smoke failed' }
+      - name: Build self-contained universal installer
+        shell: pwsh
+        run: |
+          ./BUILD-UNIVERSAL-INSTALLER.ps1 -Repository $env:GITHUB_REPOSITORY
           if ($LASTEXITCODE -ne 0) { throw 'Universal installer compilation failed' }
-          Copy-Item ./dist/universal-publish/LaunchFlow.UniversalInstaller.exe ./dist/LaunchFlow-Universal-Installer.exe -Force
-      - name: Upload build artifacts
+      - name: Record exact artifact checksums
+        shell: pwsh
+        run: |
+          $files = @("dist/LaunchFlow-Setup-v$env:LF_VERSION-x64.exe", 'dist/LaunchFlow-Universal-Installer.exe')
+          $lines = foreach ($file in $files) {
+            $hash = Get-FileHash -LiteralPath $file -Algorithm SHA256
+            "$($hash.Hash.ToLowerInvariant())  $(Split-Path $file -Leaf)"
+          }
+          $lines | Set-Content -LiteralPath ./dist/SHA256SUMS.txt -Encoding ascii
+      - name: Upload build artifacts (not a release)
         uses: actions/upload-artifact@v6
         with:
-          name: LaunchFlow-v${{ env.LF_VERSION }}-Windows
+          name: LaunchFlow-v${{ env.LF_VERSION }}-${{ github.sha }}-Windows
           path: |
             dist/LaunchFlow-Setup-v${{ env.LF_VERSION }}-x64.exe
             dist/LaunchFlow-Universal-Installer.exe
+            dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
-      - name: Publish stable GitHub Release
-        if: github.event_name == 'workflow_dispatch' && inputs.publish_release
-        uses: softprops/action-gh-release@v2
+
+  draft-release:
+    name: Draft-release readiness — verify artifact, no publication
+    needs: windows
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Download installers from this exact tested run
+        uses: actions/download-artifact@v5
         with:
-          tag_name: ${{ env.LF_TAG }}
-          name: LaunchFlow ${{ env.LF_VERSION }}
-          target_commitish: ${{ github.sha }}
-          generate_release_notes: true
-          files: |
-            dist/LaunchFlow-Setup-v${{ env.LF_VERSION }}-x64.exe
-            dist/LaunchFlow-Universal-Installer.exe
-          fail_on_unmatched_files: true
+          name: LaunchFlow-v${{ needs.windows.outputs.version }}-${{ github.sha }}-Windows
+          path: dist
+      - name: Verify exact installers and SHA-256 manifest
+        shell: pwsh
+        env:
+          LF_VERSION: ${{ needs.windows.outputs.version }}
+        run: |
+          $expected = @("LaunchFlow-Setup-v$env:LF_VERSION-x64.exe", 'LaunchFlow-Universal-Installer.exe')
+          $required = @($expected + 'SHA256SUMS.txt' | Sort-Object)
+          $actual = @(Get-ChildItem -LiteralPath dist -File | ForEach-Object Name | Sort-Object)
+          if (($actual -join '|') -cne ($required -join '|')) {
+            throw 'Downloaded artifact file set does not match the two installers and checksum manifest.'
+          }
+          $manifest = @(Get-Content -LiteralPath dist/SHA256SUMS.txt | Where-Object { $_.Trim() })
+          if ($manifest.Count -ne $expected.Count) {
+            throw 'Checksum manifest has an unexpected number of entries.'
+          }
+          foreach ($filename in $expected) {
+            $path = Join-Path dist $filename
+            $file = Get-Item -LiteralPath $path
+            if ($file.Length -le 0) { throw "Installer is empty: $filename" }
+            $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($manifest -cnotcontains "$hash  $filename") {
+              throw "SHA-256 verification failed for $filename"
+            }
+          }
+          Write-Host "Verified both installers and their checksums on commit $env:GITHUB_SHA (no release created)."
+
+  publish-draft:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_release
+    needs: [windows, draft-release]
+    runs-on: windows-latest
+    timeout-minutes: 10
+    # Configure required reviewers on this environment. Stable publication is a separate human action.
+    environment: windows-release
+    permissions:
+      contents: write
+    steps:
+      - name: Refuse to overwrite any existing release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LF_VERSION: ${{ needs.windows.outputs.version }}
+        run: |
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json' }
+          $response = Invoke-WebRequest -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/v$env:LF_VERSION" -Headers $headers -SkipHttpErrorCheck
+          if ($response.StatusCode -ne 404) { throw 'Refusing to create a draft: release exists or absence could not be verified.' }
+      - name: Download artifacts from this exact build
+        uses: actions/download-artifact@v5
+        with:
+          name: LaunchFlow-v${{ needs.windows.outputs.version }}-${{ github.sha }}-Windows
+          path: dist
+      - name: Require approved Authenticode signatures before draft publication
+        shell: pwsh
+        env:
+          SIGNING_THUMBPRINT: ${{ vars.LAUNCHFLOW_SIGNING_THUMBPRINT }}
+          LF_VERSION: ${{ needs.windows.outputs.version }}
+        run: |
+          ./scripts/Verify-SignedArtifacts.ps1 -ExpectedThumbprint $env:SIGNING_THUMBPRINT -Paths @(
+            "dist/LaunchFlow-Setup-v$env:LF_VERSION-x64.exe",
+            'dist/LaunchFlow-Universal-Installer.exe'
+          )
+      - name: Create and verify a new draft without updating any existing release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LF_VERSION: ${{ needs.windows.outputs.version }}
+          WINDOWS_TEST_EVIDENCE: ${{ inputs.windows_test_evidence }}
+        run: |
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json' }
+          $api = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases"
+          $body = @{
+            tag_name = "v$env:LF_VERSION"
+            name = "LaunchFlow $env:LF_VERSION"
+            target_commitish = $env:GITHUB_SHA
+            draft = $true
+            prerelease = $false
+            make_latest = 'false'
+            generate_release_notes = $true
+            body = "Windows test evidence (publisher attestation): $env:WINDOWS_TEST_EVIDENCE`nBuild commit: $env:GITHUB_SHA`nDRAFT ONLY. Test these exact artifacts before manually publishing stable."
+          } | ConvertTo-Json
+          # POST creates a new draft; unlike an upsert action, it cannot modify a published release.
+          $release = Invoke-RestMethod -Method Post -Uri $api -Headers $headers -ContentType 'application/json' -Body $body
+          if ($release.draft -ne $true -or $release.prerelease -ne $false -or $release.tag_name -cne "v$env:LF_VERSION" -or $release.target_commitish -cne $env:GITHUB_SHA) { throw 'Created draft metadata did not match the requested build.' }
+          $releaseUri = "$api/$($release.id)"
+          $uploadBase = "https://uploads.github.com/repos/$env:GITHUB_REPOSITORY/releases/$($release.id)/assets"
+          $files = @("dist/LaunchFlow-Setup-v$env:LF_VERSION-x64.exe", 'dist/LaunchFlow-Universal-Installer.exe', 'dist/SHA256SUMS.txt')
+          foreach ($file in $files) {
+            $name = [uri]::EscapeDataString((Split-Path $file -Leaf))
+            Invoke-RestMethod -Method Post -Uri "${uploadBase}?name=$name" -Headers $headers -ContentType 'application/octet-stream' -InFile $file | Out-Null
+          }
+          $verified = Invoke-RestMethod -Uri $releaseUri -Headers $headers
+          if ($verified.draft -ne $true -or $verified.prerelease -ne $false -or $verified.target_commitish -cne $env:GITHUB_SHA -or $verified.tag_name -cne "v$env:LF_VERSION" -or @($verified.assets).Count -ne $files.Count) { throw 'Draft read-back failed. Stop and inspect the draft manually.' }
+          foreach ($file in $files) {
+            $asset = @($verified.assets | Where-Object { $_.name -ceq (Split-Path $file -Leaf) })
+            $digest = 'sha256:' + (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($asset.Count -ne 1 -or $asset[0].state -cne 'uploaded' -or $asset[0].size -ne (Get-Item -LiteralPath $file).Length -or $asset[0].digest -cne $digest) { throw "Draft asset verification failed: $file" }
+          }
+          Write-Host "Verified DRAFT ONLY: release $($verified.id). Stable publication remains a separate human action."
+
