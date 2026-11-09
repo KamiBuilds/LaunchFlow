@@ -1,3 +1,9 @@
+# v0.7.54 — New installer upgrade identity for staged-login and dialog fixes
+
+- Increment the application, installer and fallback display versions together from 0.7.53 to 0.7.54 so the test installer is a distinguishable in-place update.
+- Carry forward the previously implemented ThousandEyes-style owned second-stage password continuation and scrollable sign-in decision dialog from source commit `c99bb3e667c4c56248fbd22d8ac8a00521af049b` unchanged.
+- Keep the installer AppId, encrypted vault format, workflow identity and per-user data paths unchanged. This is an unsigned test build, not a published release.
+
 # v0.7.53 — Remembered login classification + recovery/guide hardening
 
 - Remembered `CustomSelectors` no longer disables automatic form classification while default username selectors remain (`LoginFieldDiscovery` + `LoginFieldDefaults`).
