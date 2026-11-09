@@ -38,6 +38,8 @@ internal static class ReviewLoginProbes
         if (!await StagedTransitionWithPriorPasswordAsync(playwright, retainRegistration: false, noOp: true)) failures++;
         if (!await DelayedCombinedAfterUsernameAsync(playwright, rememberedStaged: false)) failures++;
         if (!await DelayedCombinedAfterUsernameAsync(playwright, rememberedStaged: true)) failures++;
+        if (!await ExplicitNextPasswordStageAsync(playwright, passwordAlreadyExists: false)) failures++;
+        if (!await ExplicitNextPasswordStageAsync(playwright, passwordAlreadyExists: true)) failures++;
         if (!await NewsletterAsync(playwright)) failures++;
         Console.WriteLine($"REVIEW_PROBES assertionFailures={failures}");
         if (failures != 0) throw new Exception("Review security assertions failed; inspect per-case evidence. No production code was changed.");
@@ -98,8 +100,10 @@ internal static class ReviewLoginProbes
                   }
                   function finishLogin(event) {
                     event.preventDefault();
+                    const registration = document.querySelector('#registration-password');
                     if (window.savedUser === 'probe@example.invalid' &&
-                        document.querySelector('#password').value === 'synthetic-review-password')
+                        document.querySelector('#password').value === 'synthetic-review-password' &&
+                        (!registration || registration.value === ''))
                       fetch('/good-submit',{method:'POST'}).then(()=>location.href='/dashboard');
                     else fetch('/bad-submit',{method:'POST'});
                   }
@@ -126,8 +130,7 @@ internal static class ReviewLoginProbes
             goodSubmits == (accepted ? 1 : 0) &&
             result.FinishedCount == (accepted ? 1 : 0) &&
             result.LoginNeedsAttention.Count == (accepted ? 0 : 1) &&
-            (!noOp || await page.InputValueAsync("#unrelated-password") == "") &&
-            (!retainRegistration || await page.InputValueAsync("#registration-password") == "");
+            (!noOp || await page.InputValueAsync("#unrelated-password") == "");
         Console.WriteLine((ok ? "PASS " : "FAIL ") +
             $"REVIEW_STAGE_OWNERSHIP registration={retainRegistration} noop={noOp} good={goodSubmits} wrong={wrongSubmits} inputs={wrongInputs} finished={result.FinishedCount} attention={result.LoginNeedsAttention.Count}");
         return ok;
@@ -175,6 +178,103 @@ internal static class ReviewLoginProbes
             goodSubmits == 1 && wrongSubmits == 0;
         Console.WriteLine((ok ? "PASS " : "FAIL ") +
             $"REVIEW_DELAYED_COMBINED rememberedStaged={rememberedStaged} good={goodSubmits} wrong={wrongSubmits} finished={result.FinishedCount} attention={result.LoginNeedsAttention.Count}");
+        return ok;
+    }
+
+    private static async Task<bool> ExplicitNextPasswordStageAsync(
+        IPlaywright playwright, bool passwordAlreadyExists)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(3000);
+        var nextClicks = 0;
+        var correctSubmits = 0;
+        var wrongSubmits = 0;
+        var earlyPasswordInputs = 0;
+        const string site = "https://review-explicit-next.test";
+        await context.RouteAsync(site + "/**", async route =>
+        {
+            var path = new Uri(route.Request.Url).AbsolutePath;
+            switch (path)
+            {
+                case "/next-click":
+                    Interlocked.Increment(ref nextClicks);
+                    await route.FulfillAsync(new() { Status = 204 });
+                    return;
+                case "/good-submit":
+                    Interlocked.Increment(ref correctSubmits);
+                    await route.FulfillAsync(new() { Status = 204 });
+                    return;
+                case "/bad-submit":
+                    Interlocked.Increment(ref wrongSubmits);
+                    await route.FulfillAsync(new() { Status = 204 });
+                    return;
+                case "/early-input":
+                    Interlocked.Increment(ref earlyPasswordInputs);
+                    await route.FulfillAsync(new() { Status = 204 });
+                    return;
+            }
+            var fixture = """
+                <script>
+                  async function revealPassword() {
+                    window.savedUser = document.querySelector('#login_field').value;
+                    await fetch('/next-click', {method:'POST'});
+                    document.querySelector('#login_field').remove();
+                    document.querySelector('#continue').remove();
+                    let password = document.querySelector('#password');
+                    if (!password) {
+                      password = document.createElement('input');
+                      password.id = 'password';
+                      password.type = 'password';
+                      password.autocomplete = 'current-password';
+                      password.addEventListener('input', () => {
+                        if (!window.stageAdvanced) fetch('/early-input', {method:'POST'});
+                      });
+                      document.querySelector('#login').appendChild(password);
+                    }
+                    window.stageAdvanced = true;
+                    password.hidden = false;
+                    password.disabled = false;
+                    document.querySelector('#final').hidden = false;
+                  }
+                  function finishLogin(event) {
+                    event.preventDefault();
+                    if (window.stageAdvanced && window.savedUser === 'probe@example.invalid' &&
+                        document.querySelector('#password').value === 'synthetic-review-password')
+                      fetch('/good-submit', {method:'POST'}).then(()=>location.href='/dashboard');
+                    else fetch('/bad-submit', {method:'POST'});
+                  }
+                </script>
+                <form id="login" onsubmit="finishLogin(event)">
+                  <input id="login_field" autocomplete="username">
+                  <button id="continue" type="button" onclick="revealPassword()">Next</button>
+                  __INITIAL_PASSWORD__
+                  <button id="final" type="submit" hidden>Sign in</button>
+                </form>
+                """.Replace("__INITIAL_PASSWORD__", passwordAlreadyExists
+                    ? """<input id="password" type="password" autocomplete="current-password" hidden disabled oninput="if (!window.stageAdvanced) fetch('/early-input', {method:'POST'})">"""
+                    : "");
+            await route.FulfillAsync(new()
+            {
+                ContentType = "text/html",
+                Body = path == "/login" ? fixture : "<main id='signed-in'>Dashboard</main>"
+            });
+        });
+        var page = await context.NewPageAsync();
+        await page.GotoAsync(site + "/login");
+        var workflow = Workflow(page.Url);
+        workflow.LoginRecipe = LoginRecipe.EmailThenPassword;
+        workflow.UsernameContinueSelector = "#continue";
+        await using var engine = new AutomationEngine(Vault());
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        var ok = nextClicks == 1 && correctSubmits == 1 && wrongSubmits == 0 &&
+            earlyPasswordInputs == 0 && result.FinishedCount == 1 &&
+            result.LoginNeedsAttention.Count == 0;
+        Console.WriteLine((ok ? "PASS " : "FAIL ") +
+            $"REVIEW_EXPLICIT_NEXT existingPassword={passwordAlreadyExists} next={nextClicks} " +
+            $"correct={correctSubmits} wrong={wrongSubmits} earlyInput={earlyPasswordInputs} " +
+            $"finished={result.FinishedCount} attention={result.LoginNeedsAttention.Count}");
         return ok;
     }
 

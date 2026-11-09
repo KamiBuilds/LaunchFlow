@@ -229,6 +229,23 @@ public sealed partial class AutomationEngine
                     state.StageReached = false;
                     return;
                 }
+                // An explicit first-stage action may be required to reveal an
+                // existing same-form password. Dispatch it only while the
+                // selected password is not actionable; otherwise keep the exact
+                // bound field and let the protected fill boundary await readiness.
+                if (!string.IsNullOrWhiteSpace(workflow.UsernameContinueSelector) &&
+                    (!await field.IsVisibleAsync().ConfigureAwait(false) ||
+                     !await field.IsEditableAsync().ConfigureAwait(false)))
+                {
+                    await field.DisposeAsync().ConfigureAwait(false);
+                    state.StageReached = await AdvanceToPasswordStageAsync(
+                        workflow, page, owner, hadPasswordField: true, ct).ConfigureAwait(false);
+                    if (state.StageReached)
+                        state.ObservedRecipe = LoginRecipe.EmailThenPassword;
+                    else
+                        state.FailureCode = "no-password-stage";
+                    return;
+                }
                 var origin = await FillCredentialAsync(
                     workflow, page, workflow.PasswordSelector, credential.Password, ct,
                     passwordOwner => SubmitFinalBoundAsync(workflow, page, passwordOwner, state, ct),
