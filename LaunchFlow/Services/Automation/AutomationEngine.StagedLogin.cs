@@ -167,10 +167,10 @@ public sealed partial class AutomationEngine
             }
 
             // Navigation can be same-document React state, another path, or a
-            // different HTTPS identity-provider origin. We do not fill any password
-            // until FillCredentialAsync independently approves that new origin.
+            // different HTTPS identity-provider origin (Cisco Account / IdBroker).
+            // Do not fill any password until FillCredentialAsync approves that origin.
             var end = DateTimeOffset.UtcNow.AddSeconds(
-                Math.Min(20, Math.Max(5, workflow.LoginWaitSeconds)));
+                Math.Min(30, Math.Max(8, workflow.LoginWaitSeconds)));
             while (DateTimeOffset.UtcNow < end)
             {
                 ct.ThrowIfCancellationRequested();
@@ -183,9 +183,10 @@ public sealed partial class AutomationEngine
                     return null;
                 try
                 {
-                    var automaticPassword = LoginFieldDiscovery.UsesAutomaticPasswordDiscovery(workflow) &&
-                        LoginFieldDiscovery.UsesAutomaticUsernameDiscovery(workflow);
-                    var nextPassword = automaticPassword
+                    // Password classification follows the password selector only.
+                    // A custom username must not force first-match password fill
+                    // after an owned email → password continuation (ThousandEyes).
+                    var nextPassword = LoginFieldDiscovery.UsesAutomaticPasswordDiscovery(workflow)
                         ? await ResolveSupportedResumedPasswordStageAsync(workflow, page, ct).ConfigureAwait(false) ??
                             await ResolvePasswordAfterOwnedContinuationAsync(
                                 workflow, page, usernameOwner.Origin, ct).ConfigureAwait(false)
@@ -264,9 +265,15 @@ public sealed partial class AutomationEngine
             {
                 var fieldOrigin = await field.EvaluateAsync<string>(
                     "field => field.ownerDocument.location.origin").ConfigureAwait(false);
-                if (!OriginsMatch(identifierOrigin, fieldOrigin) &&
-                    (string.IsNullOrWhiteSpace(workflow.PasswordCredentialOrigin) ||
-                     !OriginsMatch(GetOrigin(workflow.PasswordCredentialOrigin), fieldOrigin)))
+                // Same-site passwords are preferred. Cross-origin IdP passwords
+                // after an owned email continuation are candidates; FillCredential
+                // still requires approval / PasswordCredentialOrigin before insert.
+                var sameSite = OriginsMatch(identifierOrigin, fieldOrigin);
+                var mappedIdp = !string.IsNullOrWhiteSpace(workflow.PasswordCredentialOrigin) &&
+                    OriginsMatch(GetOrigin(workflow.PasswordCredentialOrigin), fieldOrigin);
+                var foreignCandidate = !sameSite &&
+                    string.IsNullOrWhiteSpace(workflow.PasswordCredentialOrigin);
+                if (!sameSite && !mappedIdp && !foreignCandidate)
                     continue;
                 var eligible = await field.EvaluateAsync<bool>("""
                     field => {
@@ -371,7 +378,7 @@ public sealed partial class AutomationEngine
     {
         await using var owner = await passwordField.EvaluateHandleAsync("field => field.form").ConfigureAwait(false);
         if (!string.IsNullOrWhiteSpace(workflow.SubmitSelector) &&
-            workflow.SubmitSelector != StandardSubmitSelector)
+            !LoginFieldDefaults.IsBuiltInSubmitSelector(workflow.SubmitSelector))
         {
             var explicitlyConfigured = page.Locator(workflow.SubmitSelector);
             var configuredCount = Math.Min(await explicitlyConfigured.CountAsync().ConfigureAwait(false), 32);

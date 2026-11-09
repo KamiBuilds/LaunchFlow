@@ -220,6 +220,12 @@ Check(txLive.UiLanguage == "nl" && txLive.AdditionalSettings.ContainsKey("future
 
 var traySingle = RunOutcomeSummary.TrayDetail(0, 1, 0, "MFA required");
 Check(traySingle == "MFA required", "single sign-in attention keeps the specific reason");
+var trayFirefox = RunOutcomeSummary.TrayDetail(1, 0, 0, null,
+    "Firefox Auto sign-in needs LaunchFlow's automation Firefox.");
+Check(trayFirefox.Contains("Firefox", StringComparison.Ordinal),
+    "single Firefox automation failure keeps the concrete reason");
+Check(RunOutcomeSummary.IsFirefoxAutomationFailure(trayFirefox),
+    "Firefox automation failure is classified for Browser readiness help");
 var trayMixed = RunOutcomeSummary.TrayDetail(1, 1, 1, "MFA required");
 Check(trayMixed.Contains("1 workflow(s) failed") && trayMixed.Contains("1 sign-in"),
     "mixed failures keep the count summary instead of only the sign-in reason");

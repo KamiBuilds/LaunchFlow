@@ -39,9 +39,16 @@ public sealed partial class AutomationEngine
 
         // A saved browser may have been uninstalled since the website was added.
         // Never silently launch a different browser with a different profile.
+        var wantsFirefox = workflow.Browser.Contains("Firefox", StringComparison.OrdinalIgnoreCase);
         if (OperatingSystem.IsWindows() && !BrowserInstallations.IsInstalled(workflow.Browser))
+        {
+            if (wantsFirefox)
+                throw new InvalidOperationException(
+                    "Firefox Auto sign-in needs LaunchFlow's automation Firefox (shipped with Setup, or Browser readiness → Install Firefox automation). " +
+                    "Regular Mozilla Firefox cannot be driven. Or choose Edge/Chrome.");
             throw new InvalidOperationException(
                 $"The selected browser ({workflow.Browser}) is not installed. Install it or select an available browser in website settings.");
+        }
         var browserType = ResolveBrowserType(workflow.Browser);
         var profileDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -57,10 +64,44 @@ public sealed partial class AutomationEngine
             Headless = false,
             ViewportSize = ViewportSize.NoViewport
         };
-        var channel = ResolveChannel(workflow.Browser);
-        if (channel is not null) options.Channel = channel;
-        // Use Playwright's standard supported browser automation configuration.
-        var context = await LaunchContextWithRecoveryAsync(browserType, workflow, profileDir, options, ct).ConfigureAwait(false);
+        // Prefer the exact Edge/Chrome binary found on this PC. Channel is the
+        // fallback when App Paths / folders did not resolve a file.
+        if (!wantsFirefox)
+        {
+            var installed = BrowserInstallations.FindExecutable(
+                workflow.Browser.Contains("Chrome", StringComparison.OrdinalIgnoreCase) ? "Chrome" :
+                workflow.Browser.Contains("Edge", StringComparison.OrdinalIgnoreCase) ? "Edge" :
+                workflow.Browser);
+            if (installed is not null)
+                options.ExecutablePath = installed;
+            else
+            {
+                var channel = ResolveChannel(workflow.Browser);
+                if (channel is not null) options.Channel = channel;
+            }
+        }
+        // Firefox: never point ExecutablePath at mozilla.org firefox.exe — that
+        // opens a blank window and never navigates. Use shipped Playwright Firefox.
+        PlaywrightFirefoxSupport.ConfigureProcessBrowsersPath();
+        if (wantsFirefox && !PlaywrightFirefoxSupport.IsAutomationFirefoxInstalled())
+        {
+            throw new InvalidOperationException(
+                "Firefox Auto sign-in needs LaunchFlow's automation Firefox (shipped with Setup, or Browser readiness → Install Firefox automation). " +
+                "Or choose Edge/Chrome.");
+        }
+        IBrowserContext context;
+        try
+        {
+            context = await LaunchContextWithRecoveryAsync(browserType, workflow, profileDir, options, ct)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (workflow.Browser.Contains("Firefox", StringComparison.OrdinalIgnoreCase) &&
+                                   ex is not InvalidOperationException)
+        {
+            throw new InvalidOperationException(
+                "Could not start Firefox automation. Open Browser readiness → Install Firefox automation, " +
+                "or use Edge/Chrome for Auto sign-in. Details: " + ex.GetType().Name, ex);
+        }
         _unclaimedContexts.Add(context);
         try
         {

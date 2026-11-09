@@ -25,6 +25,8 @@
     <Compile Include="../../LaunchFlow/Services/Workspaces/WindowsApplicationControl.cs" Link="WindowsApplicationControl.cs" />
     <Compile Include="ApplicationControlTests.cs" />
     <Compile Include="../../LaunchFlow/Services/Browser/BrowserInstallations.cs" Link="BrowserInstallations.cs" />
+    <Compile Include="../../LaunchFlow/Services/Browser/PlaywrightFirefoxSupport.cs" Link="PlaywrightFirefoxSupport.cs" />
+    <Compile Include="../../LaunchFlow/Services/Browser/BrowserEnvironment.cs" Link="BrowserEnvironment.cs" />
     <Compile Include="BrowserInstallationTests.cs" />
     <Compile Include="../../LaunchFlow/Services/Browser/MonitorService.cs" Link="MonitorService.cs" />
     <Compile Include="../../LaunchFlow/Services/Platform/LocalizationService.cs" Link="LocalizationService.cs" Condition="Exists('../../LaunchFlow/Services/Platform/LocalizationService.cs')" />

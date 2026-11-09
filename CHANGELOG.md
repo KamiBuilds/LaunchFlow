@@ -1,8 +1,33 @@
-# v0.7.54 — New installer upgrade identity for staged-login and dialog fixes
+# v0.7.58 — Find installed Edge/Chrome/Firefox on this PC
 
-- Increment the application, installer and fallback display versions together from 0.7.53 to 0.7.54 so the test installer is a distinguishable in-place update.
-- Carry forward the previously implemented ThousandEyes-style owned second-stage password continuation and scrollable sign-in decision dialog from source commit `c99bb3e667c4c56248fbd22d8ac8a00521af049b` unchanged.
-- Keep the installer AppId, encrypted vault format, workflow identity and per-user data paths unchanged. This is an unsigned test build, not a published release.
+- Scans App Paths + common folders for Edge, Chrome, and Mozilla Firefox; Auto launches the exact Edge/Chrome `.exe` found.
+- Browser readiness lists each browser with Found/Not found paths; Scan again refreshes detection.
+- Firefox Auto still uses the Setup-shipped Playwright Firefox (mozilla.org Firefox is detected for status only).
+
+# v0.7.57 — Firefox Auto fully fixed (shipped automation build)
+
+- Installer packages Playwright Firefox under `playwright-browsers/`; app points `PLAYWRIGHT_BROWSERS_PATH` at it on startup (no stock mozilla.org `firefox.exe`).
+- Browser dropdown offers Firefox only when automation Firefox is present; Teach/Repair/Run share the same readiness gate.
+- Consent reinstall remains in Browser readiness as a fallback. Concrete failure toast + help dialog retained from 0.7.56.
+
+# v0.7.56 — Firefox failure shows real reason (not generic toast)
+
+- Workflow failures keep a public reason; a single Firefox automation miss no longer collapses to “1 workflow(s) failed”.
+- Pre-run check + post-fail dialog offer Browser readiness / Edge-Chrome when Firefox Auto is selected without Playwright Firefox.
+- Tray balloon uses the concrete failure text for one-failure runs.
+
+# v0.7.55 — Firefox automation + TE Vue InputEvent
+
+- Firefox Auto no longer drives stock mozilla.org `firefox.exe` (blank window, no navigation). Browser readiness can consent-install Playwright’s Firefox, or use Edge/Chrome.
+- ThousandEyes Vue bind uses `InputEvent` so Log In advances; longer wait for SPA / IdBroker password stage. Docs: region dropdown, Cisco Account cookies.
+- Standing rule: each delivered change set bumps patch version by 1 (csproj + ISS + AppInfo fallback + changelog).
+
+# v0.7.54 — IdP password continuation + Firefox launch attempt
+
+- Email-first → other-host password (Cisco/Webex IdBroker, Okta, Entra, …) prompts once, maps Trusted password page — no product hostname hardcoding.
+- Earlier Firefox stock-exe launch attempt (superseded by 0.7.55).
+- Same-site ThousandEyes SPA password fixes (legacy submit selector, `#submit-button`).
+- End-user README in plain language. Vault format and AppId unchanged. Unsigned test build.
 
 # v0.7.53 — Remembered login classification + recovery/guide hardening
 

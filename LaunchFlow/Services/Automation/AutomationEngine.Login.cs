@@ -277,10 +277,14 @@ public sealed partial class AutomationEngine
             passwordOwner.Form).ConfigureAwait(false);
         // Default discovery must never click a page-wide no-form candidate.
         // A deliberate advanced selector can support an owned no-form SPA.
-        var allowNoForm = !ownsForm && workflow.SubmitSelector != StandardSubmitSelector;
+        var standardSubmit = LoginFieldDefaults.IsBuiltInSubmitSelector(workflow.SubmitSelector);
+        var allowNoForm = !ownsForm && !standardSubmit;
         if (!ownsForm && !allowNoForm) return false;
 
-        var locator = page.Locator(workflow.SubmitSelector);
+        // Prefer the current built-in submit list even when the stored workflow
+        // still has the older type=submit-only default from before SPA sites.
+        var submitQuery = standardSubmit ? StandardSubmitSelector : workflow.SubmitSelector;
+        var locator = page.Locator(submitQuery);
         var count = Math.Min(await locator.CountAsync().ConfigureAwait(false), 32);
         var candidates = new List<IElementHandle>();
         try
@@ -291,7 +295,7 @@ public sealed partial class AutomationEngine
                 var item = locator.Nth(i);
                 if (!await item.IsVisibleAsync().ConfigureAwait(false) ||
                     !await item.IsEnabledAsync().ConfigureAwait(false)) continue;
-                if (workflow.SubmitSelector == StandardSubmitSelector)
+                if (standardSubmit)
                 {
                     var label = await item.EvaluateAsync<string>(
                         "el => (el.getAttribute('aria-label') || el.innerText || el.textContent || el.value || '').trim()")
@@ -455,7 +459,11 @@ public sealed partial class AutomationEngine
             await element.WaitForElementStateAsync(ElementState.Editable).WaitAsync(ct).ConfigureAwait(false);
             if (!OriginsMatch(origin, await VerifyAsync().ConfigureAwait(false)))
                 throw new InvalidOperationException("Credential origin changed. Retry sign-in manually.");
-            if (isPassword) RequirePasswordDestination(workflow, origin);
+            // Password on a different host (Cisco/Webex IdBroker, Okta, Entra, …)
+            // must be approved and mapped before IsOriginAllowedAsync is enough.
+            // Ask first — never throw before the user can confirm the IdP.
+            if (isPassword)
+                await EnsurePasswordDestinationAsync(workflow, origin).WaitAsync(ct).ConfigureAwait(false);
             if (!await IsOriginAllowedAsync(workflow, origin).WaitAsync(ct).ConfigureAwait(false))
                 throw new InvalidOperationException("Credential origin was not approved. Complete sign-in manually.");
             // Approval can await a dialog while the page navigates or the bound field becomes unavailable.
@@ -487,8 +495,27 @@ public sealed partial class AutomationEngine
             ct.ThrowIfCancellationRequested();
             RequireCredentialAccess();
             RequireAutomationUrl(origin);
-            if (isPassword) RequirePasswordDestination(workflow, origin);
+            if (isPassword)
+                await EnsurePasswordDestinationAsync(workflow, origin).WaitAsync(ct).ConfigureAwait(false);
             await element.FillAsync(value).ConfigureAwait(false);
+            // Vue 3 (ThousandEyes #ssoForm / #login) binds through InputEvent.
+            // Plain Event('input') alone can leave the model empty so Log In
+            // appears clicked but never advances to the password stage.
+            await element.EvaluateAsync("""
+                (el, next) => {
+                  const setter = Object.getOwnPropertyDescriptor(
+                    window.HTMLInputElement.prototype, 'value')?.set;
+                  if (setter) setter.call(el, next);
+                  else el.value = next;
+                  try {
+                    el.dispatchEvent(new InputEvent('input', {
+                      bubbles: true, cancelable: true, inputType: 'insertFromPaste', data: next
+                    }));
+                  } catch (_) { /* older engines without InputEvent */ }
+                  el.dispatchEvent(new Event('input', { bubbles: true }));
+                  el.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                """, value).ConfigureAwait(false);
             if (afterFill is not null && ownerForm is not null)
                 await afterFill(new CredentialFieldBinding(
                     origin, element, document, ownerForm, frame)).ConfigureAwait(false);
@@ -506,13 +533,40 @@ public sealed partial class AutomationEngine
         }
     }
 
-    private static void RequirePasswordDestination(WebsiteWorkflow workflow, string fieldOrigin)
+    /// <summary>
+    /// Email-first sites often continue to a different HTTPS host for the
+    /// password (Webex IdBroker, Okta, Entra, etc.). Map that host only after
+    /// explicit approval — never by hostname hardcoding.
+    /// </summary>
+    private async Task EnsurePasswordDestinationAsync(WebsiteWorkflow workflow, string fieldOrigin)
     {
         if (OriginsMatch(fieldOrigin, GetOrigin(workflow.StartUrl))) return;
-        if (string.IsNullOrWhiteSpace(workflow.PasswordCredentialOrigin) ||
-            !OriginsMatch(fieldOrigin, GetOrigin(workflow.PasswordCredentialOrigin)))
-            throw new InvalidOperationException(
-                "The password is not mapped to this identity provider. Sign in manually or choose the correct website credential.");
+        if (!string.IsNullOrWhiteSpace(workflow.PasswordCredentialOrigin) &&
+            OriginsMatch(fieldOrigin, GetOrigin(workflow.PasswordCredentialOrigin)))
+            return;
+
+        if (ApproveLoginOriginAsync is not null &&
+            await ApproveLoginOriginAsync(workflow, fieldOrigin).ConfigureAwait(false))
+        {
+            // Persist the approved IdP as the trusted password page for later runs.
+            workflow.PasswordCredentialOrigin = NormalizeOrigin(fieldOrigin);
+            if (!workflow.ApprovedLoginOrigins.Contains(fieldOrigin))
+                workflow.ApprovedLoginOrigins.Add(fieldOrigin);
+            Log($"Trusted password page for '{workflow.Name}' set to {workflow.PasswordCredentialOrigin}.");
+            return;
+        }
+
+        throw new InvalidOperationException(
+            "The password page is on another website (company sign-in / SSO). " +
+            "Approve that provider when asked, or set Trusted password page under the website's advanced settings.");
+    }
+
+    private static string NormalizeOrigin(string origin)
+    {
+        if (Uri.TryCreate(origin, UriKind.Absolute, out var uri) &&
+            uri.Scheme is "https" or "http")
+            return uri.GetLeftPart(UriPartial.Authority);
+        return origin.Trim().TrimEnd('/');
     }
 
     private async Task<bool> IsOriginAllowedAsync(WebsiteWorkflow workflow, string origin)

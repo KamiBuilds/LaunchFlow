@@ -146,8 +146,9 @@ public partial class MainWindow
     {
         if (_teachUi.IsBusy || _runUi.IsRunning || _vaultLockInProgress || _windowsLocked || _exiting ||
             _editorSession.Selection is null || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(_editorSession.Selection) || !SaveAll()) return;
-        if (!_teachUi.TryBegin(out var teachLease)) return;
         var workflow = _editorSession.Selection;
+        if (!EnsureFirefoxAutomationReady(new[] { workflow })) return;
+        if (!_teachUi.TryBegin(out var teachLease)) return;
         var admittedConfiguration = _configuration;
         var admittedRevision = _workspaceRevision;
         var admittedVaultSession = VaultDatabase.Current.SessionGeneration;
@@ -216,6 +217,7 @@ public partial class MainWindow
         if (_teachUi.IsBusy || _runUi.IsRunning || _runner.IsRunning ||
             _vaultLockInProgress || _windowsLocked || _exiting ||
             workflow is null || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow)) return;
+        if (!EnsureFirefoxAutomationReady(new[] { workflow })) return;
         if (!_teachUi.TryBegin(out var teachLease)) return;
 
         var admittedConfiguration = _configuration;
@@ -275,6 +277,7 @@ public partial class MainWindow
                     ? workspace.Resolve(_configuration).ToList()
                     : _configuration.Workflows.Where(workflow => workflow.Enabled).ToList();
             if (toRun.Count == 0) { AppendLog("No enabled workflows to run."); return; }
+            if (!EnsureFirefoxAutomationReady(toRun)) return;
             if (!WorkspaceCatalog.PendingRunIsCurrent(
                     _configuration, toRun, onlySelected, workspace, launchRevision, _workspaceRevision) ||
                 (onlySelected && !ReferenceEquals(_editorSession.Selection, toRun[0])) ||
@@ -318,14 +321,22 @@ public partial class MainWindow
             var steps = result.StepsNeedAttention;
             if (RunOutcomeSummary.HasProblems(result.FailedCount, attention.Count, steps.Count))
             {
+                var singleFailure = result.FailedCount == 1 && result.Failures.Count == 1
+                    ? result.Failures[0].Reason : null;
                 WorkflowStatusLabel.Text = RunOutcomeSummary.StatusLine(
                     LocalizationService.Text("Failed", _configuration.UiLanguage), result.FailedCount,
                     LocalizationService.Text("Sign-in needs attention", _configuration.UiLanguage), attention.Count,
                     steps.Count);
                 NotifyTray("LaunchFlow",
                     RunOutcomeSummary.TrayDetail(result.FailedCount, attention.Count, steps.Count,
-                        attention.Count == 1 ? attention[0].Reason : null),
+                        attention.Count == 1 ? attention[0].Reason : null, singleFailure),
                     Forms.ToolTipIcon.Warning);
+                if (!string.IsNullOrWhiteSpace(singleFailure))
+                {
+                    AppendLog(singleFailure);
+                    if (RunOutcomeSummary.IsFirefoxAutomationFailure(singleFailure))
+                        OfferFirefoxAutomationHelp(singleFailure);
+                }
                 if (attention.Count > 0) await OfferRepairForLoginAttentionAsync(attention);
                 if (steps.Count > 0) OfferRepairForStepAttention(steps);
             }
@@ -512,6 +523,45 @@ public partial class MainWindow
             _tray.ShowBalloonTip(4500);
         }
         catch { /* tray may be unavailable */ }
+    }
+
+    /// <summary>
+    /// Regular Mozilla Firefox cannot be automated. Stop before a blank window
+    /// and the generic "1 workflow(s) failed" toast.
+    /// </summary>
+    private bool EnsureFirefoxAutomationReady(IReadOnlyList<WebsiteWorkflow> toRun)
+    {
+        var needsFirefox = toRun.Any(w =>
+            w.Browser.Contains("Firefox", StringComparison.OrdinalIgnoreCase));
+        if (!needsFirefox || PlaywrightFirefoxSupport.IsAutomationFirefoxInstalled())
+            return true;
+
+        ShowFromTray();
+        var choice = MessageBox.Show(this,
+            "This website is set to Firefox, but regular Mozilla Firefox cannot be automated " +
+            "(the window opens and never goes to the site).\n\n" +
+            "Yes = open Browser readiness to install Firefox automation (consent download).\n" +
+            "No = cancel this run — switch the website to Edge or Chrome for Auto sign-in.",
+            "Firefox needs automation support",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        if (choice == MessageBoxResult.Yes)
+            new BrowserSetupWindow { Owner = this }.ShowDialog();
+        AppendLog("Run cancelled: Firefox automation is not installed. Use Browser readiness or Edge/Chrome.");
+        WorkflowStatusLabel.Text = LocalizationService.Text("Failed", _configuration.UiLanguage);
+        return PlaywrightFirefoxSupport.IsAutomationFirefoxInstalled();
+    }
+
+    private void OfferFirefoxAutomationHelp(string reason)
+    {
+        ShowFromTray();
+        var choice = MessageBox.Show(this,
+            reason + "\n\nOpen Browser readiness to install Firefox automation, or switch this website to Edge/Chrome?",
+            "Firefox Auto sign-in",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        if (choice == MessageBoxResult.Yes)
+            new BrowserSetupWindow { Owner = this }.ShowDialog();
     }
 
 }

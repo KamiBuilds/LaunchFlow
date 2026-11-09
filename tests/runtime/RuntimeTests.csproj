@@ -13,6 +13,7 @@
          Compatibility baselines supplied by AutomationEngineSource remain isolated. -->
     <Compile Include="../../LaunchFlow/Services/Automation/AutomationEngine.*.cs" Link="Services/%(Filename)%(Extension)" Condition="'$(AutomationEngineSource)' == '../../LaunchFlow/Services/Automation/AutomationEngine.cs'" />
     <Compile Include="../../LaunchFlow/Services/Browser/BrowserInstallations.cs" Link="Services/BrowserInstallations.cs" />
+    <Compile Include="../../LaunchFlow/Services/Browser/PlaywrightFirefoxSupport.cs" Link="Services/PlaywrightFirefoxSupport.cs" />
     <Compile Include="../../LaunchFlow/Services/Policy/EnterprisePolicy.cs" Link="EnterprisePolicy.cs" />
     <Compile Include="../../LaunchFlow/Services/Browser/MonitorService.cs" Link="MonitorService.cs" />
     <Compile Include="../../LaunchFlow/Services/Vault/ProfileVaultService.cs" Link="ProfileVaultService.cs" />

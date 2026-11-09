@@ -69,7 +69,7 @@ After unlocking, click Getting started. This modeless guide does not click, save
    - **Where:** LaunchFlow → Top navigation. Look for **Websites**.
    - **You should see:** Your website list is visible.
    - **Can't find it?** If Settings is selected, click Websites in the top navigation.
-2. **ThousandEyes-style login** (WORK-02): Add or select your ThousandEyes site. Use Sign-in mode: saved password (Auto). Test this site once — email first, then password is automatic.
+2. **ThousandEyes-style login** (WORK-02): Add your ThousandEyes website. Choose Saved password (Auto). Save your email and password under Settings → Passwords. Click Test this site — LaunchFlow fills email, then password.
    - **Where:** LaunchFlow → Websites · selected site. Look for **▶ Test this site**.
    - **You should see:** LaunchFlow fills email, continues to password, then submits when safe.
    - **Can't find it?** If MFA appears, finish it yourself. Remembered login shape becomes 'Email first, then password' after a successful Auto run.

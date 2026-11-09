@@ -14,6 +14,10 @@ LaunchFlow is the active engineering priority. The retained validated baseline i
 - Use only an explicitly authorized inference connection when necessary. Do not introduce new external providers, inference accounts, credential sharing or API-key dependencies.
 - No automatic stable release, force push, main/develop merge, vault migration, service restart or signing-certificate purchase. Save passing work on a recovery branch and verify its remote commit; expose blockers plainly.
 
+## Versioning
+
+Each delivered change set bumps the patch version by **1** (for example `0.7.54` → `0.7.55`) in `LaunchFlow/LaunchFlow.csproj`, `installer/LaunchFlow.iss`, `AppInfo` fallback, README current-build line, and CHANGELOG. Keep application and Setup `AppVersion` identical.
+
 ## Continuity
 
 The authoritative remote development baseline is the validated branch above. A previously documented rescue machine used `/root/projects/LaunchFlow-rescue` and `/root/projects/launchflow-evidence`; those are historical paths, **not** assumed present in current tooling. Current architecture, inventory and acceptance ownership are tracked in `architecture/` and `stabilization/`; all CI claims must be tied to an exact commit/tree and GitHub run.

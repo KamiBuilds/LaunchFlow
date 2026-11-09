@@ -4,7 +4,7 @@ using ComboBoxItem = System.Windows.Controls.ComboBoxItem;
 namespace LaunchFlow.Services;
 
 /// <summary>
-/// Populates browser selectors from actual Windows installations. Missing saved
+/// Populates browser selectors from browsers found on this PC. Missing saved
 /// selections are displayed explicitly and preserved, never mapped to Edge.
 /// </summary>
 public static class BrowserChoices
@@ -18,8 +18,17 @@ public static class BrowserChoices
         var available = BrowserInstallations.InstalledNames();
         combo.Items.Clear();
         foreach (var browser in available)
-            combo.Items.Add(new ComboBoxItem { Content = browser, Tag = browser,
-                ToolTip = "Detected on this PC" });
+        {
+            var path = string.Equals(browser, "Firefox", StringComparison.OrdinalIgnoreCase)
+                ? null
+                : BrowserInstallations.FindExecutable(browser);
+            var tip = path is not null
+                ? "Found installed on this PC:\n" + path
+                : string.Equals(browser, "Firefox", StringComparison.OrdinalIgnoreCase)
+                    ? "Firefox Auto uses LaunchFlow's automation Firefox (included with Setup)."
+                    : "Detected on this PC";
+            combo.Items.Add(new ComboBoxItem { Content = browser, Tag = browser, ToolTip = tip });
+        }
 
         // Keep a saved choice even after its browser is uninstalled, rather
         // than silently rewriting the encrypted workflow's browser setting.
@@ -27,11 +36,14 @@ public static class BrowserChoices
             selected != BrowserInstallations.DefaultBrowser &&
             !available.Contains(selected, StringComparer.OrdinalIgnoreCase))
         {
+            var hint = selected.Contains("Firefox", StringComparison.OrdinalIgnoreCase)
+                ? "Firefox Auto needs LaunchFlow's automation Firefox (reinstall Setup or Browser readiness)."
+                : "Install this browser or select an available browser to run this website.";
             combo.Items.Add(new ComboBoxItem
             {
-                Content = selected + " (not installed)",
+                Content = selected + " (not available)",
                 Tag = selected, IsEnabled = false,
-                ToolTip = "Install this browser or select an available browser to run this website."
+                ToolTip = hint
             });
         }
 

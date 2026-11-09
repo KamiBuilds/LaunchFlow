@@ -7,7 +7,7 @@ namespace LaunchFlow.Services;
 public sealed partial class AutomationEngine
 {
     private const string StandardUsernameSelector = LoginFieldDiscovery.StandardUsernameSelector;
-    private const string StandardSubmitSelector = "button[type='submit'], input[type='submit']";
+    private const string StandardSubmitSelector = LoginFieldDefaults.SubmitSelector;
     private const string AutomaticUsernameCandidates =
         "input[autocomplete~='username' i], input[name='login' i], #login_field, " +
         "input[type='email'], input[name*='user' i], input[name*='email' i], #username, #email";

@@ -8,6 +8,7 @@ internal static class StagedLoginTests
     {
         await SinglePageLoginAsync(playwright);
         await EmailThenPasswordAsync(playwright);
+        await IdBrokerStyleContinuationAsync(playwright);
         await DifferentFinalSubmitAsync(playwright);
         await ResumeAtPasswordAsync(playwright);
         await AmbiguousFinalSubmitAsync(playwright);
@@ -193,19 +194,69 @@ internal static class StagedLoginTests
               await page.InputValueAsync("#secret") == "",
               "SSO/IdP password is NEVER sent to an unapproved second website");
 
+        // Approving the IdP during password fill maps PasswordCredentialOrigin
+        // (email → company SSO / Webex IdBroker style). Refusal still blocks.
         engine.ApproveLoginOriginAsync = (_, origin) =>
             Task.FromResult(origin == "https://identity.test");
         workflow.PasswordCredentialOrigin = "";
-        var originOnly = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
-        Check(originOnly.LoginNeedsAttention.Count == 1 &&
-              page.Url.Contains("identity.test/password") &&
-              await page.InputValueAsync("#secret") == "",
-              "origin permission alone cannot send a website password to an unmapped identity provider");
-        workflow.PasswordCredentialOrigin = "https://identity.test";
-        var approved = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
-        Check(approved.FinishedCount == 1 && approved.LoginNeedsAttention.Count == 0 &&
-              page.Url == "https://identity.test/dashboard",
-              "explicit password credential mapping permits insertion at the approved identity provider");
+        var mappedByApproval = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(mappedByApproval.FinishedCount == 1 && mappedByApproval.LoginNeedsAttention.Count == 0 &&
+              page.Url == "https://identity.test/dashboard" &&
+              workflow.PasswordCredentialOrigin.Contains("identity.test", StringComparison.OrdinalIgnoreCase),
+              "approving the IdP password host maps it and allows one owned password fill");
+    }
+
+    private static async Task IdBrokerStyleContinuationAsync(IPlaywright playwright)
+    {
+        // Generic email-on-app → password-on-broker host (no product hardcoding).
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(4000);
+        await context.RouteAsync("https://app.example-saas.test/**", route => route.FulfillAsync(new()
+        {
+            ContentType = "text/html",
+            Body = """
+                <form id="ssoForm" action="/login" method="POST">
+                  <input id="email" name="email" type="text" placeholder="Email">
+                  <button type="button" id="submit-button"
+                    onclick="location.href='https://idbroker.example-idp.test/idb/saml2/jsp/doSSO.jsp'">Log In</button>
+                </form>
+                """
+        }));
+        await context.RouteAsync("https://idbroker.example-idp.test/**", route =>
+        {
+            var path = new Uri(route.Request.Url).AbsolutePath;
+            return route.FulfillAsync(new()
+            {
+                ContentType = "text/html",
+                Body = path.EndsWith("/done", StringComparison.Ordinal)
+                    ? "<main id='signed-in'>Signed in</main>"
+                    : """
+                        <form id="login" action="/signin" method="POST">
+                          <input id="password" name="password" type="password" placeholder="Password" autocomplete="">
+                          <button type="button" id="submit-button"
+                            onclick="sessionStorage.setItem('ok',document.getElementById('password').value);location.href='/done'">Log In</button>
+                        </form>
+                        """
+            });
+        });
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://app.example-saas.test/login");
+        var workflow = NewWorkflow(page.Url);
+        workflow.PasswordSelector = LoginFieldDefaults.PasswordSelector;
+        workflow.UsernameSelector = LoginFieldDefaults.UsernameSelector;
+        workflow.SubmitSelector = LoginFieldDefaults.SubmitSelector;
+        workflow.LoginSuccessSelector = "#signed-in";
+        var vault = NewVault();
+        await using var engine = new AutomationEngine(vault);
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        engine.ApproveLoginOriginAsync = (_, origin) =>
+            Task.FromResult(origin == "https://idbroker.example-idp.test");
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        var filled = await page.EvaluateAsync<string>("() => sessionStorage.getItem('ok')");
+        Check(result.FinishedCount == 1 && filled == "test-only-password" &&
+              workflow.PasswordCredentialOrigin.Contains("idbroker.example-idp.test", StringComparison.Ordinal),
+              "generic email→IdBroker password continuation after approval");
     }
 
     private static async Task MfaRequiresHumanAsync(IPlaywright playwright)

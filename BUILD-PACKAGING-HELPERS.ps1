@@ -64,3 +64,47 @@ function Assert-LaunchFlowPayload {
         Where-Object { $p = Join-Path $PublishDirectory $_; (Test-Path -LiteralPath $p -PathType Leaf) -and (Get-Item -LiteralPath $p).Length -gt 0 }
     if (@($sqlite).Count -eq 0) { throw 'Publish output is missing the native SQLite runtime.' }
 }
+
+function Assert-LaunchFlowFirefoxBrowsers {
+    param([string]$PublishDirectory)
+    $root = Join-Path $PublishDirectory 'playwright-browsers'
+    if (-not (Test-Path -LiteralPath $root -PathType Container)) {
+        throw 'Publish output is missing playwright-browsers (Firefox automation payload).'
+    }
+    $firefox = @(Get-ChildItem -LiteralPath $root -Recurse -Filter 'firefox.exe' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Length -gt 0 })
+    if ($firefox.Count -eq 0) {
+        throw 'Publish output playwright-browsers does not contain firefox.exe.'
+    }
+}
+
+function Install-LaunchFlowFirefoxBrowsers {
+    param([string]$PublishDirectory, [string]$DotNetPath)
+    $browsers = Join-Path $PublishDirectory 'playwright-browsers'
+    if (Test-Path -LiteralPath $browsers) {
+        Remove-Item -LiteralPath $browsers -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $browsers | Out-Null
+    $node = Join-Path $PublishDirectory '.playwright\node\win32_x64\node.exe'
+    $cli = Join-Path $PublishDirectory '.playwright\package\cli.js'
+    if (-not (Test-Path -LiteralPath $node -PathType Leaf) -or -not (Test-Path -LiteralPath $cli -PathType Leaf)) {
+        throw 'Cannot install Firefox automation: Playwright node/cli is missing from publish output.'
+    }
+    Write-Host "Installing Playwright Firefox into $browsers ..."
+    $previousPath = $env:PLAYWRIGHT_BROWSERS_PATH
+    $previousSkip = $env:PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
+    try {
+        $env:PLAYWRIGHT_BROWSERS_PATH = $browsers
+        Remove-Item Env:PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD -ErrorAction SilentlyContinue
+        & $node $cli install firefox
+        if ($LASTEXITCODE -ne 0) { throw "Playwright Firefox install failed with exit code $LASTEXITCODE." }
+    }
+    finally {
+        if ($null -eq $previousPath) { Remove-Item Env:PLAYWRIGHT_BROWSERS_PATH -ErrorAction SilentlyContinue }
+        else { $env:PLAYWRIGHT_BROWSERS_PATH = $previousPath }
+        if ($null -eq $previousSkip) { Remove-Item Env:PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD -ErrorAction SilentlyContinue }
+        else { $env:PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = $previousSkip }
+    }
+    Assert-LaunchFlowFirefoxBrowsers -PublishDirectory $PublishDirectory
+    Write-Host '[OK] Playwright Firefox packaged for Auto sign-in.' -ForegroundColor Green
+}

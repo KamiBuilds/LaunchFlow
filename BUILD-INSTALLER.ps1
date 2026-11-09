@@ -252,6 +252,7 @@ if (Test-Path -LiteralPath $publishDir) {
     -o $publishDir
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed. Check build errors above.' }
 Assert-LaunchFlowPayload -PublishDirectory $publishDir
+Install-LaunchFlowFirefoxBrowsers -PublishDirectory $publishDir -DotNetPath $dotnet
 
 # Ensure the setup contains the runtime and required automation library.
 foreach ($requiredFile in @('LaunchFlow.exe', 'coreclr.dll', 'hostpolicy.dll', 'Microsoft.Playwright.dll')) {

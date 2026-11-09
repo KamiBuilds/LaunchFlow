@@ -15,6 +15,8 @@ internal static class ReliableStageLoginTests
         await TwoDocumentAsync(playwright, "continue", "Continue", "Continue", false, false);
         await TwoDocumentAsync(playwright, "thousandeyes-shape", "Log In", "Next", true, false);
         await TwoDocumentAsync(playwright, "delayed-action", "Log In", "Next", true, true);
+        await ThousandEyesLiveDomAsync(playwright, legacySubmitSelector: false);
+        await ThousandEyesLiveDomAsync(playwright, legacySubmitSelector: true);
         await OwnedNeutralPasswordStageAsync(playwright, registrationForm: false);
         await OwnedNeutralPasswordStageAsync(playwright, registrationForm: true);
         await PasswordOnlyNextAsync(playwright);
@@ -192,6 +194,113 @@ internal static class ReliableStageLoginTests
                 result.LoginNeedsAttention.Count == 0 && page.Url == origin + "/application",
                 "LF local second stage completes in a neutral named form after an owned email Next");
         }
+    }
+
+    /// <summary>
+    /// Mirrors the live ThousandEyes DOM observed 2026-11-09:
+    /// email-only #ssoForm with region dropdown + type=button Log In, then
+    /// /v2/login/password with empty-autocomplete #password and type=button#submit-button.
+    /// </summary>
+    private static async Task ThousandEyesLiveDomAsync(IPlaywright playwright, bool legacySubmitSelector)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(5000);
+        var origin = "https://app.thousandeyes" + (legacySubmitSelector ? "-legacy" : "") + ".stage-test";
+        var firstHits = 0;
+        var lastHits = 0;
+        await context.RouteAsync(origin + "/**", async route =>
+        {
+            var path = new Uri(route.Request.Url).AbsolutePath;
+            if (path == "/identifier-hit")
+            {
+                Interlocked.Increment(ref firstHits);
+                await route.FulfillAsync(new() { Status = 204 });
+                return;
+            }
+            if (path == "/password-hit")
+            {
+                Interlocked.Increment(ref lastHits);
+                await route.FulfillAsync(new() { Status = 204 });
+                return;
+            }
+            string body;
+            if (path is "/login" or "/v2/login")
+            {
+                // Vue 3-style: Log In only advances when the model was updated via InputEvent
+                // (plain .value writes / Event('input') alone leave the SPA stuck — live TE behavior).
+                body = """
+                    <form id="ssoForm" class="ui-form" action="/v2/login" method="POST">
+                      <div class="row email-row">
+                        <input id="email" name="email" type="text" placeholder="Email">
+                      </div>
+                      <div class="region-row">
+                        <div class="label-row">Region (Optional)</div>
+                        <button type="button" id="dropdown-trigger3" class="te-cc-dropdown-button">Default (Recommended)</button>
+                        <input type="hidden" name="region" value="-1">
+                      </div>
+                      <button id="submit-button" type="button" class="btn submit-button"
+                        onclick="const v=window.__teEmail||''; if(!v.includes('@')){document.body.dataset.err='invalid';return;} sessionStorage.setItem('email-ok',v==='test@example.invalid'?'1':'0'); fetch('/identifier-hit',{method:'POST'}); location.href='/v2/login/password?email='+encodeURIComponent(v);">Log In</button>
+                    </form>
+                    <script>
+                      window.__teEmail = '';
+                      document.getElementById('email').addEventListener('input', (e) => {
+                        if (e instanceof InputEvent) window.__teEmail = e.target.value;
+                      });
+                    </script>
+                    """;
+            }
+            else if (path.StartsWith("/v2/login/password", StringComparison.Ordinal))
+            {
+                body = """
+                    <form id="login" class="ui-form" action="/v2/login/password" method="POST">
+                      <input name="locale" type="hidden" value="en">
+                      <div class="row email-row">
+                        <input id="email" name="email" type="text" placeholder="Email" disabled value="test@example.invalid">
+                      </div>
+                      <div class="row password-row">
+                        <input id="password" name="password" type="password" placeholder="Password" autocomplete="">
+                      </div>
+                      <div class="region-row">
+                        <button type="button" id="dropdown-trigger3" class="te-cc-dropdown-button" disabled>US1</button>
+                      </div>
+                      <button id="submit-button" type="button" class="btn btn-inverse submit submit-button"
+                        onclick="sessionStorage.setItem('pass-ok',(window.__tePass||'')==='synthetic-password-never-send-outside-test'?'1':'0'); fetch('/password-hit',{method:'POST'}); location.href='/application';">Log In</button>
+                    </form>
+                    <script>
+                      window.__tePass = '';
+                      document.getElementById('password').addEventListener('input', (e) => {
+                        if (e instanceof InputEvent) window.__tePass = e.target.value;
+                      });
+                    </script>
+                    """;
+            }
+            else
+            {
+                body = "<nav><button aria-label='Account'>Account</button><a href='/logout'>Sign out</a></nav>" +
+                       "<button id='followup' onclick=\"document.body.dataset.followed='yes'\">Next</button>";
+            }
+            await route.FulfillAsync(new() { ContentType = "text/html", Body = body });
+        });
+
+        var page = await context.NewPageAsync();
+        await page.GotoAsync(origin + "/login");
+        var workflow = Workflow(origin + "/login");
+        if (legacySubmitSelector)
+            workflow.SubmitSelector = LoginFieldDefaults.LegacySubmitSelector;
+        workflow.Steps.Add(new WorkflowStep { Type = "Click", Target = "#followup" });
+        var vault = Vault();
+        await using var engine = new AutomationEngine(vault);
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        var emailOk = await page.EvaluateAsync<string>("() => sessionStorage.getItem('email-ok')") == "1";
+        var passOk = await page.EvaluateAsync<string>("() => sessionStorage.getItem('pass-ok')") == "1";
+        var followed = await page.GetAttributeAsync("body", "data-followed") == "yes";
+        EngineBehaviorTests.Check(emailOk && passOk && firstHits == 1 && lastHits == 1 &&
+            result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 && followed &&
+            page.Url == origin + "/application" && vault.ReadCount == 1,
+            "ThousandEyes live DOM" + (legacySubmitSelector ? " (legacy submit selector)" : "") +
+            ": email→password type=button stages finish");
     }
 
     private static async Task PasswordOnlyNextAsync(IPlaywright playwright)

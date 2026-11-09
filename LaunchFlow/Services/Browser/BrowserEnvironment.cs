@@ -1,61 +1,51 @@
-using System.IO;
-using Microsoft.Win32;
-
 namespace LaunchFlow.Services;
 
 /// <summary>
-/// Detects browsers already installed on Windows so LaunchFlow can use
-/// channel-based Playwright launches without downloading browser binaries.
+/// Summarizes which browsers LaunchFlow found on this PC for readiness UI and logs.
 /// </summary>
 public static class BrowserEnvironment
 {
-    public sealed record Report(bool Edge, bool Chrome, bool Firefox, string Summary);
+    public sealed record Report(
+        bool Edge,
+        bool Chrome,
+        bool MozillaFirefox,
+        bool AutomationFirefox,
+        string? EdgePath,
+        string? ChromePath,
+        string? MozillaFirefoxPath,
+        string Summary)
+    {
+        public bool Firefox => MozillaFirefox || AutomationFirefox;
+        public bool AnyAutoBrowser => Edge || Chrome || AutomationFirefox;
+    }
 
     public static Report Probe()
     {
-        var edge = IsInstalled(@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe")
-                   || File.Exists(Path.Combine(
-                       Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
-                       "Microsoft", "Edge", "Application", "msedge.exe"))
-                   || File.Exists(Path.Combine(
-                       Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-                       "Microsoft", "Edge", "Application", "msedge.exe"));
-
-        var chrome = IsInstalled(@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe")
-                     || File.Exists(Path.Combine(
-                         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                         "Google", "Chrome", "Application", "chrome.exe"));
-
-        var firefox = IsInstalled(@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\firefox.exe")
-                      || File.Exists(Path.Combine(
-                          Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-                          "Mozilla Firefox", "firefox.exe"));
+        var edgePath = BrowserInstallations.FindExecutable("Edge");
+        var chromePath = BrowserInstallations.FindExecutable("Chrome");
+        var mozillaPath = BrowserInstallations.FindExecutable("Firefox");
+        var automationFirefox = PlaywrightFirefoxSupport.IsAutomationFirefoxInstalled();
 
         var parts = new List<string>();
-        if (edge) parts.Add("Edge");
-        if (chrome) parts.Add("Chrome");
-        if (firefox) parts.Add("Firefox");
+        if (edgePath is not null) parts.Add("Edge (installed)");
+        if (chromePath is not null) parts.Add("Chrome (installed)");
+        if (automationFirefox) parts.Add("Firefox Auto (automation ready)");
+        else if (mozillaPath is not null)
+            parts.Add("Mozilla Firefox found (Auto needs LaunchFlow Firefox automation)");
 
         var summary = parts.Count == 0
-            ? "No supported browser detected. Install Microsoft Edge or Google Chrome for automation."
-            : "Ready to use: " + string.Join(", ", parts) +
-              ". LaunchFlow uses your installed browser — no extra browser download required for Edge/Chrome.";
+            ? "No supported browser detected. Install Microsoft Edge or Google Chrome, or use Browser readiness."
+            : "Found on this PC: " + string.Join(", ", parts) +
+              ". Auto uses your installed Edge/Chrome; Firefox Auto uses the Setup-shipped automation build.";
 
-        return new Report(edge, chrome, firefox, summary);
-    }
-
-    private static bool IsInstalled(string appPathsKey)
-    {
-        try
-        {
-            using var key = Registry.LocalMachine.OpenSubKey(appPathsKey)
-                            ?? Registry.CurrentUser.OpenSubKey(appPathsKey);
-            var path = key?.GetValue(null) as string;
-            return !string.IsNullOrWhiteSpace(path) && File.Exists(path);
-        }
-        catch
-        {
-            return false;
-        }
+        return new Report(
+            edgePath is not null,
+            chromePath is not null,
+            mozillaPath is not null,
+            automationFirefox,
+            edgePath,
+            chromePath,
+            mozillaPath,
+            summary);
     }
 }

@@ -21,7 +21,7 @@ public sealed class WebsiteWorkflow
     public bool AutoLogin { get; set; } = true;
     public string UsernameSelector { get; set; } = LoginFieldDefaults.UsernameSelector;
     public string PasswordSelector { get; set; } = LoginFieldDefaults.PasswordSelector;
-    public string SubmitSelector { get; set; } = "button[type='submit'], input[type='submit']";
+    public string SubmitSelector { get; set; } = LoginFieldDefaults.SubmitSelector;
     public string CredentialOrigin { get; set; } = "";
     public string PasswordCredentialOrigin { get; set; } = "";
     public string UsernameContinueSelector { get; set; } = "";

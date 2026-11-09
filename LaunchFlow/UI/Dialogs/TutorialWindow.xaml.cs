@@ -242,7 +242,7 @@ public partial class TutorialWindow : Window
                     "If Settings is selected, click Websites in the top navigation.",
                     "MainWindow", "WorkflowsNav"),
                 new("WORK-02", "ThousandEyes-style login",
-                    "Add or select your ThousandEyes site. Use Sign-in mode: saved password (Auto). Test this site once — email first, then password is automatic.",
+                    "Add your ThousandEyes website. Choose Saved password (Auto). Save your email and password under Settings → Passwords. Click Test this site — LaunchFlow fills email, then password.",
                     "LaunchFlow", "Websites · selected site", "▶ Test this site",
                     "LaunchFlow fills email, continues to password, then submits when safe.",
                     "If MFA appears, finish it yourself. Remembered login shape becomes 'Email first, then password' after a successful Auto run.",

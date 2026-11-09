@@ -475,8 +475,13 @@ public partial class MainWindow : Window
             return "LaunchFlow could not reuse that browser profile because it is still in use by an earlier browser window. " +
                    "LaunchFlow will normally try a recovery profile automatically. If this keeps happening, close the old LaunchFlow browser window and try again.";
         }
+        if (RunOutcomeSummary.IsFirefoxAutomationFailure(message) ||
+            message.Contains("Firefox", StringComparison.OrdinalIgnoreCase))
+        {
+            return message + "\n\nOpen Browser readiness → Install Firefox automation, or switch this website to Edge/Chrome.";
+        }
 
-        return message + "\n\nMake sure the selected browser is installed (Edge/Chrome) and try again.";
+        return message + "\n\nMake sure the selected browser is installed (Edge/Chrome/Firefox automation) and try again.";
     }
 
     private void Exit_Click(object sender, RoutedEventArgs e) => ExitFromTray();
@@ -500,24 +505,31 @@ public partial class MainWindow : Window
             var wasHidden = !IsVisible;
             if (wasHidden) ShowFromTray();
             var result = MessageBox.Show(this,
-                $"'{workflow.Name}' moved its login to:\n\n{newOrigin}\n\n" +
-                "Allow LaunchFlow to enter this workflow's saved login there?\n" +
-                "Only approve if you recognize your organization's real sign-in provider.",
-                "Confirm SSO login website", MessageBoxButton.YesNo, MessageBoxImage.Question,
+                $"'{workflow.Name}' needs the password on another website:\n\n{newOrigin}\n\n" +
+                "This is common (company SSO / Cisco / Microsoft / Okta).\n" +
+                "Allow LaunchFlow to type this website's saved password there?\n" +
+                "Only click Yes if you recognize that sign-in page.",
+                "Confirm password website", MessageBoxButton.YesNo, MessageBoxImage.Question,
                 MessageBoxResult.No);
             if (wasHidden) Hide();
             // ShowDialog pumps the dispatcher: lock, Stop and machine policy can change.
             if (result != MessageBoxResult.Yes || !Authorized()) return false;
             bool added = !workflow.ApprovedLoginOrigins.Contains(newOrigin);
+            var previousPasswordOrigin = workflow.PasswordCredentialOrigin;
             if (added) workflow.ApprovedLoginOrigins.Add(newOrigin);
+            // Remember IdP host so the next Run does not ask again.
+            workflow.PasswordCredentialOrigin = newOrigin;
             try { _store.Save(_configuration); }
             catch (Exception ex)
             {
                 if (added) workflow.ApprovedLoginOrigins.Remove(newOrigin);
+                workflow.PasswordCredentialOrigin = previousPasswordOrigin;
                 AppendLog("Sign-in approval was not saved: " + ex.GetType().Name);
                 return false;
             }
-            AppendLog($"Approved a sign-in provider for '{workflow.Name}'.");
+            if (PasswordOriginBox is not null && ReferenceEquals(_editorSession.Selection, workflow))
+                PasswordOriginBox.Text = newOrigin;
+            AppendLog($"Approved password website for '{workflow.Name}': {newOrigin}");
             return true;
         });
     }

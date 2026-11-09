@@ -62,7 +62,7 @@ public partial class NewWorkflowWindow : Window
         }
         if (browser == BrowserInstallations.DefaultBrowser && AutoLoginCheck.IsChecked == true)
         {
-            MessageBox.Show(this, "The default-browser option only opens the site. Choose Edge, Chrome or Firefox for automatic sign-in.",
+            MessageBox.Show(this, "The default-browser option only opens the site. Choose Edge or Chrome for automatic sign-in (or Firefox after Browser readiness installs Firefox automation).",
                 "Automatic login needs a supported browser", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }

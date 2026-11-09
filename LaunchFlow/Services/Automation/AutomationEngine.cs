@@ -43,6 +43,7 @@ public sealed partial class AutomationEngine : IAsyncDisposable
 
     public sealed record LoginAttention(Guid WorkflowId, string WorkflowName, string Reason);
     public sealed record StepAttention(Guid WorkflowId, string WorkflowName, string StepType);
+    public sealed record WorkflowFailure(Guid WorkflowId, string WorkflowName, string Reason);
     private sealed class WorkflowStepException(string stepType) : Exception("Workflow step needs repair.")
     {
         public string StepType { get; } = stepType;
@@ -52,6 +53,7 @@ public sealed partial class AutomationEngine : IAsyncDisposable
     {
         public List<LoginAttention> LoginNeedsAttention { get; } = new();
         public List<StepAttention> StepsNeedAttention { get; } = new();
+        public List<WorkflowFailure> Failures { get; } = new();
         /// <summary>Workflows whose remembered Auto login shape changed this run.</summary>
         public List<Guid> LoginRecipesUpdated { get; } = new();
         public int FinishedCount { get; set; }
@@ -163,14 +165,18 @@ public sealed partial class AutomationEngine : IAsyncDisposable
                 {
                     result.FailedCount++;
                     result.StepsNeedAttention.Add(new StepAttention(workflow.Id, workflow.Name, ex.StepType));
+                    result.Failures.Add(new WorkflowFailure(workflow.Id, workflow.Name,
+                        $"Step needs repair: {ex.StepType}."));
                     Status(workflow, WorkflowRunState.Failed);
                     Log($"Workflow '{workflow.Name}' needs a step repaired: {ex.StepType}.");
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
+                    var reason = PublicWorkflowFailureReason(ex);
                     result.FailedCount++;
+                    result.Failures.Add(new WorkflowFailure(workflow.Id, workflow.Name, reason));
                     Status(workflow, WorkflowRunState.Failed);
-                    Log($"Workflow '{workflow.Name}' failed. Check or repair the workflow.");
+                    Log($"Workflow '{workflow.Name}' failed: {reason}");
                 }
             }
         }
@@ -335,6 +341,15 @@ public sealed partial class AutomationEngine : IAsyncDisposable
 
     private static string PublicStepType(string type) => type is "Navigate" or "Click" or "Fill" or "Press" or "Wait" or "AssertVisible" or "WaitForURL"
         ? type : "Unsupported";
+
+    /// <summary>
+    /// Tray/log copy only. Prefer controlled InvalidOperationException text;
+    /// never forward arbitrary exception payloads that might include secrets.
+    /// </summary>
+    internal static string PublicWorkflowFailureReason(Exception ex) =>
+        ex is InvalidOperationException && !string.IsNullOrWhiteSpace(ex.Message)
+            ? ex.Message.Trim()
+            : "Check or repair the workflow (technical: " + ex.GetType().Name + ").";
 
     private sealed record TrackedSession(IBrowserContext Context, IPage Page);
 }

@@ -12,6 +12,7 @@
     <!-- Compile exactly the production engine partials, not a core-only approximation. -->
     <Compile Include="../../LaunchFlow/Services/Automation/AutomationEngine*.cs" Link="Services/%(Filename)%(Extension)" />
     <Compile Include="../../LaunchFlow/Services/Browser/BrowserInstallations.cs" Link="Services/BrowserInstallations.cs" />
+    <Compile Include="../../LaunchFlow/Services/Browser/PlaywrightFirefoxSupport.cs" Link="Services/PlaywrightFirefoxSupport.cs" />
     <Compile Include="../../LaunchFlow/Services/Login/LoginHealth.cs" Link="Services/LoginHealth.cs" />
     <Compile Include="../../LaunchFlow/Services/Login/LoginRecipe.cs" Link="Services/LoginRecipe.cs" />
     <Compile Include="../../LaunchFlow/Services/Login/LoginFieldDiscovery.cs" Link="Services/LoginFieldDiscovery.cs" />

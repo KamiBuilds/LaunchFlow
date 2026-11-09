@@ -23,7 +23,9 @@ public partial class WorkspacePreviewWindow : Window
                 ? installed.Edge
                 : workflow.Browser.Contains("Chrome", StringComparison.OrdinalIgnoreCase)
                     ? installed.Chrome
-                    : workflow.Browser.Contains("Default", StringComparison.OrdinalIgnoreCase);
+                    : workflow.Browser.Contains("Firefox", StringComparison.OrdinalIgnoreCase)
+                        ? installed.AutomationFirefox
+                        : workflow.Browser.Contains("Default", StringComparison.OrdinalIgnoreCase);
             var status = !ready ? "Policy blocked" : available ? "Ready" : "Browser setup";
             return new PreviewRow(workflow.Name, monitor.Name, workflow.Browser, status);
         }).ToArray();

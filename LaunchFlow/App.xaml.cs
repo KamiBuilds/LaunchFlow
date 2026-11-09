@@ -26,9 +26,11 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         StartupDiagnostics.Record(StartupDiagnostics.Stage.ProcessStarted);
-        // Self-contained Windows Setup ships LaunchFlow, the .NET runtime and app
-        // libraries. Browser automation uses installed Edge/Chrome channels;
-        // never silently download or install a separate browser executable.
+        // Self-contained Windows Setup ships LaunchFlow, the .NET runtime, app
+        // libraries, Playwright driver, and (when packaged) Playwright Firefox
+        // under playwright-browsers/. Edge/Chrome still use installed channels.
+        // Never silently download browsers at runtime without consent.
+        PlaywrightFirefoxSupport.ConfigureProcessBrowsersPath();
         Environment.SetEnvironmentVariable("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "1");
 
         DispatcherUnhandledException += (_, args) =>

@@ -563,7 +563,7 @@
                     <TextBlock Text="Trusted username page address (HTTPS; blank = start URL)" Style="{StaticResource FieldLabel}"/>
                     <TextBox x:Name="CredentialOriginBox" Margin="0,0,0,11" ToolTip="Example: https://login.example.com"/>
                     <TextBlock Text="Trusted password page address (HTTPS; only if different)" Style="{StaticResource FieldLabel}"/>
-                    <TextBox x:Name="PasswordOriginBox" Margin="0,0,0,11" ToolTip="If your employer redirects to a different SSO domain, set its exact HTTPS origin here."/>
+                    <TextBox x:Name="PasswordOriginBox" Margin="0,0,0,11" ToolTip="If email login continues on another host (for example https://idbroker-eu.webex.com), put that HTTPS origin here — or approve it once when LaunchFlow asks."/>
                     <Grid Margin="0,0,0,11">
                       <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                       <StackPanel Grid.Column="0"><TextBlock Text="Username field (CSS)" Style="{StaticResource FieldLabel}"/>
