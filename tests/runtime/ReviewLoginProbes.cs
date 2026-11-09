@@ -33,6 +33,11 @@ internal static class ReviewLoginProbes
         if (!await ExplicitCustomSelectorsAsync(playwright)) failures++;
         if (!await PasswordOnlyCompetingAsync(playwright)) failures++;
         if (!await AmbiguousPasswordAsync(playwright)) failures++;
+        if (!await StagedTransitionWithPriorPasswordAsync(playwright, retainRegistration: false, noOp: false)) failures++;
+        if (!await StagedTransitionWithPriorPasswordAsync(playwright, retainRegistration: true, noOp: false)) failures++;
+        if (!await StagedTransitionWithPriorPasswordAsync(playwright, retainRegistration: false, noOp: true)) failures++;
+        if (!await DelayedCombinedAfterUsernameAsync(playwright, rememberedStaged: false)) failures++;
+        if (!await DelayedCombinedAfterUsernameAsync(playwright, rememberedStaged: true)) failures++;
         if (!await NewsletterAsync(playwright)) failures++;
         Console.WriteLine($"REVIEW_PROBES assertionFailures={failures}");
         if (failures != 0) throw new Exception("Review security assertions failed; inspect per-case evidence. No production code was changed.");
@@ -48,6 +53,130 @@ internal static class ReviewLoginProbes
         LoginRecipe = rememberedCustomSelectors ? LoginRecipe.CustomSelectors : LoginRecipe.Unknown
     };
     private static CredentialVault Vault() => new() { Credential = new SiteCredential(User, Password) };
+
+    private static async Task<bool> StagedTransitionWithPriorPasswordAsync(
+        IPlaywright playwright, bool retainRegistration, bool noOp)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(3000);
+        var goodSubmits = 0;
+        var wrongSubmits = 0;
+        var wrongInputs = 0;
+        const string site = "https://review-stage-owner.test";
+        await context.RouteAsync(site + "/**", async route =>
+        {
+            var path = new Uri(route.Request.Url).AbsolutePath;
+            if (path == "/good-submit") { Interlocked.Increment(ref goodSubmits); await route.FulfillAsync(new() { Status = 204 }); return; }
+            if (path == "/bad-submit") { Interlocked.Increment(ref wrongSubmits); await route.FulfillAsync(new() { Status = 204 }); return; }
+            if (path == "/wrong-input") { Interlocked.Increment(ref wrongInputs); await route.FulfillAsync(new() { Status = 204 }); return; }
+            var registration = retainRegistration ? """
+                <form id="register" onsubmit="event.preventDefault();fetch('/bad-submit',{method:'POST'})">
+                  <input id="registration-password" type="password" autocomplete="new-password"
+                    oninput="fetch('/wrong-input',{method:'POST'})">
+                  <button type="submit">Register</button>
+                </form>
+                """ : "";
+            var stage = noOp ? """
+                <form id="login" onsubmit="event.preventDefault()">
+                  <input id="login_field" autocomplete="username">
+                  <button type="submit">Next</button>
+                </form>
+                <form id="other-login" onsubmit="event.preventDefault();fetch('/bad-submit',{method:'POST'})">
+                  <input id="unrelated-password" type="password" autocomplete="current-password"
+                    oninput="fetch('/wrong-input',{method:'POST'})">
+                  <button type="submit">Sign in</button>
+                </form>
+                """ : """
+                <script>
+                  function advanceLogin(event) {
+                    event.preventDefault();
+                    window.savedUser = document.querySelector('#login_field').value;
+                    document.querySelector('#login').outerHTML = `<form id="login" onsubmit="finishLogin(event)">
+                      <input id="password" type="password" autocomplete="current-password">
+                      <button type="submit">Sign in</button></form>`;
+                  }
+                  function finishLogin(event) {
+                    event.preventDefault();
+                    if (window.savedUser === 'probe@example.invalid' &&
+                        document.querySelector('#password').value === 'synthetic-review-password')
+                      fetch('/good-submit',{method:'POST'}).then(()=>location.href='/dashboard');
+                    else fetch('/bad-submit',{method:'POST'});
+                  }
+                </script>
+                <form id="login" onsubmit="advanceLogin(event)">
+                  <input id="login_field" autocomplete="username">
+                  <button type="submit">Next</button>
+                </form>
+                """;
+            await route.FulfillAsync(new()
+            {
+                ContentType = "text/html",
+                Body = path == "/login" ? registration + stage : "<main id='signed-in'>Dashboard</main>"
+            });
+        });
+        var page = await context.NewPageAsync();
+        await page.GotoAsync(site + "/login");
+        var workflow = Workflow(page.Url);
+        await using var engine = new AutomationEngine(Vault());
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        var accepted = !noOp;
+        var ok = wrongInputs == 0 && wrongSubmits == 0 &&
+            goodSubmits == (accepted ? 1 : 0) &&
+            result.FinishedCount == (accepted ? 1 : 0) &&
+            result.LoginNeedsAttention.Count == (accepted ? 0 : 1) &&
+            (!noOp || await page.InputValueAsync("#unrelated-password") == "") &&
+            (!retainRegistration || await page.InputValueAsync("#registration-password") == "");
+        Console.WriteLine((ok ? "PASS " : "FAIL ") +
+            $"REVIEW_STAGE_OWNERSHIP registration={retainRegistration} noop={noOp} good={goodSubmits} wrong={wrongSubmits} inputs={wrongInputs} finished={result.FinishedCount} attention={result.LoginNeedsAttention.Count}");
+        return ok;
+    }
+
+    private static async Task<bool> DelayedCombinedAfterUsernameAsync(
+        IPlaywright playwright, bool rememberedStaged)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(3000);
+        var goodSubmits = 0;
+        var wrongSubmits = 0;
+        const string site = "https://review-delayed-combined.test";
+        await context.RouteAsync(site + "/**", async route =>
+        {
+            var path = new Uri(route.Request.Url).AbsolutePath;
+            if (path == "/good-submit") { Interlocked.Increment(ref goodSubmits); await route.FulfillAsync(new() { Status = 204 }); return; }
+            if (path == "/bad-submit") { Interlocked.Increment(ref wrongSubmits); await route.FulfillAsync(new() { Status = 204 }); return; }
+            await route.FulfillAsync(new()
+            {
+                ContentType = "text/html",
+                Body = path == "/login" ? """
+                    <form id="login" onsubmit="event.preventDefault();
+                      if (document.querySelector('#login_field').value === 'probe@example.invalid' &&
+                          document.querySelector('#password').value === 'synthetic-review-password')
+                        fetch('/good-submit',{method:'POST'}).then(()=>location.href='/dashboard');
+                      else fetch('/bad-submit',{method:'POST'})">
+                      <input id="login_field" autocomplete="username"
+                        oninput="setTimeout(()=>document.querySelector('#password').disabled=false, 600)">
+                      <input id="password" type="password" autocomplete="current-password" disabled>
+                      <button type="submit">Sign in</button>
+                    </form>
+                    """ : "<main id='signed-in'>Dashboard</main>"
+            });
+        });
+        var page = await context.NewPageAsync();
+        await page.GotoAsync(site + "/login");
+        var workflow = Workflow(page.Url);
+        workflow.LoginRecipe = rememberedStaged ? LoginRecipe.EmailThenPassword : LoginRecipe.Unknown;
+        await using var engine = new AutomationEngine(Vault());
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        var ok = result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
+            goodSubmits == 1 && wrongSubmits == 0;
+        Console.WriteLine((ok ? "PASS " : "FAIL ") +
+            $"REVIEW_DELAYED_COMBINED rememberedStaged={rememberedStaged} good={goodSubmits} wrong={wrongSubmits} finished={result.FinishedCount} attention={result.LoginNeedsAttention.Count}");
+        return ok;
+    }
 
     private static async Task<bool> PasswordFormsAsync(
         IPlaywright playwright, bool wrongFirst, bool rememberedCustomSelectors, bool customUsername,

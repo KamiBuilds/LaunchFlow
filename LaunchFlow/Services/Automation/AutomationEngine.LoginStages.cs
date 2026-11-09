@@ -212,9 +212,10 @@ public sealed partial class AutomationEngine
             "field => field.isConnected && field.form !== null && field.form.isConnected")
             .ConfigureAwait(false);
         var passwordReady = await PasswordStageReadyAsync(workflow, page, ct).ConfigureAwait(false);
-        var preferContinuation = rememberedRecipe == LoginRecipe.EmailThenPassword && !passwordReady;
 
-        if (hasForm && !preferContinuation)
+        // The current bound form takes precedence over a remembered staged
+        // recipe. FillCredentialAsync owns waiting for its selected password.
+        if (hasForm)
         {
             // A concrete username form always owns its same-page password,
             // irrespective of whether the password CSS was customized.
