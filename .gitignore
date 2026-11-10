@@ -1,11 +1,12 @@
-# Build outputs
+# Build and editor outputs
 **/bin/
 **/obj/
 publish/
 dist/
 .vs/
 .vscode/
-# Sensitive local state
+
+# Credentials, vaults and browser sessions
 *.db
 *.db-wal
 *.db-shm
@@ -14,12 +15,16 @@ dist/
 *.kdbx
 *.launchflow
 *.profile.aes
+*.dpapi
 profiles-v2/
 profiles-sealed/
+
+# Private signing material and local diagnostics
 *.pfx
 *.p12
 *.pem
 *.key
+*.log
 .env
 .env.*
-*.log
+!.env.example
