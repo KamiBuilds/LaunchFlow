@@ -395,7 +395,8 @@ check('SessionEnding += OnWindowsSessionEnding' in exit_window and
       'Windows sign-out rejects failed save before late WPF shutdown')
 check('ExitCleanupWait.RequireAsync(_runner.CloseSessionsAsync()' in exit_lock and
       'ExitCleanupWait.RequireAsync(pendingRun' in exit_lock and
-      'ExitCleanupWait.RequireAsync(_runner.DisposeAsync()' in exit_lifecycle and
+      'ExitCleanupWait.RequireAsync(_finalRunnerDisposeTask' in exit_lifecycle and
+      '_finalRunnerDisposeTask ??= _runner.DisposeAsync().AsTask()' in exit_lifecycle and
       '_profileSealTask ??= Task.Run(ProfileVaultService.SealAll)' in exit_lock,
       'timeouts retain browser/profile shutdown ownership and block exit')
 check('CleanupRetainedSealedDirectories();' in profile_seal and

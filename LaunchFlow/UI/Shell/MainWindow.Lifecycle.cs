@@ -11,6 +11,7 @@ namespace LaunchFlow;
 public partial class MainWindow
 {
     private readonly ExitCompletionGate _exitDrain = new();
+    private Task? _finalRunnerDisposeTask;
 
     private async Task CompleteOwnedExitAsync(bool installer)
     {
@@ -43,7 +44,10 @@ public partial class MainWindow
                         "New unsaved changes appeared. Unlock and save them before exiting.");
 
                 WorkflowStatusLabel.Text = "Closing LaunchFlow — finalizing…";
-                await ExitCleanupWait.RequireAsync(_runner.DisposeAsync().AsTask(),
+                // A timed-out finalizer is still active. Rejoin it on retry,
+                // never start a second disposal or reopen the engine for a run.
+                _finalRunnerDisposeTask ??= _runner.DisposeAsync().AsTask();
+                await ExitCleanupWait.RequireAsync(_finalRunnerDisposeTask,
                     TimeSpan.FromSeconds(15), "Final browser shutdown");
             });
             Close();
@@ -51,6 +55,7 @@ public partial class MainWindow
         catch (Exception ex)
         {
             _exitDrain.RevokePermit();
+            if (_finalRunnerDisposeTask is not null) _vaultCleanupFailed = true;
             _exiting = false;
             IsEnabled = true;
             UpdateRunButtons();

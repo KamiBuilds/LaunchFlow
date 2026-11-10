@@ -250,7 +250,7 @@ public partial class MainWindow
 
     private async Task RunEnabledAsync(bool onlySelected = false, WorkspaceProfile? workspace = null)
     {
-        if (_runUi.IsRunning || _runner.IsRunning || _vaultLockInProgress || _windowsLocked || _teachUi.IsBusy || _exiting || !AutomationAllowed()) return;
+        if (_runUi.IsRunning || _runner.IsRunning || _vaultLockInProgress || _windowsLocked || _teachUi.IsBusy || _exiting || _finalRunnerDisposeTask is not null || !AutomationAllowed()) return;
         // Own the UI operation before any modal prompt can pump another hotkey/tray event.
         var launchRevision = _workspaceRevision;
         if (!_runUi.TryBeginRun(out var runLease)) return;

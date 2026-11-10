@@ -34,6 +34,16 @@ var tests = new List<(string Name, Func<Task> Body)>
             "dirty remembered login could not be retried on exit");
         return Task.CompletedTask;
     }),
+    ("an unfinished final disposal never re-admits browser automation", async () =>
+    {
+        var ui = new UiFixture();
+        ui._finalRunnerDisposeTask = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+        ui.RefreshControls();
+        Check(!ui.RunAllButton.IsEnabled && !ui.RunSelectedButton.IsEnabled && !ui.TeachButton.IsEnabled,
+            "browser controls were enabled while the prior engine is disposing");
+        await ui.Run();
+        Check(ui._runner.RunCalls == 0, "hotkey or direct invocation bypassed disposal gate");
+    }),
     ("run buttons disable throughout a run and recover after cancellation", async () =>
     {
         var ui = new UiFixture();
@@ -747,6 +757,7 @@ partial class UiFixture
     public VisualRecorderWindow? _activeRecorder;
     public Task _vaultLockTask = Task.CompletedTask;
     public Task? _profileSealTask;
+    public Task? _finalRunnerDisposeTask;
     public string? _keepassMasterPassword;
     public readonly Control StopButton = new() { IsEnabled = false }, RunAllButton = new(), RunSelectedButton = new(), RunWorkspaceButton = new(), PreviewWorkspaceButton = new(), TeachButton = new(), RepairButton = new(), MainTabs = new();
     public readonly Control WorkspaceCombo = new(), WorkspaceNameBox = new();

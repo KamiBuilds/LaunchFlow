@@ -266,7 +266,7 @@ public partial class MainWindow : Window
 
     private void UpdateRunButtons()
     {
-        bool available = !_runUi.IsRunning && !_vaultLockInProgress && !_teachUi.IsBusy && !_windowsLocked && !_exiting;
+        bool available = !_runUi.IsRunning && !_vaultLockInProgress && !_teachUi.IsBusy && !_windowsLocked && !_exiting && _finalRunnerDisposeTask is null;
         RunAllButton.IsEnabled = available;
         RunSelectedButton.IsEnabled = available;
         var savedWorkspaceSelected = _configuration is not null &&
