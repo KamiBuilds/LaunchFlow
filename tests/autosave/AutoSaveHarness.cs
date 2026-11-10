@@ -120,7 +120,7 @@ try
         Check(ui.Dirty && ui.Selected!.Enabled && ColdRead().Workflows.Single().Enabled,
             "active automation must not publish a partial editor change");
         ui.CompleteSimulatedRun();
-        Check(!ui.Dirty && !ui.Selected.Enabled && !ColdRead().Workflows.Single().Enabled,
+        Check(!ui.Dirty && !ui.Selected!.Enabled && !ColdRead().Workflows.Single().Enabled,
             "completion must flush the disabled state without manual Save");
     });
     Run("immediate toggle reports storage failure and explicit retry preserves the edit", () =>
