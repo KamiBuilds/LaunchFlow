@@ -168,14 +168,6 @@ check(wizard_named["AutoLoginCheck"].get("IsChecked") == "False" and
       'LoginMode = autoLogin ? "Auto" : "None"' in
       (root / "LaunchFlow/UI/Dialogs/NewWorkflowWindow.xaml.cs").read_text(encoding="utf-8"),
       "new local websites default to explicit No login required without credential prompts")
-check('x:Name="EditSelectedWebsiteLoginButton"' in main_xml and
-      'Click="EditSelectedWebsiteLogin_Click"' in main_xml and
-      main_xml.index('2. Website sign-in') < main_xml.index('3. Recorded actions (optional)') and
-      main_xml.index('Extra tools (only if you need them)') <
-      main_xml.index('x:Name="AdvancedSignInButton"') and
-      'SettingsTabs.SelectedIndex = 1;' in
-      (root / "LaunchFlow/UI/Shell/MainWindow.Navigation.cs").read_text(encoding="utf-8"),
-      "simple per-website sign-in routes to secured password editor; advanced tools are collapsed")
 # Username/email is intentionally readable in the create-website wizard.
 # The password must remain a WPF PasswordBox and must never be read as ordinary Text.
 wizard_code = (root / "LaunchFlow/UI/Dialogs/NewWorkflowWindow.xaml.cs").read_text(encoding="utf-8")
@@ -279,6 +271,14 @@ check('WindowsApplicationControl.CheckRequiredComponents()' in (root / "LaunchFl
       "startup checks blocked DLLs before new vault setup")
 wizard_xml = (root / "LaunchFlow/UI/Dialogs/NewWorkflowWindow.xaml").read_text(encoding="utf-8")
 main_xml = (root / "LaunchFlow/UI/Shell/MainWindow.xaml").read_text(encoding="utf-8")
+check('x:Name="EditSelectedWebsiteLoginButton"' in main_xml and
+      'Click="EditSelectedWebsiteLogin_Click"' in main_xml and
+      main_xml.index('2. Website sign-in') < main_xml.index('3. Recorded actions (optional)') and
+      main_xml.index('Extra tools (only if you need them)') <
+      main_xml.index('x:Name="AdvancedSignInButton"') and
+      'SettingsTabs.SelectedIndex = 1;' in
+      (root / "LaunchFlow/UI/Shell/MainWindow.Navigation.cs").read_text(encoding="utf-8"),
+      "simple per-website sign-in routes to secured password editor; advanced tools are collapsed")
 tutorial_code = (root / "LaunchFlow/UI/Dialogs/TutorialWindow.xaml.cs").read_text(encoding="utf-8")
 check('START HERE · 3 EASY STEPS' in main_xml and
       'Show the step-by-step guide' in main_xml and
