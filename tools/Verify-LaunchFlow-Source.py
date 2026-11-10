@@ -120,7 +120,7 @@ check('VaultBackupService' not in main_code and 'VaultBackupService' not in db,
 check(not (root/'LaunchFlow/Services/VaultBackupService.cs').exists(),
       'unused database backup service removed')
 check('if (_installerShutdownInProgress)' in main_code and
-      'await _runner.CloseSessionsAsync();' in main_code and
+      'ExitCleanupWait.RequireAsync(_runner.CloseSessionsAsync()' in main_code and
       'var wasLoading = _loadingEditor;' in main_code and
       'await CompleteOwnedExitAsync(installer: true)' in main_code and
       'if (_vaultCleanupFailed || _vaultLockInProgress)' in main_code and

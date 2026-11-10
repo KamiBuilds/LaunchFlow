@@ -2,6 +2,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Buffers.Binary;
+using System.Text.RegularExpressions;
 
 namespace LaunchFlow.Services;
 
@@ -23,6 +24,9 @@ public static class ProfileVaultService
         if (!Directory.Exists(ProfilesRoot)) return;
         Directory.CreateDirectory(SealedRoot);
 
+        // Never silently skip plaintext quarantined by an earlier interrupted deletion.
+        // A failed retry prevents a successful lock/exit, without reopening the profile.
+        CleanupRetainedSealedDirectories();
         var failures = new List<Exception>();
         foreach (var dir in Directory.GetDirectories(ProfilesRoot))
         {
@@ -45,6 +49,7 @@ public static class ProfileVaultService
     {
         if (!Directory.Exists(SealedRoot)) return;
         Directory.CreateDirectory(ProfilesRoot);
+        CleanupRetainedSealedDirectories();
 
         var failures = new List<Exception>();
         foreach (var file in Directory.GetFiles(SealedRoot, "*.profile.aes"))
@@ -95,7 +100,9 @@ public static class ProfileVaultService
             File.Move(temp, sealedPath, overwrite: true);
             // Recursive deletion can partially succeed: remove this generation from
             // browser/seal admission atomically before deleting any of its contents.
-            var disposal = Path.Combine(ProfilesRoot, ".sealed-" + Guid.NewGuid().ToString("N"));
+            // Include the workflow identity so a subsequent cleanup retry can
+            // prove the matching authenticated encrypted snapshot exists.
+            var disposal = Path.Combine(ProfilesRoot, ".sealed-" + id + "-" + Guid.NewGuid().ToString("N"));
             Directory.Move(directory, disposal);
             Directory.Delete(disposal, recursive: true);
         }
@@ -105,6 +112,58 @@ public static class ProfileVaultService
             CryptographicOperations.ZeroMemory(plain);
             if (zip.TryGetBuffer(out var buffer)) CryptographicOperations.ZeroMemory(buffer.AsSpan());
             if (File.Exists(temp)) File.Delete(temp);
+        }
+    }
+
+    private static void CleanupRetainedSealedDirectories()
+    {
+        if (!Directory.Exists(ProfilesRoot)) return;
+        var failures = new List<Exception>();
+        foreach (var path in Directory.GetDirectories(ProfilesRoot, ".sealed-*"))
+        {
+            try
+            {
+                var name = Path.GetFileName(path);
+                var match = Regex.Match(name, @"\A\.sealed-([0-9a-f]{32})-[0-9a-f]{32}\z",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                if (!match.Success)
+                    throw new IOException("A legacy unverified plaintext browser-profile quarantine remains. Manual recovery is required before another seal or restore.");
+                if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+                    throw new IOException("Browser-profile quarantine is a filesystem redirect. Manual recovery is required.");
+                var sealedPath = Path.Combine(SealedRoot, match.Groups[1].Value + ".profile.aes");
+                VerifyAuthenticatedSnapshot(sealedPath);
+                Directory.Delete(path, recursive: true);
+            }
+            catch (Exception ex)
+            {
+                CrashLog.Write("ProfileSealCleanup", ex);
+                failures.Add(ex);
+            }
+        }
+        if (failures.Count > 0)
+            throw new AggregateException("Plaintext browser-profile cleanup is still incomplete; no successful profile seal or restore is permitted.", failures);
+    }
+
+    private static void VerifyAuthenticatedSnapshot(string sealedPath)
+    {
+        if (!File.Exists(sealedPath))
+            throw new IOException("The matching encrypted browser-profile snapshot is missing; quarantined plaintext was preserved.");
+        var key = ProfileKey();
+        byte[] encrypted = Array.Empty<byte>();
+        byte[] plain = Array.Empty<byte>();
+        try
+        {
+            encrypted = File.ReadAllBytes(sealedPath);
+            if (!TryDecrypt(encrypted, key, out plain))
+                throw new CryptographicException("The encrypted browser-profile snapshot failed authentication; quarantined plaintext was preserved.");
+            using var zip = new ZipArchive(new MemoryStream(plain, writable: false), ZipArchiveMode.Read);
+            _ = zip.Entries.Count;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(key);
+            CryptographicOperations.ZeroMemory(encrypted);
+            CryptographicOperations.ZeroMemory(plain);
         }
     }
 

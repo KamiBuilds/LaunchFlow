@@ -1,3 +1,11 @@
+## v0.7.61 — P1 exit and profile security stabilization (test candidate)
+
+- Require cleanup of authenticated, workflow-associated plaintext browser-profile quarantines before reporting a successful lock or restore; retain unknown legacy quarantines for manual recovery rather than hiding them.
+- Put time budgets around browser shutdown, run cancellation, final disposal and profile encryption; a timeout blocks exit and never cancels in-flight cleanup or grants a fake success.
+- Veto Windows session ending when editor changes cannot be durably saved, and guard the final shutdown close path against save failures.
+- Repair synthetic installer tests to exercise stale-artifact failure paths without trying to execute placeholder Playwright Node binaries; production Firefox packaging remains unchanged.
+- Preserve encrypted storage layout, release identity and the existing installer AppId. No automatic release.
+
 ## v0.7.60 — Safe exit performance and shutdown visibility (test candidate)
 
 - Skip redundant encrypted configuration writes when an exit or background hide has no unsaved edits; preserve the fail-closed dirty-vault save contract.

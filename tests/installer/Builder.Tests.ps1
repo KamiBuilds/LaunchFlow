@@ -9,6 +9,21 @@ function Test-LaunchFlowBuilder {
     foreach ($file in @('BUILD-INSTALLER.ps1', 'BUILD-UNIVERSAL-INSTALLER.ps1', 'BUILD-PACKAGING-HELPERS.ps1')) {
         Copy-Item -LiteralPath (Join-Path $source $file) -Destination $fixture
     }
+    # The synthetic publish tree contains a text placeholder for node.exe.
+    # Replace only the fixture's Firefox installer, not the production helper;
+    # keep asserting that the real builder invokes the Firefox packaging step.
+    Add-Content -LiteralPath (Join-Path $fixture 'BUILD-PACKAGING-HELPERS.ps1') -Value @'
+function Install-LaunchFlowFirefoxBrowsers {
+    param([string]$PublishDirectory, [string]$DotNetPath)
+    if ($env:LF_TEST_COMPILER_MODE -eq 'publish-failure') {
+        throw 'Fixture Firefox install must not run after a failed publish.'
+    }
+    $root = Join-Path $PublishDirectory 'playwright-browsers/firefox-synthetic/firefox'
+    New-Item -ItemType Directory -Path $root -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $root 'firefox.exe') -Value 'synthetic Firefox artifact'
+    Assert-LaunchFlowFirefoxBrowsers -PublishDirectory $PublishDirectory
+}
+'@
     Set-Content -LiteralPath (Join-Path $fixture 'LaunchFlow/LaunchFlow.csproj') -Value '<Project><PropertyGroup><Version>0.7.19</Version></PropertyGroup></Project>'
     Set-Content -LiteralPath (Join-Path $fixture 'installer/LaunchFlow.iss') -Value '#define AppVersion "0.7.19"'
     Set-Content -LiteralPath (Join-Path $fixture 'tools/Sign-LaunchFlow.ps1') -Value @'
@@ -92,6 +107,7 @@ $global:LASTEXITCODE = 0
                 if ($mode -eq 'success') {
                     & $build
                     if ((Get-Content -LiteralPath $target -Raw).Trim() -cne 'synthetic current artifact') { throw 'Wrong artifact selected.' }
+                    Assert-LaunchFlowFirefoxBrowsers -PublishDirectory (Join-Path $fixture 'publish')
                 }
                 else {
                     $errorMessage = $null

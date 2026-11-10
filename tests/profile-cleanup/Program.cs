@@ -19,12 +19,33 @@ try
     Check(Entries(original).Order().SequenceEqual(new[]{"deleted.txt","locked/retained.txt"}),"published encrypted snapshot is complete before cleanup failure");
     Check(!Directory.Exists(profile),"partially deleted source is never left in the authoritative managed path");
     Check(Directory.EnumerateDirectories(ProfileVaultService.ProfilesRoot,".sealed-*").Count()==1,"failed cleanup remains under reserved disposal ownership");
+    error=null;try{ProfileVaultService.SealAll();}catch(AggregateException ex){error=ex;}
+    Check(error is not null,"retry is blocked while plaintext quarantine cleanup still fails");
+    Check(File.ReadAllBytes(archive).SequenceEqual(original),"rejected retry preserves the original authenticated ciphertext");
+    File.SetUnixFileMode(child,UnixFileMode.UserRead|UnixFileMode.UserWrite|UnixFileMode.UserExecute);
+    var corrupt=(byte[])original.Clone();corrupt[14]^=1;
+    File.WriteAllBytes(archive,corrupt);
+    error=null;try{ProfileVaultService.SealAll();}catch(AggregateException ex){error=ex;}
+    Check(error is not null && Directory.EnumerateDirectories(ProfileVaultService.ProfilesRoot,".sealed-*").Any(),
+        "tampered encrypted snapshot cannot authorize plaintext quarantine deletion");
+    File.WriteAllBytes(archive,original);
     ProfileVaultService.SealAll();
-    Check(File.ReadAllBytes(archive).SequenceEqual(original),"ordinary retry cannot overwrite the complete ciphertext from partial cleanup");
+    Check(!Directory.EnumerateDirectories(ProfileVaultService.ProfilesRoot,".sealed-*").Any(),
+        "authenticated recovery retry removes the plaintext quarantine");
+    Check(File.ReadAllBytes(archive).SequenceEqual(original),"successful retry does not replace the original snapshot");
     ProfileVaultService.UnsealAll();
     Check(File.ReadAllText(Path.Combine(profile,"deleted.txt"))=="must survive deletion failure and retry" && File.ReadAllText(Path.Combine(profile,"locked/retained.txt"))=="permission fault child","restore recovers both files despite retained disposal debris");
     Check(File.ReadAllBytes(archive).SequenceEqual(original),"restore retains exact original ciphertext");
     Check(!Directory.EnumerateFiles(ProfileVaultService.SealedRoot,".sealed-*").Any(),"disposal debris never becomes a sealed profile");
+    var legacy=Path.Combine(ProfileVaultService.ProfilesRoot,".sealed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    Directory.CreateDirectory(legacy);
+    File.WriteAllText(Path.Combine(legacy,"private.txt"),"unverified legacy residue");
+    error=null;try{ProfileVaultService.SealAll();}catch(AggregateException ex){error=ex;}
+    Check(error is not null && File.Exists(Path.Combine(legacy,"private.txt")),
+        "legacy unidentifiable plaintext never becomes a silently successful lock");
+    error=null;try{ProfileVaultService.UnsealAll();}catch(AggregateException ex){error=ex;}
+    Check(error is not null,"legacy quarantine also blocks a false-success restore");
+    Directory.Delete(legacy,true);
     var reserved=Path.Combine(ProfileVaultService.ProfilesRoot,".restore-22222222222222222222222222222222");Directory.CreateDirectory(reserved);File.WriteAllText(Path.Combine(reserved,"partial.txt"),"synthetic crash residue");
     ProfileVaultService.SealAll();
     Check(Directory.Exists(reserved)&&!File.Exists(Path.Combine(ProfileVaultService.SealedRoot,Path.GetFileName(reserved)+".profile.aes")),"reserved restore debris remains quarantined, never reclassified");

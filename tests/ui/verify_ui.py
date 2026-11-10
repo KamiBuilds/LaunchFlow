@@ -383,5 +383,24 @@ check(int(sign_in.get("Height", "0")) >= 340 and
 check('item.Reason.StartsWith("Password stage still visible"' in source and
       'Auto sign-in incomplete' in source,
       "visible password challenges never trigger misleading signed-in confirmation dialogs")
+
+# P1 shutdown gates: early Windows session veto, bounded waits and retained seal ownership.
+exit_lifecycle = (root / 'LaunchFlow/UI/Shell/MainWindow.Lifecycle.cs').read_text(encoding='utf-8')
+exit_lock = (root / 'LaunchFlow/UI/Shell/MainWindow.VaultLocking.cs').read_text(encoding='utf-8')
+exit_window = (root / 'LaunchFlow/UI/Shell/MainWindow.xaml.cs').read_text(encoding='utf-8')
+profile_seal = (root / 'LaunchFlow/Services/Vault/ProfileVaultService.cs').read_text(encoding='utf-8')
+check('SessionEnding += OnWindowsSessionEnding' in exit_window and
+      'if (!CanPersistForWindowsExit()) e.Cancel = true;' in exit_window and
+      'e.Cancel = true;' in exit_window[exit_window.find('private void OnWindowsSessionEnding'):exit_window.find('private void OnClosing')],
+      'Windows sign-out rejects failed save before late WPF shutdown')
+check('ExitCleanupWait.RequireAsync(_runner.CloseSessionsAsync()' in exit_lock and
+      'ExitCleanupWait.RequireAsync(pendingRun' in exit_lock and
+      'ExitCleanupWait.RequireAsync(_runner.DisposeAsync()' in exit_lifecycle and
+      '_profileSealTask ??= Task.Run(ProfileVaultService.SealAll)' in exit_lock,
+      'timeouts retain browser/profile shutdown ownership and block exit')
+check('CleanupRetainedSealedDirectories();' in profile_seal and
+      'VerifyAuthenticatedSnapshot(sealedPath);' in profile_seal,
+      'plaintext quarantine cleanup must authenticate its snapshot before deletion')
+
 print(f"{len(errors)} visual/release contract errors")
 sys.exit(bool(errors))

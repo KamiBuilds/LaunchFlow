@@ -14,6 +14,8 @@
     <Compile Include="ExitSafetyTests.cs" />
     <Compile Include="../../LaunchFlow/Services/Workspaces/ExitCompletionGate.cs" Link="ExitCompletionGate.cs" />
     <Compile Include="ExitCompletionGateTests.cs" />
+    <Compile Include="../../LaunchFlow/Services/Workspaces/ExitCleanupWait.cs" Link="ExitCleanupWait.cs" />
+    <Compile Include="ExitCleanupWaitTests.cs" />
     <Compile Include="../../LaunchFlow/Services/Vault/CredentialDeleteGuard.cs" Link="CredentialDeleteGuard.cs" />
     <Compile Include="../../LaunchFlow/Services/Persistence/ImportConfigurationProjection.cs" Link="ImportConfigurationProjection.cs" />
     <Compile Include="SafetyIntegrationTests.cs" />

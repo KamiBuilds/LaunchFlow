@@ -43,7 +43,8 @@ public partial class MainWindow
                         "New unsaved changes appeared. Unlock and save them before exiting.");
 
                 WorkflowStatusLabel.Text = "Closing LaunchFlow — finalizing…";
-                await _runner.DisposeAsync();
+                await ExitCleanupWait.RequireAsync(_runner.DisposeAsync().AsTask(),
+                    TimeSpan.FromSeconds(15), "Final browser shutdown");
             });
             Close();
         }

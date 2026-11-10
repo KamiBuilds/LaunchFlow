@@ -163,6 +163,7 @@ public partial class MainWindow : Window
         };
         _tray.DoubleClick += (_, _) => Dispatcher.Invoke(ShowFromTray);
         SystemEvents.SessionSwitch += HandleSessionSwitch;
+        System.Windows.Application.Current.SessionEnding += OnWindowsSessionEnding;
         _passwordSessionTimer.Tick += PasswordSessionTimer_Tick;
         _passwordSessionTimer.Start();
         // Auto-save uses a debounced WPF timer and never inspects password fields.
@@ -723,6 +724,21 @@ public partial class MainWindow : Window
         return true;
     }
 
+    private bool CanPersistForWindowsExit() =>
+        !HasPendingEditorDialog && ExitSafety.TryPersistForExit(
+            () => VaultDatabase.Current.IsUnlocked,
+            () => _editorSession.IsDirty,
+            () => SaveAll());
+
+    private void OnWindowsSessionEnding(object sender, SessionEndingCancelEventArgs e)
+    {
+        // SessionEnding is cancelable before WPF begins dispatcher teardown.
+        // The later Closing event may already be too late to save unsaved edits.
+        if (CanPersistForWindowsExit()) return;
+        e.Cancel = true;
+        AppendLog("Windows session shutdown paused: pending edits could not be durably saved.");
+    }
+
     private void OnClosing(object sender, CancelEventArgs e)
     {
         // Explicit exits wait for an owned cleanup permit before WPF can close.
@@ -739,10 +755,11 @@ public partial class MainWindow : Window
             }
             return;
         }
-        // Forced Windows shutdown remains a separate native acceptance boundary.
+        // SessionEnding vetoes unsaved edits before dispatcher shutdown begins.
+        // This late fallback must also refuse to treat a failed save as success.
         if (System.Windows.Application.Current.Dispatcher.HasShutdownStarted)
         {
-            if (VaultDatabase.Current.IsUnlocked) SaveAll();
+            if (!CanPersistForWindowsExit()) e.Cancel = true;
             return;
         }
         if (_exiting)
@@ -800,6 +817,7 @@ public partial class MainWindow : Window
         _shortcuts.UnregisterOnly(handle, HotkeyId);
         _windowSource?.RemoveHook(HotkeyHook);
         SystemEvents.SessionSwitch -= HandleSessionSwitch;
+        System.Windows.Application.Current.SessionEnding -= OnWindowsSessionEnding;
         _passwordSessionTimer.Stop();
         _passwordSessionTimer.Tick -= PasswordSessionTimer_Tick;
         _autoSaveTimer.Stop();

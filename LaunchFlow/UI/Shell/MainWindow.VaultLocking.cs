@@ -37,6 +37,8 @@ public partial class MainWindow
         return completion.Task;
     }
 
+    private Task? _profileSealTask;
+
     private async Task SecureVaultLockCoreAsync(string message)
     {
         _vaultLockInProgress = true;
@@ -59,7 +61,8 @@ public partial class MainWindow
             if (!CloseActiveRecorderForLock()) return;
             LockPasswordManager(message);
             ClearCredentialEditor();
-            try { await _runner.CloseSessionsAsync(); }
+            try { await ExitCleanupWait.RequireAsync(_runner.CloseSessionsAsync(),
+                    TimeSpan.FromSeconds(20), "Browser shutdown"); }
             catch (Exception ex)
             {
                 // A browser can close at the same moment as installer shutdown,
@@ -71,7 +74,8 @@ public partial class MainWindow
                     await Task.Delay(350);
                     try
                     {
-                        await _runner.CloseSessionsAsync();
+                        await ExitCleanupWait.RequireAsync(_runner.CloseSessionsAsync(),
+                            TimeSpan.FromSeconds(20), "Browser shutdown retry");
                         recovered = true;
                     }
                     catch (Exception retryError)
@@ -88,7 +92,16 @@ public partial class MainWindow
                     return; // Never wrap/delete a profile while its browser may still be live.
                 }
             }
-            try { if (pendingRun is not null) await pendingRun; }
+            try
+            {
+                if (pendingRun is not null)
+                    await ExitCleanupWait.RequireAsync(pendingRun, TimeSpan.FromSeconds(12), "Automation cancellation");
+            }
+            catch (InvalidOperationException ex) when (ex.InnerException is TimeoutException)
+            {
+                AppendLog("Automation cancellation is still running; profile sealing and exit remain blocked.");
+                return;
+            }
             catch (Exception ex) { AppendLog("Automation ended during lock: " + ex.GetType().Name); }
             try
             {
@@ -111,9 +124,18 @@ public partial class MainWindow
             if (_configuration.SealBrowserProfilesOnLock)
             {
                 if (_exiting) WorkflowStatusLabel.Text = "Closing LaunchFlow — encrypting browser profiles…";
-                try { await Task.Run(ProfileVaultService.SealAll); }
+                _profileSealTask ??= Task.Run(ProfileVaultService.SealAll);
+                try
+                {
+                    await ExitCleanupWait.RequireAsync(_profileSealTask, TimeSpan.FromSeconds(60),
+                        "Browser-profile encryption and cleanup");
+                    _profileSealTask = null;
+                }
                 catch (Exception ex)
                 {
+                    // A timed-out seal continues under the same task ownership.
+                    // Never start a second seal while the first is still using the directory.
+                    if (_profileSealTask.IsCompleted) _profileSealTask = null;
                     _profileSealFailed = true;
                     if (_installerShutdownInProgress) _installerProfileSealFailed = true;
                     AppendLog("Could not seal browser profiles; source files retained: " + ex.GetType().Name);
