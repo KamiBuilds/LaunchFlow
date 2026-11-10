@@ -129,8 +129,8 @@ public partial class MainWindow : Window
         // Track user-visible website configuration edits without inspecting credential values.
         NameBox.TextChanged += (_, _) => MarkUnsavedChanges();
         StartUrlBox.TextChanged += (_, _) => MarkUnsavedChanges();
-        EnabledCheck.Checked += (_, _) => MarkUnsavedChanges();
-        EnabledCheck.Unchecked += (_, _) => MarkUnsavedChanges();
+        EnabledCheck.Checked += (_, _) => WebsiteEnabledChanged();
+        EnabledCheck.Unchecked += (_, _) => WebsiteEnabledChanged();
         BrowserCombo.SelectionChanged += (_, _) => MarkUnsavedChanges();
         MonitorCombo.SelectionChanged += (_, _) => MarkUnsavedChanges();
         KeepassEntryBox.TextChanged += (_, _) => MarkUnsavedChanges();
@@ -503,18 +503,15 @@ public partial class MainWindow : Window
         return await Dispatcher.InvokeAsync(() =>
         {
             if (!Authorized()) return false;
-            var wasHidden = !IsVisible;
-            if (wasHidden) ShowFromTray();
-            var result = MessageBox.Show(this,
-                $"'{workflow.Name}' needs the password on another website:\n\n{newOrigin}\n\n" +
-                "This is common (company SSO / Cisco / Microsoft / Okta).\n" +
-                "Allow LaunchFlow to type this website's saved password there?\n" +
-                "Only click Yes if you recognize that sign-in page.",
-                "Confirm password website", MessageBoxButton.YesNo, MessageBoxImage.Question,
-                MessageBoxResult.No);
-            if (wasHidden) Hide();
-            // ShowDialog pumps the dispatcher: lock, Stop and machine policy can change.
-            if (result != MessageBoxResult.Yes || !Authorized()) return false;
+            // The browser is a different foreground process. A normal
+            // MessageBox owned by LaunchFlow can hide behind it.
+            // Topmost applies only while this explicit approval dialog is open.
+            var dialog = new PasswordOriginApprovalWindow(workflow.Name, newOrigin);
+            if (IsVisible && WindowState != WindowState.Minimized)
+                dialog.Owner = this;
+            var accepted = dialog.ShowDialog() == true;
+            // ShowDialog pumps the dispatcher: lock, Stop and policy may change.
+            if (!accepted || !Authorized()) return false;
             bool added = !workflow.ApprovedLoginOrigins.Contains(newOrigin);
             var previousPasswordOrigin = workflow.PasswordCredentialOrigin;
             if (added) workflow.ApprovedLoginOrigins.Add(newOrigin);

@@ -28,19 +28,33 @@ public partial class MainWindow
 
     private void AutoSaveTimer_Tick(object? sender, EventArgs e)
     {
+        PersistPendingAutoSave(immediate: false);
+    }
+
+    private void WebsiteEnabledChanged()
+    {
+        if (_loadingEditor || _configuration is null || _exiting) return;
+        MarkUnsavedChanges();
+        // Enable/disable is a one-click decision. Commit it before moving to
+        // a different website without requiring the separate Save button.
+        PersistPendingAutoSave(immediate: true);
+    }
+
+    private void PersistPendingAutoSave(bool immediate)
+    {
         if (!_autoSaveSchedule.HasPendingChanges)
         {
             _autoSaveTimer.Stop();
             return;
         }
         bool canSave =
-            !_autoSaving && !_vaultLockInProgress && !_windowsLocked && !_exiting &&
+            !_autoSaving && !_saveInProgress && !_vaultLockInProgress && !_windowsLocked && !_exiting &&
             !_loadingEditor && !_installerShutdownInProgress && !HasPendingEditorDialog &&
             !_runUi.IsRunning && VaultDatabase.Current.IsUnlocked;
-        if (!_autoSaveSchedule.Ready(DateTimeOffset.UtcNow, canSave)) return;
+        if (!canSave || (!immediate && !_autoSaveSchedule.Ready(DateTimeOffset.UtcNow, canSave))) return;
 
-        // Mark before SaveAll, because its synchronous WPF setters may fire
-        // nested events; avoid duplicate saves and keep the UI responsive.
+        // Immediate toggles and regular debounced edits use the same encrypted
+        // transaction, ownership checks and failed-write policy.
         _autoSaveSchedule.Attempted();
         _autoSaving = true;
         SaveStatusLabel.Text = "Saving…";
@@ -53,8 +67,7 @@ public partial class MainWindow
         finally
         {
             _autoSaving = false;
-            // Reentrant edits during an in-flight save re-arm the timer.
-            // A failed write stays dirty without retrying continuously.
+            // A later edit re-arms the timer; a failed write never loops.
             if (_autoSaveSchedule.CanAttempt) _autoSaveTimer.Start();
             else _autoSaveTimer.Stop();
         }

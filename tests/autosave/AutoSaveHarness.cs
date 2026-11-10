@@ -99,6 +99,36 @@ try
               read.Workflows.Single().Steps.Single().AdditionalSettings!.ContainsKey("future_action"),
               "unknown configuration/action fields were discarded");
     });
+    Run("enable toggle immediately commits outstanding edits and persists on cold reopen", () =>
+    {
+        var ui = new AutoSaveFixture();
+        var changedEnabled = !ui.Selected!.Enabled;
+        ui.NameBox.Text = "ThousandEyes renamed before toggle";
+        Check(ui.Dirty && ui.TimerEnabled, "original edit must be pending");
+        ui.EnabledCheck.IsChecked = changedEnabled;
+        Check(!ui.Dirty && !ui.TimerEnabled &&
+              ui.SaveStatusLabel.Text == "All changes saved",
+              "enable toggle did not flush its edit and the earlier name change");
+        var saved = ColdRead().Workflows.Single();
+        Check(saved.Enabled == changedEnabled && saved.Name == "ThousandEyes renamed before toggle",
+              "toggle and website name were not committed together to encrypted SQLite");
+        ui.EnabledCheck.IsChecked = !changedEnabled;
+        Check(!ui.Dirty && ColdRead().Workflows.Single().Enabled == !changedEnabled,
+              "re-enabling the site still needs a manual Save before testing");
+    });
+    Run("locked vault leaves toggle pending until a safe encrypted save", () =>
+    {
+        var ui = new AutoSaveFixture();
+        var changedEnabled = !ui.Selected!.Enabled;
+        vault.Lock();
+        ui.EnabledCheck.IsChecked = changedEnabled;
+        Check(ui.Dirty && ui.TimerEnabled && ui.SaveStatusLabel.Text != "All changes saved",
+              "locked toggle incorrectly claimed that the change was persisted");
+        Check(vault.Unlock(password), "toggle fixture unlock failed");
+        WaitAndTick(ui);
+        Check(!ui.Dirty && ColdRead().Workflows.Single().Enabled == changedEnabled,
+              "pending enabled change was not saved after vault unlock");
+    });
     Run("invalid late input keeps earlier edits out of live and cold vault", () =>
     {
         var ui = new AutoSaveFixture();

@@ -97,6 +97,24 @@ check('StartAutoSave();' in source and
       '_store.SaveDurable(_configuration)' in source and
       'private bool _autoSaving' in autosave_code,
       "auto-save schedules edits and confirms encrypted durable writes")
+check('EnabledCheck.Checked += (_, _) => WebsiteEnabledChanged()' in source and
+      'EnabledCheck.Unchecked += (_, _) => WebsiteEnabledChanged()' in source and
+      'PersistPendingAutoSave(immediate: true)' in autosave_code and
+      '!_runUi.IsRunning && VaultDatabase.Current.IsUnlocked' in autosave_code,
+      "website enabled toggle commits immediately unless blocked by vault/run safety")
+approval = ET.parse(root / "LaunchFlow/UI/Dialogs/PasswordOriginApprovalWindow.xaml").getroot()
+approval_markup = ET.tostring(approval, encoding="unicode")
+approval_code = (root / "LaunchFlow/UI/Dialogs/PasswordOriginApprovalWindow.xaml.cs").read_text(encoding="utf-8")
+check(approval.get("Topmost") == "True" and
+      approval.get("ShowActivated") == "True" and
+      approval.get("WindowStartupLocation") == "CenterScreen" and
+      'IsDefault="True"' in approval_markup and
+      'IsCancel="True"' in approval_markup and
+      'new PasswordOriginApprovalWindow(workflow.Name, newOrigin)' in source and
+      'if (!accepted || !Authorized()) return false;' in source and
+      'DialogResult = true;' in approval_code and
+      'Activate();' in approval_code,
+      "password-origin approval is foreground, opt-in and revalidated after modal consent")
 check('UsernameBox.TextChanged += (_, _) => MarkUnsavedChanges()' not in source and
       'PasswordInput.PasswordChanged += (_, _) => MarkUnsavedChanges()' not in source and
       'public void Attempted()' in autosave_schedule and

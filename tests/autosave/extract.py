@@ -30,7 +30,8 @@ events = mainwindow[events_start:events_end]
 
 methods = [
     extract_method(autosave, name) for name in
-    ("StartAutoSave", "AutoSaveTimer_Tick", "ShowAutoSaveFailed")
+    ("StartAutoSave", "AutoSaveTimer_Tick", "WebsiteEnabledChanged",
+     "PersistPendingAutoSave", "ShowAutoSaveFailed")
 ] + [
     extract_method(persistence, name) for name in
     ("CaptureConfigurationDraft", "MarkUnsavedChanges", "MarkSaved", "SaveAll")
