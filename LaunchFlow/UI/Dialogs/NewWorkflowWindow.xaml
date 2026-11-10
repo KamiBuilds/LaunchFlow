@@ -20,7 +20,22 @@
       <StackPanel>
         <TextBlock Text="1. Which website?" Foreground="#6EE7D7" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
         <TextBlock Text="Website name" FontWeight="SemiBold"/>
-        <TextBox x:Name="NameBox" Margin="0,6,0,12" Text="My website"/>
+        <Grid Margin="0,6,0,12">
+          <TextBox x:Name="NameBox" Text=""/>
+          <TextBlock x:Name="NamePlaceholder" Text="My website" Margin="12,0,0,0"
+                     VerticalAlignment="Center" Foreground="#708A9C" IsHitTestVisible="False">
+            <TextBlock.Style>
+              <Style TargetType="TextBlock">
+                <Setter Property="Visibility" Value="Collapsed"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding Text, ElementName=NameBox}" Value="">
+                    <Setter Property="Visibility" Value="Visible"/>
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </TextBlock.Style>
+          </TextBlock>
+        </Grid>
         <TextBlock Text="Website address (URL)" FontWeight="SemiBold"/>
         <DockPanel Margin="0,6,0,6">
           <Button DockPanel.Dock="Right" Content="Paste URL" Click="PasteUrl_Click"

@@ -149,6 +149,20 @@ check(extractor.count('read_text(encoding="utf-8")') >= 2 and
       "Windows UI harness reads and writes explicit UTF-8")
 wizard = ET.parse(root / "LaunchFlow/UI/Dialogs/NewWorkflowWindow.xaml").getroot()
 wizard_named = {el.get(xns + "Name"): el for el in wizard.iter() if el.get(xns + "Name")}
+name_box = wizard_named["NameBox"]
+name_hint = wizard_named["NamePlaceholder"]
+name_hint_style = name_hint.find(presentation + "TextBlock.Style/" + presentation + "Style")
+name_hint_trigger = name_hint_style.find(presentation + "Style.Triggers/" + presentation + "DataTrigger")
+check(name_box.get("Text") == "" and
+      name_hint.get("Text") == "My website" and
+      name_hint.get("IsHitTestVisible") == "False" and
+      name_hint_trigger.get("Binding") == "{Binding Text, ElementName=NameBox}" and
+      name_hint_trigger.get("Value") == "" and
+      any(setter.get("Property") == "Visibility" and setter.get("Value") == "Visible"
+          for setter in name_hint_trigger) and
+      'string.IsNullOrWhiteSpace(NameBox.Text) ? "My website" : NameBox.Text.Trim()' in
+      (root / "LaunchFlow/UI/Dialogs/NewWorkflowWindow.xaml.cs").read_text(encoding="utf-8"),
+      "new website name starts empty and its visual hint cannot become part of typed text")
 check(wizard_named["AutoLoginCheck"].get("IsChecked") == "False" and
       "No login required" in ET.tostring(wizard, encoding="unicode") and
       'LoginMode = autoLogin ? "Auto" : "None"' in
