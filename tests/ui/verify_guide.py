@@ -23,7 +23,7 @@ WINDOWS = {
 }
 ROUTES = {
     "BASIC": ("First website — no saved login", 13, "basic"),
-    "WORK": ("Work sites (ThousandEyes / GitHub / npm)", 5, "worksites"),
+    "WORK": ("Work sites (email + password)", 5, "worksites"),
     "PASS": ("Saved website login — optional", 9, "passwords"),
     "RECORD": ("Record clicks — optional", 6, "recording"),
     "STARTUP": ("Startup and background — optional", 5, "startup"),
@@ -44,7 +44,7 @@ FIELD_LABELS = {
     ("MainWindow", "LoginModeCombo"): "How should LaunchFlow sign in?",
     ("MainWindow", "UsernameBox"): "New username or email (leave blank to keep current)",
     ("MainWindow", "PasswordInput"): "New password (leave blank to keep current)",
-    ("VisualRecorderWindow", "StepList"): "Recorded actions",
+    ("VisualRecorderWindow", "StepList"): "Your recorded clicks",
 }
 
 

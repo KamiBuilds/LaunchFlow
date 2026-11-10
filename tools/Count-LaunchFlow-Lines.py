@@ -15,7 +15,16 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "dist"
-VERSION = "0.7.46"
+
+def _project_version() -> str:
+    import re
+    text = (ROOT / "LaunchFlow" / "LaunchFlow.csproj").read_text(encoding="utf-8")
+    match = re.search(r"<Version>(\d+\.\d+\.\d+)</Version>", text)
+    if not match:
+        raise SystemExit("LaunchFlow.csproj is missing a three-part <Version>.")
+    return match.group(1)
+
+VERSION = _project_version()
 SOURCE_EXTS = {".cs", ".xaml", ".py", ".ps1", ".cmd", ".sh", ".iss", ".csproj", ".props", ".yml", ".yaml"}
 COMMENT_PREFIXES = ("//", "#", "<!--", "/*", "*", "--")
 TRACKED = subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT).split(b"\0")

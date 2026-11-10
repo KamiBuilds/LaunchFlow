@@ -11,8 +11,8 @@ public partial class SignInDecisionWindow : Window
     public SignInDecisionWindow(string website, string reason)
     {
         InitializeComponent();
-        WebsiteTitle.Text = "Check sign-in for " + website;
-        ReasonText.Text = reason + "\n\nConfirmation applies only to this open browser session. It never saves a password, disables MFA or approves another website.";
+        WebsiteTitle.Text = website;
+        ReasonText.Text = reason + "\n\nSaying “I’m signed in” only applies to this open browser window. It doesn’t save a password or change your settings.";
         Loaded += (_, _) => DarkWindowChrome.Apply(this);
     }
 

@@ -1,4 +1,4 @@
-#define AppVersion "0.7.64"
+#define AppVersion "0.7.71"
 #define AppName "LaunchFlow"
 [Setup]
 AppId={{9B1A7C15-093B-4DBA-BDA7-BF43A2E67320}
@@ -117,8 +117,11 @@ begin
   end;
 
   // Wait for the original process to fully release the mutex, including
-  // browser-close and encrypted-profile cleanup. No force-kill fallback.
-  for Attempt := 1 to 120 do
+  // browser-close (20s + 20s retry), cancel/Teach drain (~12s each),
+  // encrypted-profile sealing (60s), and final dispose (~15s). Owned exit
+  // budgets can exceed 2 minutes; 960 × 250ms = 240s covers that with margin.
+  // No force-kill fallback.
+  for Attempt := 1 to 960 do
   begin
     if not CheckForMutexes('LaunchFlow.Windows.SingleInstance') then Exit;
     Sleep(250);

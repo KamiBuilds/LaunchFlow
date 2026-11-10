@@ -101,7 +101,15 @@ public partial class MainWindow
         var originalVaultSession = admittedVaultSession ?? VaultDatabase.Current.SessionGeneration;
         if (!RecorderOwnerIsCurrent(workflow, originalConfiguration, originalRevision,
                 originalVaultSession)) return;
-        var recorder = new VisualRecorderWindow(page) { Owner = this };
+        // No Owner: keep the main window independently scrollable while recording.
+        // Position beside LaunchFlow so the pulsing RECORDING panel stays visible.
+        var recorder = new VisualRecorderWindow(page);
+        try
+        {
+            recorder.Left = Left + Math.Max(40, ActualWidth - recorder.Width - 24);
+            recorder.Top = Top + 48;
+        }
+        catch { /* placement is best-effort before first measure */ }
         var saved = await ShowRecorderAsync(recorder);
         // Teach uses a modeless window. Return LaunchFlow to the foreground
         // after its capture window closes, without leaving the user hunting in the taskbar.
@@ -168,7 +176,7 @@ public partial class MainWindow
         {
             if (!_vaultLockInProgress && !_windowsLocked && !_exiting)
                 MessageBox.Show(this, MakeBrowserFriendlyMessage(ex),
-                    "Teach clicks", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    "Record clicks", MessageBoxButton.OK, MessageBoxImage.Information);
             else AppendLog("Teach was stopped during vault/session cleanup: " + ex.GetType().Name);
         }
         finally
@@ -186,7 +194,7 @@ public partial class MainWindow
         {
             if (!_vaultLockInProgress && !_windowsLocked && !_exiting)
                 MessageBox.Show(this, MakeBrowserFriendlyMessage(ex),
-                    "Repair login", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    "Fix sign-in", MessageBoxButton.OK, MessageBoxImage.Information);
             else AppendLog("Repair was stopped during vault/session cleanup: " + ex.GetType().Name);
         }
     }
@@ -324,13 +332,14 @@ public partial class MainWindow
                 var singleFailure = result.FailedCount == 1 && result.Failures.Count == 1
                     ? result.Failures[0].Reason : null;
                 WorkflowStatusLabel.Text = RunOutcomeSummary.StatusLine(
-                    LocalizationService.Text("Failed", _configuration.UiLanguage), result.FailedCount,
-                    LocalizationService.Text("Sign-in needs attention", _configuration.UiLanguage), attention.Count,
+                    "Couldn't finish", result.FailedCount,
+                    "Needs a moment", attention.Count,
                     steps.Count);
+                // Calm tray note — never Warning/Error balloons for ordinary run misses.
                 NotifyTray("LaunchFlow",
                     RunOutcomeSummary.TrayDetail(result.FailedCount, attention.Count, steps.Count,
                         attention.Count == 1 ? attention[0].Reason : null, singleFailure),
-                    Forms.ToolTipIcon.Warning);
+                    Forms.ToolTipIcon.None);
                 if (!string.IsNullOrWhiteSpace(singleFailure))
                 {
                     AppendLog(singleFailure);
@@ -344,19 +353,20 @@ public partial class MainWindow
             {
                 WorkflowStatusLabel.Text = LocalizationService.Text("Finished", _configuration.UiLanguage);
                 NotifyTray("LaunchFlow",
-                    RunOutcomeSummary.FinishedTray(toRun.Count, toRun.Count == 1 ? toRun[0].Name : null));
+                    RunOutcomeSummary.FinishedTray(toRun.Count, toRun.Count == 1 ? toRun[0].Name : null),
+                    Forms.ToolTipIcon.None);
             }
         }
         catch (OperationCanceledException)
         {
             WorkflowStatusLabel.Text = LocalizationService.Text("Stopped", _configuration.UiLanguage);
-            if (!_exiting) NotifyTray("LaunchFlow", "Workflow run was stopped.");
+            if (!_exiting) NotifyTray("LaunchFlow", "Stopped — nothing else changed.", Forms.ToolTipIcon.None);
         }
         catch (Exception ex)
         {
-            WorkflowStatusLabel.Text = LocalizationService.Text("Failed", _configuration.UiLanguage);
+            WorkflowStatusLabel.Text = "Couldn't finish this time";
             AppendLog("Run error: " + ex.GetType().Name);
-            if (!_exiting) NotifyTray("LaunchFlow", "A workflow failed. Review the website settings and try again.", Forms.ToolTipIcon.Error);
+            if (!_exiting) NotifyTray("LaunchFlow", "Couldn't finish this time. Your sites and passwords are fine — try again when ready.", Forms.ToolTipIcon.None);
         }
         finally
         {
@@ -372,11 +382,10 @@ public partial class MainWindow
     private Task OfferRepairForLoginAttentionAsync(
         IReadOnlyList<AutomationEngine.LoginAttention> items)
     {
-        // Informational sign-in assistance is modeless. A completed run must
-        // release its UI state immediately, even if the user leaves a prompt
-        // open while reviewing other websites.
-        ShowFromTray();
-        MainTabs.SelectedIndex = 0;
+        // Quiet help only — never yank the app out of the tray or stack scary
+        // modals. Status + an optional small modeless note is enough.
+        if (MainTabs.SelectedIndex != 0 && IsVisible && WindowState != WindowState.Minimized)
+            MainTabs.SelectedIndex = 0;
         foreach (var item in items)
         {
             if (_vaultLockInProgress || _windowsLocked || _exiting ||
@@ -386,22 +395,23 @@ public partial class MainWindow
             if (workflow is null) continue;
             // A visible password challenge is evidence sign-in is incomplete,
             // not a question about whether the user reached the dashboard.
-            // Leave the browser available and report the failure without a
-            // misleading "I'm signed in" confirmation popup.
             if (item.Reason.StartsWith("Password stage still visible", StringComparison.Ordinal))
             {
                 WorkflowList.SelectedItem = workflow;
-                WorkflowStatusLabel.Text = "Auto sign-in incomplete · Password step still open";
-                AppendLog($"Auto sign-in for '{workflow.Name}' stopped at the password step. Use Repair login if needed.");
+                WorkflowStatusLabel.Text = "Password step is open in the browser · finish there when ready";
+                AppendLog($"Sign-in for '{workflow.Name}' paused at the password step.");
                 continue;
             }
             if (_openSignInDecisions.TryGetValue(workflow.Id, out var existing))
             {
-                // Do not flood the user with identical windows on repeated runs.
-                existing.Activate();
+                // Already offered once this session — don't shove another window forward.
                 continue;
             }
             WorkflowList.SelectedItem = workflow;
+            WorkflowStatusLabel.Text = "Almost there · check the browser for " + workflow.Name;
+            AppendLog($"Sign-in for '{workflow.Name}': {item.Reason}");
+            // Only show the quiet helper if LaunchFlow is already on screen.
+            if (!IsVisible || WindowState == WindowState.Minimized) continue;
             var capturedRevision = _workspaceRevision;
             var dialog = new SignInDecisionWindow(item.WorkflowName, item.Reason) { Owner = this };
             _openSignInDecisions.Add(workflow.Id, dialog);
@@ -410,17 +420,13 @@ public partial class MainWindow
                 if (_openSignInDecisions.TryGetValue(workflow.Id, out var current) &&
                     ReferenceEquals(current, dialog))
                     _openSignInDecisions.Remove(workflow.Id);
-                // Closed fires synchronously; async work continues without
-                // disabling the main window or showing any modal repair dialog.
                 _ = ApplyModelessSignInDecisionAsync(workflow, capturedRevision, dialog.Choice);
             };
             try { dialog.Show(); }
             catch
             {
                 _openSignInDecisions.Remove(workflow.Id);
-                // A failed optional notice cannot turn a finished run into
-                // an unsafe retry or leak private Playwright error details.
-                AppendLog("Could not display the sign-in assistance window.");
+                AppendLog("Sign-in tip window could not open — status bar still has the note.");
             }
         }
         return Task.CompletedTask;
@@ -479,16 +485,15 @@ public partial class MainWindow
                 _runUi.Cancellation?.IsCancellationRequested == true) return;
             var workflow = _configuration.Workflows.FirstOrDefault(w => w.Id == item.WorkflowId);
             if (workflow is null) continue;
-            ShowFromTray();
-            MainTabs.SelectedIndex = 0;
-            WorkflowList.SelectedItem = workflow;
-            // Step failures are informational; never disable the workspace
-            // behind a modal alert after the automation has already stopped.
-            AppendLog($"Action {item.StepType} needs review for '{item.WorkflowName}'. Later steps were not run.");
-            // Preserve the final run's failed/sign-in/step counts in the status bar.
-            NotifyTray("Workflow steps need review",
-                $"Review the {item.StepType} action for '{item.WorkflowName}' using Edit or Teach.",
-                Forms.ToolTipIcon.Warning);
+            if (IsVisible && WindowState != WindowState.Minimized)
+            {
+                MainTabs.SelectedIndex = 0;
+                WorkflowList.SelectedItem = workflow;
+            }
+            AppendLog($"A recorded {item.StepType} for '{item.WorkflowName}' needs a quick look. Later steps were skipped.");
+            NotifyTray("LaunchFlow",
+                $"A recorded step for “{item.WorkflowName}” needs a quick look when you’re ready.",
+                Forms.ToolTipIcon.None);
         }
     }
 
@@ -541,28 +546,31 @@ public partial class MainWindow
 
         ShowFromTray();
         var choice = MessageBox.Show(this,
-            "This website is set to Firefox, but regular Mozilla Firefox cannot be automated " +
-            "(the window opens and never goes to the site).\n\n" +
-            "Yes = open Browser readiness to install Firefox automation (consent download).\n" +
-            "No = cancel this run — switch the website to Edge or Chrome for Auto sign-in.",
-            "Firefox needs automation support",
+            "This website is set to Firefox, and LaunchFlow’s Firefox isn’t installed yet.\n\n" +
+            "Yes = open Browsers on this PC to install it.\n" +
+            "No = cancel for now — you can switch this website to Edge, Chrome, Brave, Opera, or Vivaldi anytime.",
+            "Firefox setup",
             MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
+            MessageBoxImage.Information);
         if (choice == MessageBoxResult.Yes)
             new BrowserSetupWindow { Owner = this }.ShowDialog();
-        AppendLog("Run cancelled: Firefox automation is not installed. Use Browser readiness or Edge/Chrome.");
+        // Only mark Failed when automation Firefox is still missing. A successful
+        // consent install must let Teach/Repair/Run continue without a false cancel.
+        if (PlaywrightFirefoxSupport.IsAutomationFirefoxInstalled())
+            return true;
+        AppendLog("Run cancelled: Firefox is not ready. Use Check browsers on this PC, or pick Edge/Chrome/Brave/Opera/Vivaldi.");
         WorkflowStatusLabel.Text = LocalizationService.Text("Failed", _configuration.UiLanguage);
-        return PlaywrightFirefoxSupport.IsAutomationFirefoxInstalled();
+        return false;
     }
 
     private void OfferFirefoxAutomationHelp(string reason)
     {
         ShowFromTray();
         var choice = MessageBox.Show(this,
-            reason + "\n\nOpen Browser readiness to install Firefox automation, or switch this website to Edge/Chrome?",
-            "Firefox Auto sign-in",
+            reason + "\n\nWant to open Browsers on this PC to install Firefox, or switch this website to Edge, Chrome, Brave, Opera, or Vivaldi?",
+            "Firefox setup",
             MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
+            MessageBoxImage.Information);
         if (choice == MessageBoxResult.Yes)
             new BrowserSetupWindow { Owner = this }.ShowDialog();
     }

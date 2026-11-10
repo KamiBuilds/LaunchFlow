@@ -24,24 +24,24 @@ public static class LoginRecipe
 
     public static string DisplayName(string? value) => Normalize(value) switch
     {
-        SamePage => "Username + password on one page (GitHub-style)",
-        EmailThenPassword => "Email first, then password (ThousandEyes-style)",
-        CustomSelectors => "Custom field selectors (own site / npm-style)",
-        Sso => "Browser SSO (no saved password fill)",
-        _ => "Not learned yet — LaunchFlow will detect on the next successful Auto sign-in"
+        SamePage => "Email and password on the same page",
+        EmailThenPassword => "Email first, then password on the next step",
+        CustomSelectors => "Special field layout (set with help if needed)",
+        Sso => "Company / browser sign-in (you finish in the browser)",
+        _ => "Not learned yet — LaunchFlow remembers it after a successful sign-in"
     };
 
     public static string FailureMessage(string? code) => code switch
     {
-        "mfa" => "MFA / verification challenge detected — finish it yourself in the browser.",
-        "sso-button" => "Only an SSO button is available — use Sign-in mode: Browser SSO, or finish sign-in manually.",
-        "ambiguous-submit" => "Multiple Log In / Next buttons — LaunchFlow will not guess. Click the right one, then Fix sign-in if needed.",
-        "no-form" => "Could not identify the sign-in form safely — continue in the browser.",
-        "no-password-stage" => "Password stage never appeared after email/username — check the site or use Fix sign-in.",
-        "no-password-field" => "Password field not found — complete sign-in in the browser or set custom selectors.",
-        "missing-secrets" => "Missing saved username/password — update Settings → Passwords.",
-        "no-final-submit" => "No owned final Sign In action could be verified — finish in the browser.",
-        "origin-denied" => "Password page is on another site — approve that login origin, or sign in manually.",
-        _ => "Could not verify sign-in — check the browser (MFA, SSO, or a changed login page)."
+        "mfa" => "The site asked for an extra code or approval — finish that in the browser window, then you’re done.",
+        "sso-button" => "This site wants company sign-in — finish in the browser, or pick “Company / browser sign-in” for this website.",
+        "ambiguous-submit" => "A few Sign in buttons are on the page — click the right one in the browser. Use Fix sign-in later if you want LaunchFlow to learn it.",
+        "no-form" => "The sign-in boxes weren’t ready yet — check the browser window, or try Test again in a moment.",
+        "no-password-stage" => "The password step didn’t show up yet — check the browser, or try again in a moment.",
+        "no-password-field" => "Couldn’t spot the password box this time — finish in the browser, or try Test again.",
+        "missing-secrets" => "No saved username/password for this site yet — add them under Settings → Passwords when you’re ready.",
+        "no-final-submit" => "Sign-in may need one more click in the browser window.",
+        "origin-denied" => "Password continues on another page — approve that once when asked, or finish sign-in in the browser.",
+        _ => "Sign-in didn’t finish this time — peek at the browser window. Nothing else is broken."
     };
 }

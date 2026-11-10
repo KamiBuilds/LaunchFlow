@@ -225,32 +225,44 @@ public sealed class TeachRecorder : IDisposable
                             if (type is "Click" or "Press" &&
                                 !string.Equals(session._lastCapturedPageUrl, source.Frame.Url, StringComparison.Ordinal))
                             {
-                                // The init script survives same-tab navigation. If the
-                                // user crosses to another website, automatically teach
-                                // the new location before recording clicks there.
-                                // Never serialize query strings, fragments or embedded
-                                // credentials: OAuth callbacks often contain secrets.
+                                // Same-tab URL changes must keep recording. Auto-Navigate is taught
+                                // only from Click after a clean path-only move (same site or new site).
+                                // Query/fragment/userinfo never enter taught Navigate; those still
+                                // update the last URL so the click/key registers.
                                 if (!Uri.TryCreate(session._lastCapturedPageUrl, UriKind.Absolute, out var previous) ||
                                     !Uri.TryCreate(source.Frame.Url, UriKind.Absolute, out var next) ||
-                                    next.Scheme is not ("https" or "http") ||
-                                    !string.IsNullOrEmpty(next.Query) ||
-                                    !string.IsNullOrEmpty(next.Fragment) ||
-                                    !string.IsNullOrEmpty(next.UserInfo))
+                                    next.Scheme is not ("https" or "http"))
                                 {
                                     session._unsupportedTargetObserved = true;
                                     return "null";
                                 }
-                                if (!string.Equals(previous.Authority, next.Authority, StringComparison.OrdinalIgnoreCase) ||
-                                    !string.Equals(previous.Scheme, next.Scheme, StringComparison.OrdinalIgnoreCase))
+                                var crossedSite = !string.Equals(previous.Authority, next.Authority, StringComparison.OrdinalIgnoreCase) ||
+                                    !string.Equals(previous.Scheme, next.Scheme, StringComparison.OrdinalIgnoreCase);
+                                var safeToTeachNavigate = string.IsNullOrEmpty(next.Query) &&
+                                    string.IsNullOrEmpty(next.Fragment) &&
+                                    string.IsNullOrEmpty(next.UserInfo);
+                                if (crossedSite && !safeToTeachNavigate)
+                                {
+                                    // Cross-site OAuth-style URLs: never teach Navigate with secrets.
+                                    session._unsupportedTargetObserved = true;
+                                    return "null";
+                                }
+                                if (type == "Click" && safeToTeachNavigate)
                                 {
                                     var safeUrl = next.GetLeftPart(UriPartial.Path);
-                                    if (safeUrl.Length > 2048 || !session.CheckPolicy(source.Frame.Url, safeUrl))
+                                    var previousPath = previous.GetLeftPart(UriPartial.Path);
+                                    if (!string.Equals(previousPath, safeUrl, StringComparison.OrdinalIgnoreCase) &&
+                                        safeUrl.Length <= 2048 &&
+                                        session.CheckPolicy(source.Frame.Url, safeUrl))
+                                    {
+                                        session._acceptedUrls.Add(source.Frame.Url);
+                                        session._pendingActions.Enqueue(("Navigate", safeUrl));
+                                    }
+                                    else if (crossedSite)
                                     {
                                         session._unsupportedTargetObserved = true;
                                         return "null";
                                     }
-                                    session._acceptedUrls.Add(source.Frame.Url);
-                                    session._pendingActions.Enqueue(("Navigate", safeUrl));
                                 }
                                 session._lastCapturedPageUrl = source.Frame.Url;
                             }

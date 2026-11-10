@@ -24,6 +24,26 @@ $expected = '(?m)^#define AppVersion "' + [regex]::Escape($projectVersion) + '"\
 if ($projectVersion -cnotmatch '\A(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\z' -or $issText -notmatch $expected) {
     throw 'LaunchFlow application and Windows Setup versions are inconsistent.'
 }
+$appInfo = Get-Content (Join-Path $PSScriptRoot 'LaunchFlow\Services\Platform\AppInfo.cs') -Raw
+$readme = Get-Content (Join-Path $PSScriptRoot 'README.md') -Raw
+$changelog = Get-Content (Join-Path $PSScriptRoot 'CHANGELOG.md') -Raw
+if ($appInfo -notmatch [regex]::Escape('return v is null ? "' + $projectVersion + '"')) {
+    throw 'AppInfo display-version fallback does not match LaunchFlow.csproj.'
+}
+if ($readme -notmatch [regex]::Escape("Current build: **v$projectVersion**")) {
+    throw 'README current-build line does not match LaunchFlow.csproj.'
+}
+if ($changelog -notmatch ('(?m)^#+ v' + [regex]::Escape($projectVersion) + '\b')) {
+    throw 'CHANGELOG is missing a top-level entry for the current LaunchFlow.csproj version.'
+}
+# Setup exit wait must cover owned browser-close + seal budgets (~139s worst case).
+if ($issText -notmatch '(?m)for Attempt := 1 to (\d+) do') {
+    throw 'installer/LaunchFlow.iss is missing the mutex wait loop for --exit-for-install.'
+}
+$attemptMax = [int]$Matches[1]
+if ($attemptMax -lt 960) {
+    throw "installer exit wait attempts ($attemptMax) are below the 960 × 250ms (240s) seal/close budget."
+}
 $installer = Get-LaunchFlowSetupPath -Root $PSScriptRoot -Version $projectVersion
 
 # The distribution gate runs before any published output is removed or replaced.

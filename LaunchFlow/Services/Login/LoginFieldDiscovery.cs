@@ -15,6 +15,14 @@ public static class LoginFieldDiscovery
     public const string StandardUsernameSelector = LoginFieldDefaults.UsernameSelector;
     public const string StandardPasswordSelector = LoginFieldDefaults.PasswordSelector;
 
+    /// <summary>Pre-identity expansion default still stored on many website rows.</summary>
+    public const string LegacyUsernameSelector =
+        "input[type='email'], input[name*='user' i], input[name*='email' i], #username, #email";
+
+    /// <summary>Pre-secret expansion default still stored on many website rows.</summary>
+    public const string LegacyPasswordSelector =
+        "input[type='password'], #password";
+
     /// <summary>
     /// True when both selectors still use built-in defaults (legacy combined gate).
     /// Prefer the username/password-specific helpers for fill decisions.
@@ -26,11 +34,13 @@ public static class LoginFieldDiscovery
         UsesAutomaticUsernameDiscovery(workflow.UsernameSelector);
 
     public static bool UsesAutomaticUsernameDiscovery(string? usernameSelector) =>
-        string.Equals(usernameSelector, StandardUsernameSelector, StringComparison.Ordinal);
+        string.Equals(usernameSelector, StandardUsernameSelector, StringComparison.Ordinal) ||
+        string.Equals(usernameSelector, LegacyUsernameSelector, StringComparison.Ordinal);
 
     public static bool UsesAutomaticPasswordDiscovery(WebsiteWorkflow workflow) =>
         UsesAutomaticPasswordDiscovery(workflow.PasswordSelector);
 
     public static bool UsesAutomaticPasswordDiscovery(string? passwordSelector) =>
-        string.Equals(passwordSelector, StandardPasswordSelector, StringComparison.Ordinal);
+        string.Equals(passwordSelector, StandardPasswordSelector, StringComparison.Ordinal) ||
+        string.Equals(passwordSelector, LegacyPasswordSelector, StringComparison.Ordinal);
 }

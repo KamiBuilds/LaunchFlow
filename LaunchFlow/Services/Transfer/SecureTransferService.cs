@@ -40,7 +40,9 @@ public static class SecureTransferService
         policy.RequireTransfer();
         // Snapshot import replaces credentials even when the package contains none.
         policy.RequireCredentialStorage();
-        return PortableExport.Read(path, exportPassword);
+        var package = PortableExport.Read(path, exportPassword);
+        PortableImportValidation.Validate(package);
+        return package;
     }
 
     private static Configuration Clone(Configuration source) =>

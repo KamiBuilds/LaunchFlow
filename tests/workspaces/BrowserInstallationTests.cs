@@ -78,7 +78,7 @@ internal static class BrowserInstallationTests
                 if (Directory.Exists(temp)) Directory.Delete(temp, recursive: true);
             }
         });
-        yield return ("Edge and Chrome Auto use discovered installed executables when present", () =>
+        yield return ("Chromium-family browsers use discovered installed executables when present", () =>
         {
             var report = BrowserEnvironment.Probe();
             if (report.Edge)
@@ -91,9 +91,44 @@ internal static class BrowserInstallationTests
                       System.IO.File.Exists(report.ChromePath) &&
                       BrowserInstallations.IsInstalled("Chrome"),
                     "found Chrome must resolve to an existing chrome.exe");
-            Check(report.Summary.Contains("Found on this PC", StringComparison.Ordinal) ||
+            if (report.Brave)
+                Check(!string.IsNullOrWhiteSpace(report.BravePath) &&
+                      System.IO.File.Exists(report.BravePath) &&
+                      BrowserInstallations.IsInstalled("Brave"),
+                    "found Brave must resolve to an existing brave.exe");
+            if (report.Opera)
+                Check(!string.IsNullOrWhiteSpace(report.OperaPath) &&
+                      System.IO.File.Exists(report.OperaPath) &&
+                      BrowserInstallations.IsInstalled("Opera"),
+                    "found Opera must resolve to an existing opera.exe");
+            if (report.OperaGx)
+                Check(!string.IsNullOrWhiteSpace(report.OperaGxPath) &&
+                      System.IO.File.Exists(report.OperaGxPath) &&
+                      report.OperaGxPath.Contains("Opera GX", StringComparison.OrdinalIgnoreCase) &&
+                      BrowserInstallations.IsInstalled("Opera GX"),
+                    "found Opera GX must resolve under an Opera GX folder");
+            if (report.Vivaldi)
+                Check(!string.IsNullOrWhiteSpace(report.VivaldiPath) &&
+                      System.IO.File.Exists(report.VivaldiPath) &&
+                      BrowserInstallations.IsInstalled("Vivaldi"),
+                    "found Vivaldi must resolve to an existing vivaldi.exe");
+            Check(report.Summary.Contains("Ready on this PC", StringComparison.Ordinal) ||
                   report.Summary.Contains("No supported browser", StringComparison.Ordinal),
                 "probe summary must describe discovery results");
+        });
+        yield return ("Opera and Opera GX stay distinct when both folders exist", () =>
+        {
+            var opera = BrowserInstallations.FindExecutable("Opera");
+            var gx = BrowserInstallations.FindExecutable("Opera GX");
+            if (opera is not null && gx is not null)
+            {
+                Check(!string.Equals(opera, gx, StringComparison.OrdinalIgnoreCase),
+                    "Opera and Opera GX must not resolve to the same executable path");
+                Check(gx.Contains("Opera GX", StringComparison.OrdinalIgnoreCase),
+                    "Opera GX path must include the Opera GX folder name");
+                Check(!opera.Contains("Opera GX", StringComparison.OrdinalIgnoreCase),
+                    "regular Opera must not resolve inside the Opera GX folder");
+            }
         });
     }
 

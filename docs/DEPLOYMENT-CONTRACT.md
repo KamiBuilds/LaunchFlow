@@ -1,6 +1,6 @@
 # LaunchFlow — generic Windows deployment contract (candidate)
 
-This is a **platform-independent packaging input**, not an organization-specific procedure or a claim of enterprise approval. Product version: **0.7.46**. The versioned, self-contained **offline** `LaunchFlow-Setup-v0.7.46-x64.exe` is the packaging endpoint. `LaunchFlow-Universal-Installer.exe` is an optional interactive download bootstrapper, **not** an approved headless deployment endpoint.
+This is a **platform-independent packaging input**, not an organization-specific procedure or a claim of enterprise approval. Product version: **0.7.65**. The versioned, self-contained **offline** `LaunchFlow-Setup-v0.7.65-x64.exe` is the packaging endpoint. `LaunchFlow-Universal-Installer.exe` is an optional interactive download bootstrapper (separate **1.0.0** assembly identity), **not** an approved headless deployment endpoint.
 
 ## Supported scope and identity
 
@@ -15,12 +15,12 @@ This is a **platform-independent packaging input**, not an organization-specific
 Use a process wrapper that **waits** for the child and captures its actual exit code. Illustrative command executed in the intended user's supported context:
 
 ```cmd
-LaunchFlow-Setup-v0.7.46-x64.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG
+LaunchFlow-Setup-v0.7.65-x64.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG
 ```
 
 - `/VERYSILENT` skips wizard/progress UI. `/SUPPRESSMSGBOXES` suppresses Inno-owned eligible messages, but not arbitrary Pascal-script `MsgBox`; LaunchFlow explicitly guards its custom setup errors with `WizardSilent`.
-- `/NORESTART` prevents automated reboot. A silent run never starts LaunchFlow afterward (`skipifsilent` on the post-install Run entry). Browser installation/download and vault creation are **not** performed silently.
-- Existing LaunchFlow is asked to exit via `--exit-for-install`. If it does not complete safe shutdown (including vault/profile handling), installation aborts; no force kill.
+- `/NORESTART` prevents automated reboot. A silent run never starts LaunchFlow afterward (`skipifsilent` on the post-install Run entry). Host Edge/Chrome remain external; Setup already packages Playwright Firefox under `playwright-browsers/` for Firefox Auto. Consent reinstall of Firefox automation and vault creation are **not** performed silently.
+- Existing LaunchFlow is asked to exit via `--exit-for-install`. Setup waits up to ~240s for safe shutdown (browser close + encrypted-profile seal). If that does not complete, installation aborts; no force kill.
 - For a custom log location, provide a writable `/LOG="path"`; do not depend on parsing Inno's prose log for detection. An invalid path or framework startup error may have vendor-specific behavior that needs native verification.
 - Inno documents setup exit codes **0** (completed/help) and **nonzero** (not completed); a wrapper must verify installed identity/version on top of the code, preserve unknown codes, and not interpret a launch as completed installation. No MSI-specific exit-code mapping is implied.
 
@@ -41,7 +41,7 @@ unins000.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
 
 Detection must check **HKCU** under `Software\Microsoft\Windows\CurrentVersion\Uninstall\{9B1A7C15-093B-4DBA-BDA7-BF43A2E67320}_is1`, its `DisplayVersion` and `InstallLocation`, and that the expected `LaunchFlow.exe` actually exists in the intended user context. A SYSTEM-process HKCU cannot prove the interactive user's installation. The installer is x64; verify runtime architecture and installed build identity independently.
 
-The builder publishes self-contained .NET 8 WPF files and bundled Playwright driver/native dependencies. A **supported browser** remains an external, user-consented/policy-controlled dependency. The installer does not install a browser, developer SDK, Inno Setup or signing tools on the target.
+The builder publishes self-contained .NET 8 WPF files, the bundled Playwright driver/native dependencies, and Playwright Firefox under `playwright-browsers/` for Firefox Auto. **Edge and Chrome** remain host-installed, user/policy-controlled dependencies. Setup does not install a developer SDK, Inno Setup or signing tools on the target. Stock mozilla.org Firefox is never used for Auto.
 
 Artifact SHA-256 must be recorded after signing/packaging. A checksum alone does not establish publisher trust. Optional publisher signing and application-control policy authorization remain packaging/security decisions; neither guarantees a controlled workstation will permit every DLL, driver or browser child process.
 

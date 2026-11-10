@@ -34,6 +34,8 @@ public sealed partial class AutomationEngine : IAsyncDisposable
     public event Action<string>? OnLog;
     public enum WorkflowRunState { Running, WaitingForSignIn, Completed, Failed, Cancelled }
     public event Action<string, WorkflowRunState>? OnWorkflowStatus;
+    /// <summary>Short plain-language phase for the status strip (browser open, waiting for boxes, …).</summary>
+    public event Action<string, string>? OnStatusMessage;
     public Func<WebsiteWorkflow, string, Task<bool>>? ApproveLoginOriginAsync { get; set; }
 
     public bool IsRunning
@@ -343,6 +345,12 @@ public sealed partial class AutomationEngine : IAsyncDisposable
         string.Equals(a.TrimEnd('/'), b.TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
 
     private void Log(string message) => OnLog?.Invoke(message);
+
+    private void Progress(WebsiteWorkflow workflow, string message)
+    {
+        Log(message);
+        OnStatusMessage?.Invoke(workflow.Name, message);
+    }
     private void Status(WebsiteWorkflow workflow, WorkflowRunState state) => OnWorkflowStatus?.Invoke(workflow.Name, state);
 
     private static string PublicStepType(string type) => type is "Navigate" or "Click" or "Fill" or "Press" or "Wait" or "AssertVisible" or "WaitForURL"

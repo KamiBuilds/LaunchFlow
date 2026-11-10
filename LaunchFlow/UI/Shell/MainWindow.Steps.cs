@@ -27,6 +27,14 @@ public partial class MainWindow
         if (_editorSession.Selection is null) return;
         StepList.ItemsSource = null;
         StepList.ItemsSource = _editorSession.Selection.Steps;
+        UpdateEmptyStepsHint();
+    }
+
+    private void UpdateEmptyStepsHint()
+    {
+        if (EmptyStepsHint is null || StepList is null) return;
+        var count = _editorSession.Selection?.Steps.Count ?? 0;
+        EmptyStepsHint.Visibility = count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void SelectAllSteps_Click(object sender, RoutedEventArgs e)

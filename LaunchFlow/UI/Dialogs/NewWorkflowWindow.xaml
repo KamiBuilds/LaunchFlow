@@ -81,13 +81,13 @@
         <TextBlock Text="Browser" FontWeight="SemiBold"/>
         <ComboBox x:Name="BrowserCombo" Margin="0,6,0,12"
                   DropDownOpened="BrowserCombo_DropDownOpened"
-                  ToolTip="Shows installed browsers. The default browser opens without automatic login."/>
+                  ToolTip="Shows browsers found on this PC. Default browser only opens the page — it cannot sign in for you."/>
         <TextBlock Text="Screen (monitor)" FontWeight="SemiBold"/>
         <ComboBox x:Name="MonitorCombo" Margin="0,6,0,12"/>
         <TextBlock Text="3. Sign in (optional)" Foreground="#6EE7D7" FontSize="16"
                    FontWeight="SemiBold" Margin="0,0,0,9"/>
         <CheckBox x:Name="AutoLoginCheck" Content="Sign in automatically using email and password" IsChecked="False"/>
-        <TextBlock Text="No login required? Leave this unchecked. Otherwise enter your email and password. LaunchFlow finds sign-in fields automatically, including two-step login pages. No recording or advanced settings needed."
+        <TextBlock Text="No login required? Leave this unchecked. Otherwise enter your email and password — LaunchFlow finds the boxes itself, whether they are on one page or email-then-password. You do not need to record anything."
                    TextWrapping="Wrap" Foreground="#B4CCDB" FontSize="11" Margin="0,5,0,9"/>
         <StackPanel>
           <StackPanel.Style>

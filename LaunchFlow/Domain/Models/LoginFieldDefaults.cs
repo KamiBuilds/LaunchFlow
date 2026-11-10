@@ -7,10 +7,11 @@ namespace LaunchFlow.Models;
 public static class LoginFieldDefaults
 {
     public const string UsernameSelector =
-        "input[type='email'], input[name*='user' i], input[name*='email' i], #username, #email";
+        "input[type='email'], input[name*='user' i], input[name*='email' i], input[name*='identity' i], " +
+        "#username, #email, #identity, input[name='identity' i]";
 
     public const string PasswordSelector =
-        "input[type='password'], #password";
+        "input[type='password'], #password, input[name='secret' i], #secret";
 
     // Includes common SPA login buttons (ThousandEyes uses type=button#submit-button).
     public const string SubmitSelector =

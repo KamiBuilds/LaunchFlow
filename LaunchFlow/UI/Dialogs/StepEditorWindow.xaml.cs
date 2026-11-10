@@ -41,7 +41,7 @@ public partial class StepEditorWindow : Window
         Title = T("Workflow step");
         Heading.Text = T("Workflow step");
         TypeLabel.Text = T("Type");
-        TargetLabel.Text = T("Target (URL, CSS selector, key, or milliseconds)");
+        TargetLabel.Text = T("What to use (web address, recorded click, key, or wait time)");
         ValueLabel.Text = T("Value (for Fill)");
         DescriptionLabel.Text = T("Description (optional)");
         SecretsWarning.Text = T("Never store passwords or access tokens as Fill values. Use the Passwords tab.");

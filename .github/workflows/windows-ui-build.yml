@@ -102,7 +102,7 @@ jobs:
           path: |
             dist/LaunchFlow-Setup-v${{ env.LF_VERSION }}-x64.exe
             dist/UI-SHA256SUMS.txt
-            dist/LaunchFlow-v0.7.46-file-lines.csv
-            dist/LaunchFlow-v0.7.46-file-lines.md
+            dist/LaunchFlow-v${{ env.LF_VERSION }}-file-lines.csv
+            dist/LaunchFlow-v${{ env.LF_VERSION }}-file-lines.md
           if-no-files-found: error
           retention-days: 7

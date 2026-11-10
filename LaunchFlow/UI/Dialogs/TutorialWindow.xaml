@@ -34,7 +34,7 @@
                 AutomationProperties.Name="Choose getting started topic"
                 SelectionChanged="Route_SelectionChanged">
         <ComboBoxItem Content="First website (no saved login)" Tag="basic" IsSelected="True"/>
-        <ComboBoxItem x:Name="WorksitesRouteItem" Content="Work sites (ThousandEyes / GitHub / npm)" Tag="worksites"/>
+        <ComboBoxItem x:Name="WorksitesRouteItem" Content="Work sites (email + password)" Tag="worksites"/>
         <ComboBoxItem x:Name="PasswordsRouteItem" Content="Saved website login (optional)" Tag="passwords"/>
         <ComboBoxItem x:Name="RecordingRouteItem" Content="Record clicks (optional)" Tag="recording"/>
         <ComboBoxItem x:Name="StartupRouteItem" Content="Startup and background (optional)" Tag="startup"/>

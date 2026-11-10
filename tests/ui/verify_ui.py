@@ -215,8 +215,20 @@ check('EXIT_FOR_INSTALL' in app_source and 'RequestShutdownForInstallAsync()' in
 iss_source = (root / "installer/LaunchFlow.iss").read_text(encoding="utf-8")
 check('function InitializeSetup(): Boolean;' in iss_source and
       "CheckForMutexes('LaunchFlow.Windows.SingleInstance')" in iss_source and
-      "'--exit-for-install'" in iss_source and 'Sleep(250)' in iss_source,
-      "installer waits for graceful exit and retains mutex protection")
+      "'--exit-for-install'" in iss_source and 'Sleep(250)' in iss_source and
+      'for Attempt := 1 to 960 do' in iss_source,
+      "installer waits up to 240s for graceful exit and retains mutex protection")
+exec_source = (root / "LaunchFlow/UI/Shell/MainWindow.Execution.cs").read_text(encoding="utf-8")
+firefox_ready_fn = exec_source.split("private bool EnsureFirefoxAutomationReady", 1)[1].split(
+    "private void OfferFirefoxAutomationHelp", 1)[0]
+check("if (PlaywrightFirefoxSupport.IsAutomationFirefoxInstalled())" in firefox_ready_fn and
+      "return true;" in firefox_ready_fn and
+      firefox_ready_fn.index("return true;") <
+      firefox_ready_fn.index("Run cancelled: Firefox is not ready") and
+      "WorkflowStatusLabel.Text = LocalizationService.Text(\"Failed\"" in firefox_ready_fn and
+      firefox_ready_fn.index("return true;") <
+      firefox_ready_fn.index("WorkflowStatusLabel.Text = LocalizationService.Text(\"Failed\""),
+      "Firefox readiness consent success does not mark the run Failed before continuing")
 style = (root / "LaunchFlow/App.xaml").read_text(encoding="utf-8")
 check('SelectionBoxItemTemplate' in style and 'PART_Popup' in style
       and 'ItemsPresenter' in style,
@@ -232,7 +244,7 @@ check(browser_setup.get("ResizeMode") == "CanResize" and
       all(setup_names[name].get("TextWrapping") == "Wrap" for name in
           ("ReadinessText", "DetailText", "FirefoxStatusText")) and
       setup_names["BrowserCheckAgainButton"].get("Content") == "Scan again",
-      "browser readiness dialog resizes and scrolls long discovery paths without clipping controls")
+      "browsers dialog resizes and scrolls long discovery paths without clipping controls")
 firefox_support = (root / "LaunchFlow/Services/Browser/PlaywrightFirefoxSupport.cs").read_text(encoding="utf-8")
 check('ResolveLaunchBrowsersPath(' in firefox_support and
       'DefaultMsPlaywrightCachePath()' in firefox_support and
@@ -248,11 +260,15 @@ check('ObserveLoginCompletionAsync' in "\n".join(p.read_text(encoding="utf-8") f
       'var wasLoading = _loadingEditor;' in source and
       'CloseSessionsRetry' in source,
       "sign-in verification and safe installer cleanup recovery remain wired")
+teach_recorder = (root / "LaunchFlow/Services/Teach/TeachRecorder.cs").read_text(encoding="utf-8")
 check('SignInDecisionWindow.Decision.Confirmed' in source and
       (root / "LaunchFlow/UI/Dialogs/SignInDecisionWindow.xaml").is_file() and
       'ConfirmSignedInAsync' in "\n".join(p.read_text(encoding="utf-8") for p in sorted((root / "LaunchFlow/Services/Automation").glob("AutomationEngine*.cs"))) and
-      'session._pendingActions.Enqueue(("Navigate", safeUrl))' in (root / "LaunchFlow/Services/Teach/TeachRecorder.cs").read_text(encoding="utf-8"),
-      "human sign-in confirmation and automatic cross-site Teach navigation are connected")
+      'session._pendingActions.Enqueue(("Navigate", safeUrl))' in teach_recorder and
+      'safeToTeachNavigate' in teach_recorder and
+      'crossedSite' in teach_recorder and
+      'GetLeftPart(UriPartial.Path)' in teach_recorder,
+      "human sign-in confirmation and automatic cross-site Teach navigation keep same-site clicks")
 check('dialog.Show();' in source and
       'ApplyModelessSignInDecisionAsync' in source and
       'decision.ShowDialog();' not in source and
@@ -261,38 +277,57 @@ check('dialog.Show();' in source and
       "noncritical windows remain modeless while dedicated authorization prompts stay gated")
 check('CredentialDeleteGuard.IsCurrent(' in source and
       'ImportConfigurationProjection.ForThisDevice(' in source and
+      'PortableImportValidation.Validate(package)' in
+      (root / "LaunchFlow/Services/Transfer/SecureTransferService.cs").read_text(encoding="utf-8") and
+      'RequireHttpUrl(' in
+      (root / "LaunchFlow/Services/Transfer/PortableImportValidation.cs").read_text(encoding="utf-8") and
+      'recorded actions cannot carry typed values' in
+      (root / "LaunchFlow/Services/Transfer/PortableImportValidation.cs").read_text(encoding="utf-8") and
+      'KeePassDatabasePath = null' in
+      (root / "LaunchFlow/Services/Persistence/ImportConfigurationProjection.cs").read_text(encoding="utf-8") and
+      'DisplayLabel' in
+      (root / "LaunchFlow/Domain/Models/WorkflowStep.cs").read_text(encoding="utf-8") and
+      'DisplayMemberPath="DisplayLabel"' in
+      (root / "LaunchFlow/UI/Shell/MainWindow.xaml").read_text(encoding="utf-8") and
+      'safeToTeachNavigate' in
+      (root / "LaunchFlow/Services/Teach/TeachRecorder.cs").read_text(encoding="utf-8") and
+      'Unsupported vault table identifier' in
+      (root / "LaunchFlow/Services/Vault/VaultDatabase.cs").read_text(encoding="utf-8") and
       'VaultDatabase.Current.ReplaceSnapshot(projected, imported.Credentials, capturedSession)' in source and
       '_configuration = projected;' in source and
       'SealProfilesCheck.IsChecked = _configuration.SealBrowserProfilesOnLock;' in source and
       'KeePassDbBox.Text = _configuration.KeePassDatabasePath ?? "";' in source,
-      "safe deletion and full imported configuration projection remain wired to storage and UI")
+      "safe deletion, import validation and projected configuration remain wired to storage and UI")
 check('WindowsApplicationControl.CheckRequiredComponents()' in (root / "LaunchFlow/App.xaml.cs").read_text(encoding="utf-8") and
       'Microsoft.Data.Sqlite' in (root / "LaunchFlow/Services/Workspaces/WindowsApplicationControl.cs").read_text(encoding="utf-8"),
       "startup checks blocked DLLs before new vault setup")
 wizard_xml = (root / "LaunchFlow/UI/Dialogs/NewWorkflowWindow.xaml").read_text(encoding="utf-8")
 main_xml = (root / "LaunchFlow/UI/Shell/MainWindow.xaml").read_text(encoding="utf-8")
 main_ui_tree = ET.parse(root / "LaunchFlow/UI/Shell/MainWindow.xaml").getroot()
-extra_tools = [node for node in main_ui_tree.iter()
-               if node.tag.endswith("}Expander") and
-               node.get("Header") == "Extra tools (only if you need them)"]
-check(len(extra_tools) == 1 and len(extra_tools[0]) == 1 and
-      extra_tools[0][0].tag.endswith("}StackPanel"),
-      "collapsed advanced tools have one WPF content child and compile cleanly")
+check('x:Name="EmptyStepsHint"' in main_xml and
+      'No clicks yet. Press' in main_xml and
+      'UpdateEmptyStepsHint()' in
+      (root / "LaunchFlow/UI/Shell/MainWindow.Steps.cs").read_text(encoding="utf-8") and
+      'ControlTemplate TargetType="ListBox"' in
+      (root / "LaunchFlow/App.xaml").read_text(encoding="utf-8"),
+      "empty click list has a dark placeholder instead of a blank white box")
 check('x:Name="EditSelectedWebsiteLoginButton"' in main_xml and
       'Click="EditSelectedWebsiteLogin_Click"' in main_xml and
-      main_xml.index('2. Website sign-in') < main_xml.index('3. Recorded actions (optional)') and
-      main_xml.index('Extra tools (only if you need them)') <
-      main_xml.index('x:Name="AdvancedSignInButton"') and
+      main_xml.index('2. Website sign-in') < main_xml.index('3. Clicks after sign-in') and
+      'Content="Select all"' in main_xml and
+      'Content="Delete selected"' in main_xml and
+      'Visibility="Collapsed"' in main_xml and
+      'Header="Special help"' in main_xml and
       'SettingsTabs.SelectedIndex = 1;' in
       (root / "LaunchFlow/UI/Shell/MainWindow.Navigation.cs").read_text(encoding="utf-8"),
-      "simple per-website sign-in routes to secured password editor; advanced tools are collapsed")
+      "website sign-in stays simple; record tools and delete are visible; Special help is hidden")
 tutorial_code = (root / "LaunchFlow/UI/Dialogs/TutorialWindow.xaml.cs").read_text(encoding="utf-8")
 check('START HERE · 3 EASY STEPS' in main_xml and
       'Show the step-by-step guide' in main_xml and
-      '3. Recorded actions (optional)' in main_xml and
-      'Extra tools (only if you need them)' in main_xml and
+      '3. Clicks after sign-in' in main_xml and
+      'Content="Select all"' in main_xml and
       'x:Name="TeachButton"' in main_xml and 'x:Name="RepairButton"' in main_xml,
-      "Websites screen provides beginner steps and retains optional advanced actions")
+      "Websites screen provides beginner steps with visible record/edit tools")
 check('1. Which website?' in wizard_xml and
       '2. Where should it open?' in wizard_xml and
       '3. Sign in (optional)' in wizard_xml and
@@ -311,13 +346,14 @@ check('new("BASIC-02", "Open website setup"' in tutorial_code and
 check('Text="No websites yet"' in main_xml and
       'Choose exactly which website account to edit' in main_xml and
       'How should LaunchFlow sign in?' in main_xml and
-      'Click="OpenWebsiteAdvancedSignIn_Click"' in main_xml and
+      'x:Name="AdvancedSignInButton"' in main_xml and
+      'Visibility="Collapsed"' in main_xml and
       'SelectionChanged="SettingsTabs_SelectionChanged"' in main_xml and
       'Older workspace groups' in main_xml and
       'WebsiteLoginMode.UsesSavedPassword' in source and
       'WebsiteNextStepGuidance.ForCreatedWebsite' in source and
       named['AutoLoginCheck'].get('Visibility') == 'Collapsed',
-      "website-focused UI, one sign-in mode and Settings category navigation are present")
+      "website-focused UI hides Special CSS help from normal users")
 # Settings owns the password editor; the main header must not duplicate it.
 presentation_ns = "{http://schemas.microsoft.com/winfx/2006/xaml/presentation}"
 main_tab_headers = [item.get("Header") for item in named["MainTabs"] if item.tag == presentation_ns + "TabItem"]
@@ -355,13 +391,18 @@ check('new TutorialWindow { Owner = this }.ShowDialog()' not in source and
       "Help is interactive and provides a privacy-safe visual example")
 recorder = ET.parse(root / "LaunchFlow/UI/Dialogs/VisualRecorderWindow.xaml").getroot()
 recorder_xml = ET.tostring(recorder, encoding="unicode")
+recorder_raw = (root / "LaunchFlow/UI/Dialogs/VisualRecorderWindow.xaml").read_text(encoding="utf-8")
 recorder_source = (root / "LaunchFlow/UI/Dialogs/VisualRecorderWindow.xaml.cs").read_text(encoding="utf-8")
 check('SelectionMode="Extended"' in recorder_xml and
       'Click="SelectAll_Click"' in recorder_xml and
       'Click="EditSelected_Click"' in recorder_xml and
       'Click="QuickWait_Click"' in recorder_xml and
-      'DrainActions()' in recorder_source,
-      "Recorder supports multi-select, safe recorded keys, editing and page waits")
+      'Text="RECORDING"' in recorder_raw and
+      'x:Name="RecordingBanner"' in recorder_raw and
+      'More options (optional)' not in recorder_raw and
+      'DrainActions()' in recorder_source and
+      'StartRecordingPulse()' in recorder_source,
+      "Recorder shows a live RECORDING cue with visible select/delete tools")
 check('SelectionMode="Extended"' in ET.tostring(ui, encoding="unicode") and
       'Click="SelectAllSteps_Click"' in ET.tostring(ui, encoding="unicode") and
       'Click="QuickWaitStep_Click"' in ET.tostring(ui, encoding="unicode") and
@@ -421,14 +462,16 @@ check("https://api.github.com/repos/KamiBuilds/LaunchFlow/releases/latest" in in
       "updater still targets published stable GitHub releases")
 sign_in = ET.parse(root / "LaunchFlow/UI/Dialogs/SignInDecisionWindow.xaml").getroot()
 sign_in_markup = ET.tostring(sign_in, encoding="unicode")
-check(int(sign_in.get("Height", "0")) >= 340 and
+check(int(sign_in.get("Height", "0")) >= 280 and
       "VerticalScrollBarVisibility=\"Auto\"" in sign_in_markup and
       'x:Name="ReasonText"' not in sign_in_markup and
       "ReasonText" in sign_in_markup and
-      "Not now" in sign_in_markup and "Repair login" in sign_in_markup,
+      "OK, later" in sign_in_markup and "Fix sign-in" in sign_in_markup and
+      'Title="Quick check"' in sign_in_markup,
       "sign-in assistance window has enough height, a scrolling reason and visible actions")
 check('item.Reason.StartsWith("Password stage still visible"' in source and
-      'Auto sign-in incomplete' in source,
+      'Password step is open in the browser' in source and
+      'ShowFromTray()' not in source[source.find('OfferRepairForLoginAttentionAsync'):source.find('ApplyModelessSignInDecisionAsync')],
       "visible password challenges never trigger misleading signed-in confirmation dialogs")
 
 # P1 shutdown gates: early Windows session veto, bounded waits and retained seal ownership.

@@ -26,10 +26,10 @@ After unlocking, click Getting started. This modeless guide does not click, save
    - **Where:** Add a website - LaunchFlow → 1. Which website?. Look for **Website address (URL)**.
    - **You should see:** The address box shows https://example.com. This is an open-only example, not a login test account.
    - **Can't find it?** Include https:// for this example. Paste URL is an alternative; do not change advanced connection and port settings.
-5. **Choose a browser** (BASIC-05): Open Browser and select an installed supported browser.
+5. **Choose a browser** (BASIC-05): Open Browser and pick one LaunchFlow found on this PC (Edge, Chrome, Brave, Opera, Opera GX, Vivaldi, or Firefox when ready).
    - **Where:** Add a website - LaunchFlow → 2. Where should it open?. Look for **Browser**.
    - **You should see:** Browser shows the browser you chose.
-   - **Can't find it?** Available browsers depend on this PC. Default browser can open a page but is not equivalent to a supported automation browser. Browser readiness can help if nothing compatible is installed.
+   - **Can't find it?** Default browser only opens the page — it cannot sign in for you. If the list is empty, open Settings → Check browsers on this PC.
 6. **Choose a screen** (BASIC-06): Choose your desired display in Screen (monitor).
    - **Where:** Add a website - LaunchFlow → 2. Where should it open?. Look for **Screen (monitor)**.
    - **You should see:** Screen (monitor) shows your selected display.
@@ -63,28 +63,28 @@ After unlocking, click Getting started. This modeless guide does not click, save
    - **You should see:** The application acknowledges a successful durable save, or shows a failure to correct.
    - **Can't find it?** Only press this if you have changes to keep. If saving fails or the vault is locked, leave edits pending and retry after resolving the cause.
 
-## Work sites (ThousandEyes / GitHub / npm)
+## Work sites (email + password)
 
 1. **Open Websites** (WORK-01): Select Websites at the top of LaunchFlow.
    - **Where:** LaunchFlow → Top navigation. Look for **Websites**.
    - **You should see:** Your website list is visible.
    - **Can't find it?** If Settings is selected, click Websites in the top navigation.
-2. **ThousandEyes-style login** (WORK-02): Add your ThousandEyes website. Choose Saved password (Auto). Save your email and password under Settings → Passwords. Click Test this site — LaunchFlow fills email, then password.
+2. **Email first, then password** (WORK-02): Add a site where you type email, click Next, then type the password. Save the login under Settings → Passwords. Choose automatic sign-in. Click Test this site.
    - **Where:** LaunchFlow → Websites · selected site. Look for **▶ Test this site**.
-   - **You should see:** LaunchFlow fills email, continues to password, then submits when safe.
-   - **Can't find it?** If MFA appears, finish it yourself. Remembered login shape becomes 'Email first, then password' after a successful Auto run.
-3. **GitHub-style login** (WORK-03): Add or select GitHub. Keep saved password (Auto). Test this site — username and password on one page.
+   - **You should see:** LaunchFlow fills email, continues to password, then signs in when it is safe.
+   - **Can't find it?** If a phone code or app approval appears, finish that yourself. After a successful run, LaunchFlow remembers “Email first, then password”.
+3. **Email and password together** (WORK-03): Add a site that shows email and password on the same page. Save the login under Settings → Passwords. Click Test this site.
    - **Where:** LaunchFlow → Websites · selected site. Look for **▶ Test this site**.
-   - **You should see:** Both fields fill on the same form when discovery succeeds.
-   - **Can't find it?** Use Fix sign-in if GitHub shows only SSO buttons or passkeys. MFA stays manual.
-4. **Your own / npm-style login** (WORK-04): Add your npm or custom site. Prefer Auto first; if fields are unusual, open Advanced sign-in and set username/password CSS selectors.
-   - **Where:** LaunchFlow → Websites · selected site. Look for **Advanced sign-in…**.
-   - **You should see:** Custom selectors or a successful Auto run remember a CustomSelectors or SamePage shape.
-   - **Can't find it?** Do not paste real production passwords into this guide. Save credentials only under Settings → Passwords.
-5. **When sign-in needs you** (WORK-05): If the tray or status says MFA, SSO, or ambiguous Log In, finish that step in the browser, then use Fix sign-in only if Auto should relearn clicks.
-   - **Where:** LaunchFlow → Websites · Recorded actions (optional). Look for **Fix sign-in**.
-   - **You should see:** You understand why Auto paused and what to do next.
-   - **Can't find it?** LaunchFlow never guesses among multiple Log In buttons and never fills OTP/MFA codes.
+   - **You should see:** Both boxes fill on the same page when LaunchFlow finds them.
+   - **Can't find it?** If the site only offers company sign-in buttons, finish in the browser or use Fix sign-in. Extra verification codes stay manual.
+4. **A tricky website** (WORK-04): Try automatic sign-in first. LaunchFlow finds the boxes itself on most sites. If it still fails, use Fix sign-in.
+   - **Where:** LaunchFlow → Websites · Clicks after sign-in. Look for **Fix sign-in**.
+   - **You should see:** Automatic sign-in works, or Fix sign-in helped LaunchFlow learn the page.
+   - **Can't find it?** Never paste real passwords into this guide. Save logins only under Settings → Passwords.
+5. **When sign-in needs you** (WORK-05): If LaunchFlow pauses for a code, company login, or several Sign-in buttons, finish that step in the browser. Use Fix sign-in only if you want LaunchFlow to learn again.
+   - **Where:** LaunchFlow → Websites · Clicks after sign-in. Look for **Fix sign-in**.
+   - **You should see:** You know why it paused and what to do next.
+   - **Can't find it?** LaunchFlow never guesses among multiple Sign-in buttons and never fills one-time codes.
 
 ## Saved website login — optional
 
@@ -134,25 +134,25 @@ After PASS-04, Saved password continues with PASS-05–08. No login required and
    - **You should see:** The correct site's details are visible.
    - **Can't find it?** Choose an owned, low-risk test page. Do not record real password or MFA entry.
 2. **Start the recorder** (RECORD-02): Click Record clicks.
-   - **Where:** LaunchFlow → Websites · Recorded actions (optional). Look for **● Record clicks**.
-   - **You should see:** The 'Record actions - LaunchFlow' window opens.
-   - **Can't find it?** This is a separate recorder window. It must attach to the page opened by LaunchFlow.
-3. **Check recorder readiness** (RECORD-03): Read the capture and target status.
-   - **Where:** Record actions - LaunchFlow → Recorder · status. Look for **CaptureStatus / TargetStatus**.
-   - **You should see:** The recorder identifies the intended browser tab instead of staying on Connecting.
-   - **Can't find it?** Wait for readiness before clicking. If it cannot attach, stop and investigate rather than recording another personal browser tab.
-4. **Make one harmless click** (RECORD-04): Click one non-sensitive button in the original LaunchFlow browser tab.
-   - **Where:** Browser window → Original recording tab. Look for **A safe test button**.
-   - **You should see:** A corresponding action appears in Recorded actions.
-   - **Can't find it?** Do not enter passwords, account numbers, email addresses, OTPs or private text. Unsupported popups and frames may need manual setup.
-5. **Review the actions** (RECORD-05): Review the Recorded actions list before saving.
-   - **Where:** Record actions - LaunchFlow → Recorder · recorded list. Look for **Recorded actions**.
-   - **You should see:** Only intended navigation and clicks are listed.
-   - **Can't find it?** Remove accidental actions using the recorder controls. Secret-detection cannot be guaranteed for every custom web widget.
-6. **Save reviewed actions** (RECORD-06): Click Save actions.
-   - **Where:** Record actions - LaunchFlow → Recorder · bottom actions. Look for **Save actions**.
-   - **You should see:** The actions are offered to the selected website's workflow.
-   - **Can't find it?** If the vault locks or the website was replaced, LaunchFlow must refuse stale recording ownership. Cancel does not mean Save.
+   - **Where:** LaunchFlow → Websites · Clicks after sign-in. Look for **● Record clicks**.
+   - **You should see:** The Recording window opens with a red RECORDING banner.
+   - **Can't find it?** Use the browser window LaunchFlow opened — not a random tab you opened yourself.
+3. **Wait until it is ready** (RECORD-03): Wait until the banner says RECORDING (not Connecting).
+   - **Where:** Recording - LaunchFlow → Recorder · status. Look for **RECORDING**.
+   - **You should see:** The red RECORDING banner is on before you click.
+   - **Can't find it?** If it stays on Connecting, stop and try again instead of clicking in another browser window.
+4. **Make one safe click** (RECORD-04): Click one ordinary button in the LaunchFlow browser window (not a password or private form).
+   - **Where:** Browser window → LaunchFlow browser window. Look for **A safe test button**.
+   - **You should see:** A line such as “Clicked something on the page” appears in Your recorded clicks.
+   - **Can't find it?** Do not type passwords, codes, or private text while recording.
+5. **Review the actions** (RECORD-05): Look at Your recorded clicks before saving. Use Select all / Delete if needed.
+   - **Where:** Recording - LaunchFlow → Recorder · recorded list. Look for **Your recorded clicks**.
+   - **You should see:** Only the clicks you meant to keep are listed.
+   - **Can't find it?** Delete accidental clicks with Select all / Delete before you save.
+6. **Save reviewed actions** (RECORD-06): Click Save.
+   - **Where:** Recording - LaunchFlow → Recorder · bottom actions. Look for **Save**.
+   - **You should see:** The clicks are saved for this website.
+   - **Can't find it?** Cancel does not save. If the vault locked or you switched websites, start recording again.
 
 ## Startup and background — optional
 
@@ -179,16 +179,16 @@ After PASS-04, Saved password continues with PASS-05–08. No login required and
 
 ## Troubleshooting
 
-1. **A browser is unavailable** (HELP-01): Open Browser readiness and select Scan again after installing an approved browser.
-   - **Where:** Browser readiness → Browser readiness dialog. Look for **Scan again**.
-   - **You should see:** The dialog updates its detected browser information.
-   - **Can't find it?** The dialog does not silently install browsers. Use official downloads only when authorized by your device's software policy.
+1. **A browser is unavailable** (HELP-01): Open Check browsers on this PC and click Scan again after installing Edge, Chrome, Brave, Opera, Opera GX, or Vivaldi.
+   - **Where:** Browsers on this PC → Browsers dialog. Look for **Scan again**.
+   - **You should see:** The list updates with browsers found on this computer.
+   - **Can't find it?** LaunchFlow does not install Edge/Chrome/Brave/Opera by itself — use their official websites only if your workplace allows it.
 2. **The wrong website is selected** (HELP-02): Select the correct website in YOUR WEBSITES.
    - **Where:** LaunchFlow → Websites · YOUR WEBSITES. Look for **Saved website workflows**.
    - **You should see:** The selected website editor shows the intended name and address.
    - **Can't find it?** Do not select away from an unsaved editor without handling its warning. In Passwords, independently confirm Website account to update.
 3. **Automatic sign-in needs attention** (HELP-03): Choose Fix sign-in on the selected website.
-   - **Where:** LaunchFlow → Websites · Recorded actions (optional). Look for **Fix sign-in**.
+   - **Where:** LaunchFlow → Websites · Clicks after sign-in. Look for **Fix sign-in**.
    - **You should see:** LaunchFlow shows a repair or manual-attention path.
    - **Can't find it?** Use human sign-in for MFA/SSO. Do not disable HTTPS checks or guess untrusted login buttons.
 4. **Saving failed** (HELP-04): After fixing the error, click Retry save (or Save changes if that is the current label).

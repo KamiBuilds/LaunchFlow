@@ -21,6 +21,7 @@
     <Compile Include="../../LaunchFlow/Services/Vault/CredentialVault.cs" Link="Services/CredentialVault.cs" />
     <Compile Include="../../LaunchFlow/Services/KeePass/KeePassXcService.cs" Link="Services/KeePassXcService.cs" />
     <Compile Include="../../LaunchFlow/Services/Transfer/PortableExport.cs" Link="Services/PortableExport.cs" />
+    <Compile Include="../../LaunchFlow/Services/Transfer/PortableImportValidation.cs" Link="Services/PortableImportValidation.cs" />
     <Compile Include="../../LaunchFlow/Services/Transfer/SecureTransferService.cs" Link="Services/SecureTransferService.cs" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.31" />
     <PackageReference Include="Konscious.Security.Cryptography.Argon2" Version="1.3.1" />

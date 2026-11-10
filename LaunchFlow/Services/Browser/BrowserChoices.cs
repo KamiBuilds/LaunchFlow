@@ -19,14 +19,9 @@ public static class BrowserChoices
         combo.Items.Clear();
         foreach (var browser in available)
         {
-            var path = string.Equals(browser, "Firefox", StringComparison.OrdinalIgnoreCase)
-                ? null
-                : BrowserInstallations.FindExecutable(browser);
-            var tip = path is not null
-                ? "Found installed on this PC:\n" + path
-                : string.Equals(browser, "Firefox", StringComparison.OrdinalIgnoreCase)
-                    ? "Firefox Auto uses LaunchFlow's automation Firefox (included with Setup)."
-                    : "Detected on this PC";
+            var tip = string.Equals(browser, "Firefox", StringComparison.OrdinalIgnoreCase)
+                ? "Uses LaunchFlow’s special Firefox for automatic sign-in (included with Setup)."
+                : "Found on this PC — LaunchFlow will open it for you.";
             combo.Items.Add(new ComboBoxItem { Content = browser, Tag = browser, ToolTip = tip });
         }
 
@@ -37,8 +32,8 @@ public static class BrowserChoices
             !available.Contains(selected, StringComparer.OrdinalIgnoreCase))
         {
             var hint = selected.Contains("Firefox", StringComparison.OrdinalIgnoreCase)
-                ? "Firefox Auto needs LaunchFlow's automation Firefox (reinstall Setup or Browser readiness)."
-                : "Install this browser or select an available browser to run this website.";
+                ? "LaunchFlow’s Firefox is missing. Reinstall LaunchFlow or open Browser readiness."
+                : "This browser is not installed right now. Install it, or pick another browser.";
             combo.Items.Add(new ComboBoxItem
             {
                 Content = selected + " (not available)",
@@ -51,7 +46,7 @@ public static class BrowserChoices
         {
             Content = BrowserInstallations.DefaultBrowser,
             Tag = BrowserInstallations.DefaultBrowser,
-            ToolTip = "Opens the website using Windows' default browser without automatic login."
+            ToolTip = "Only opens the website in your usual Windows browser — no automatic sign-in."
         });
 
         var match = combo.Items.Cast<ComboBoxItem>()

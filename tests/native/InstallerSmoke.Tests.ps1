@@ -29,6 +29,12 @@ if (-not (Test-Path -LiteralPath $exe -PathType Leaf) -or
     -not (Test-Path -LiteralPath (Join-Path $install '.playwright') -PathType Container)) {
     throw 'Installed application, uninstaller or runtime/driver content is missing.'
 }
+$firefoxRoot = Join-Path $install 'playwright-browsers'
+$firefoxExe = @(Get-ChildItem -LiteralPath $firefoxRoot -Recurse -Filter 'firefox.exe' -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Length -gt 0 })
+if (-not (Test-Path -LiteralPath $firefoxRoot -PathType Container) -or $firefoxExe.Count -eq 0) {
+    throw 'Installed payload is missing playwright-browsers Firefox automation (firefox.exe).'
+}
 if (-not $exe.StartsWith($env:LOCALAPPDATA, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'Installation escaped the intended per-user LocalAppData scope.'
 }

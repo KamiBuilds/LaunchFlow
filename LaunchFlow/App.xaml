@@ -309,10 +309,30 @@
     <Style TargetType="ListBox">
       <Setter Property="Background" Value="#0F1826"/>
       <Setter Property="Foreground" Value="#EEF6FA"/>
-      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="BorderBrush" Value="#293D53"/>
+      <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="Padding" Value="4"/>
       <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
       <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
+      <!-- Full template so the scroll viewport cannot fall back to the default white chrome. -->
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ListBox">
+            <Border Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="10" SnapsToDevicePixels="True">
+              <ScrollViewer Padding="{TemplateBinding Padding}"
+                            Focusable="False"
+                            Background="{TemplateBinding Background}"
+                            HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
+                            VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}">
+                <ItemsPresenter/>
+              </ScrollViewer>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
     <Style TargetType="ListBoxItem">
       <Setter Property="Foreground" Value="#EEF6FA"/>

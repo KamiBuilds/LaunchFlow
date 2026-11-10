@@ -1,3 +1,65 @@
+# v0.7.71 — Import hardening + clearer click labels
+
+- Portable import clears KeePass database/key/entry paths so another PC’s files are never assumed here.
+- Import refuses Fill actions and any recorded step that carries typed values.
+- Click lists always show a human label (`DisplayLabel`) even when Description is empty.
+- Same-site clean path changes teach Navigate so replay follows SPA routes; query/fragment still never enter Navigate.
+
+# v0.7.70 — Dark click list + safer import
+
+- Empty recorded-clicks area uses a dark bordered panel with a clear hint instead of a blank white box; ListBox chrome no longer falls back to system white.
+- Portable import validates decrypted packages (http(s) only, known action types, size bounds) before replacing the vault.
+- Vault `PRAGMA table_info` only accepts fixed internal table names; website names with SQL metacharacters stay parameterized data.
+
+# v0.7.69 — Simple recording for real users
+
+- Hide Settings → Special help (CSS selectors) from normal users; remove “if IT asks” paths from the websites screen.
+- Recorder shows a pulsing red RECORDING banner, keeps Select all / Delete visible (not “optional”), and no longer owns the main window so LaunchFlow stays scrollable.
+- Same-site navigations that add `?query` / `#hash` no longer drop the next click; OAuth cross-site callbacks with secrets still stay unrecorded.
+
+# v0.7.68 — Calm failure UX (no more yelling)
+
+- Run misses use quiet status and tray notes (“Couldn't finish”, “Almost there”) — no Warning/Error balloons.
+- Sign-in helper no longer yanks LaunchFlow out of the tray; small “Quick check” window only if the app is already open.
+- Softer sign-in tip wording; Firefox setup dialogs use Information, not Warning.
+- Vault format and AppId unchanged. Unsigned test build.
+# v0.7.67 — Faster first-try sign-in, maximize, same-window reuse
+
+- Wait for SPA sign-in boxes before failing (fixes npm/React first-click miss / second-click success).
+- Broader npm signed-in detection; recognize identity/secret login fields; formless React login cards.
+- Status strip shows plain phases (Opening browser…, Waiting for sign-in boxes…, Signing in…).
+- Browser opens maximized on the chosen screen; re-running the same website reuses that window (no second copy).
+- Vault format and AppId unchanged. Unsigned test build.
+# v0.7.66 — More browsers + beginner-friendly wording
+
+- Detect and Auto-launch Brave, Opera, Opera GX, and Vivaldi (plus Edge/Chrome) from this PC; Opera vs Opera GX stay distinct.
+- Same-page email+password and email-then-password copy clarified; LaunchFlow still finds the boxes itself.
+- Recorder list shows plain “Clicked something on the page” instead of technical paths; Special help / guide / Getting started rewritten for non-IT users (no CSS/Playwright jargon in the UI).
+- Vault format and AppId unchanged. Unsigned test build.
+# v0.7.65 — Installer exit wait + Firefox ready success path
+
+- Setup waits up to 240s for `--exit-for-install` mutex release so browser-close + encrypted-profile seal budgets can finish (was ~30s and could abort a still-legal shutdown).
+- After Browser readiness successfully installs Firefox automation, Teach/Repair/Run no longer mark Failed/cancelled before continuing.
+- Native installer smoke asserts shipped `playwright-browsers/**/firefox.exe`; version gate covers CHANGELOG/README/AppInfo; inventory reads csproj version.
+- Wizard copy and deployment contract match Setup-shipped Playwright Firefox (Edge/Chrome remain host-installed). Universal Installer stays a separate 1.0.0 bootstrapper identity.
+- Backfilled missing 0.7.62–0.7.64 changelog notes. Vault format and AppId unchanged. Unsigned test build.
+
+# v0.7.64 — Windows-tested packaging candidate
+
+- Product/Setup/AppInfo/README identity set to **0.7.64** for the Windows-tested Setup artifact (commit `432cf17`).
+- Carries the 0.7.61 exit/profile quarantine gates plus the 0.7.55–0.7.59 Firefox Auto / Browser readiness / installed Edge-Chrome scan stack.
+- Changelog narrative for this bump was not recorded at ship time; restored here for the versioning contract.
+
+# v0.7.63 — Intermediate Windows test-candidate rebuild
+
+- Patch bump on the 0.7.61 stabilization surface for native Windows verification iterations.
+- No separate public behavior note was retained at bump time; treat as packaging/test-candidate continuity toward 0.7.64.
+
+# v0.7.62 — Intermediate Windows test-candidate rebuild
+
+- Patch bump on the 0.7.61 exit/profile security stack for continued native Windows acceptance work.
+- No separate public behavior note was retained at bump time; treat as packaging/test-candidate continuity toward 0.7.64.
+
 ## v0.7.61 — P1 exit and profile security stabilization (test candidate)
 
 - Require cleanup of authenticated, workflow-associated plaintext browser-profile quarantines before reporting a successful lock or restore; retain unknown legacy quarantines for manual recovery rather than hiding them.

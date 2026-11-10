@@ -19,6 +19,7 @@
     <Compile Include="../../LaunchFlow/Services/Vault/CredentialVault.cs" Link="CredentialVault.cs" />
     <Compile Include="../../LaunchFlow/Services/Persistence/ConfigStore.cs" Link="ConfigStore.cs" />
     <Compile Include="../../LaunchFlow/Services/Transfer/SecureTransferService.cs" Link="SecureTransferService.cs" />
+    <Compile Include="../../LaunchFlow/Services/Transfer/PortableImportValidation.cs" Link="PortableImportValidation.cs" />
     <Compile Include="../../LaunchFlow/Services/Transfer/PortableExport.cs" Link="PortableExport.cs" />
     <Compile Include="../../LaunchFlow/Services/Vault/PasswordStrength.cs" Link="PasswordStrength.cs" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.31" />

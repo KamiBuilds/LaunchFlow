@@ -49,11 +49,9 @@ internal static class SafetyIntegrationTests
             };
             var projected = ImportConfigurationProjection.ForThisDevice(incoming, old, "Ctrl+M");
             var cold = JsonSerializer.Deserialize<Configuration>(JsonSerializer.Serialize(projected))!;
-            Check(projected.KeePassDatabasePath == incoming.KeePassDatabasePath &&
-                cold.KeePassDatabasePath == incoming.KeePassDatabasePath &&
-                projected.KeePassKeyFilePath == incoming.KeePassKeyFilePath &&
-                cold.KeePassKeyFilePath == incoming.KeePassKeyFilePath,
-                "imported KeePass paths must match the cold persisted snapshot");
+            Check(projected.KeePassDatabasePath is null && cold.KeePassDatabasePath is null &&
+                projected.KeePassKeyFilePath is null && cold.KeePassKeyFilePath is null,
+                "imported KeePass paths stay device-local and are cleared on this PC");
             Check(!projected.SealBrowserProfilesOnLock && !cold.SealBrowserProfilesOnLock,
                 "imported profile-sealing preference must not revert on normal Save");
             Check(projected.StartWithWindows && projected.PreferTaskSchedulerAutostart &&

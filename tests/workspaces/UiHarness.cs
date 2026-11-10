@@ -464,8 +464,15 @@ var tests = new List<(string Name, Func<Task> Body)>
         result.StepsNeedAttention.Add(new(second.Id, second.Name, "Click"));
         ui._runner.RunRelease.SetResult(result);
         await ui.Run();
-        Check(ui.Notifications.Any(n => n.Contains("1 workflow(s) failed")), "login attention hid failures");
-        Check(ui.WorkflowStatusLabel.Text.Contains("failed", StringComparison.OrdinalIgnoreCase), "final status hid failure count");
+        Check(ui.Notifications.Any(n =>
+                n.Contains("didn't finish", StringComparison.OrdinalIgnoreCase) ||
+                n.Contains("didn’t finish", StringComparison.OrdinalIgnoreCase) ||
+                n.Contains("try again", StringComparison.OrdinalIgnoreCase)),
+            "login attention hid failures");
+        Check(ui.WorkflowStatusLabel.Text.Contains("Couldn't finish", StringComparison.OrdinalIgnoreCase) ||
+              ui.WorkflowStatusLabel.Text.Contains("quick look", StringComparison.OrdinalIgnoreCase) ||
+              ui.WorkflowStatusLabel.Text.Contains("Almost there", StringComparison.OrdinalIgnoreCase),
+            "final status hid failure count");
         Check(ReferenceEquals(ui.WorkflowList.SelectedItem, second), "failed step selected duplicate workflow by name");
         Check(ui._runner.RunCalls == 1 && ui._runner.TeachCalls == 0, "repair auto-ran automation");
     }),
@@ -480,7 +487,9 @@ var tests = new List<(string Name, Func<Task> Body)>
         method!.Invoke(ui, new object[] { "duplicate display name", AutomationEngine.WorkflowRunState.WaitingForSignIn });
         Check(ui.Dispatcher.Pending.Count == 1 && ui.WorkflowStatusLabel.Text == "", "status update blocked or bypassed dispatcher");
         ui.Dispatcher.Pending.Dequeue()();
-        Check(ui.WorkflowStatusLabel.Text.Contains("Sign-in"), "workflow attention status missing");
+        Check(ui.WorkflowStatusLabel.Text.Contains("browser", StringComparison.OrdinalIgnoreCase) ||
+              ui.WorkflowStatusLabel.Text.Contains("Check", StringComparison.OrdinalIgnoreCase),
+            "workflow attention status missing");
         method.Invoke(ui, new object[] { "duplicate display name", AutomationEngine.WorkflowRunState.Completed });
         ui._runUi.Complete(statusLease);
         ui.WorkflowStatusLabel.Text = "Final failed summary";

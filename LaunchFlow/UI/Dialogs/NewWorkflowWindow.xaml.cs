@@ -62,8 +62,8 @@ public partial class NewWorkflowWindow : Window
         }
         if (browser == BrowserInstallations.DefaultBrowser && AutoLoginCheck.IsChecked == true)
         {
-            MessageBox.Show(this, "The default-browser option only opens the site. Choose Edge or Chrome for automatic sign-in (or Firefox after Browser readiness installs Firefox automation).",
-                "Automatic login needs a supported browser", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, "“Default browser” only opens the site. For automatic sign-in, choose Edge, Chrome, Brave, Opera, Opera GX, Vivaldi, or Firefox (when LaunchFlow’s Firefox is installed).",
+                "Pick a browser for automatic sign-in", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
         var monitor = (MonitorCombo.SelectedItem as MonitorChoice)?.Index ?? 0;

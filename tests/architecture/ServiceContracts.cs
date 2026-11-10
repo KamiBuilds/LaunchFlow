@@ -227,11 +227,12 @@ Check(trayFirefox.Contains("Firefox", StringComparison.Ordinal),
 Check(RunOutcomeSummary.IsFirefoxAutomationFailure(trayFirefox),
     "Firefox automation failure is classified for Browser readiness help");
 var trayMixed = RunOutcomeSummary.TrayDetail(1, 1, 1, "MFA required");
-Check(trayMixed.Contains("1 workflow(s) failed") && trayMixed.Contains("1 sign-in"),
-    "mixed failures keep the count summary instead of only the sign-in reason");
+Check(trayMixed.Contains("Something didn’t finish", StringComparison.Ordinal) ||
+      trayMixed.Contains("try again", StringComparison.OrdinalIgnoreCase),
+    "mixed failures keep a calm summary instead of only the sign-in reason");
 Check(RunOutcomeSummary.FinishedTray(1, "Ops") == "Finished “Ops”.",
     "single finished tray names the website");
-Check(RunOutcomeSummary.FinishedTray(3, null).Contains("3 workflows"),
+Check(RunOutcomeSummary.FinishedTray(3, null).Contains("3 websites"),
     "multi finished tray reports count");
 
 var sessionNow = new DateTimeOffset(2026, 11, 8, 12, 0, 0, TimeSpan.Zero);

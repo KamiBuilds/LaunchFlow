@@ -333,6 +333,55 @@ using (var cross = new TeachRecorder(crossPage))
 }
 await crossPage.CloseAsync();
 
+// Same-site SPA moves that add ?query must still record the next click.
+await context.RouteAsync("https://spa-recorder.test/**", route => route.FulfillAsync(new()
+{
+    ContentType = "text/html",
+    Body = "<button id='spa'>Continue</button>"
+}));
+var spaPage = await context.NewPageAsync();
+await spaPage.GotoAsync("https://spa-recorder.test/app");
+using (var spa = new TeachRecorder(spaPage))
+{
+    await spa.SynchronizeAsync();
+    await spaPage.ClickAsync("#spa");
+    await Flush(spaPage);
+    Assert(spa.DrainActions().Count == 1, "initial same-site click records");
+    await spaPage.GotoAsync("https://spa-recorder.test/app?step=2");
+    await Flush(spaPage);
+    await spaPage.ClickAsync("#spa");
+    await Flush(spaPage);
+    var afterQuery = spa.DrainActions();
+    Assert(afterQuery.Count == 1 && afterQuery[0].Type == "Click",
+        "same-site query navigation still registers the following click");
+}
+await spaPage.CloseAsync();
+
+// Same-site clean path changes teach Navigate so replay follows the SPA route.
+await context.RouteAsync("https://path-recorder.test/**", route => route.FulfillAsync(new()
+{
+    ContentType = "text/html",
+    Body = "<button id='go'>Continue</button>"
+}));
+var pathPage = await context.NewPageAsync();
+await pathPage.GotoAsync("https://path-recorder.test/app");
+using (var pathRec = new TeachRecorder(pathPage))
+{
+    await pathRec.SynchronizeAsync();
+    await pathPage.ClickAsync("#go");
+    await Flush(pathPage);
+    Assert(pathRec.DrainActions().Count == 1, "initial path-site click records");
+    await pathPage.GotoAsync("https://path-recorder.test/app/next");
+    await Flush(pathPage);
+    await pathPage.ClickAsync("#go");
+    await Flush(pathPage);
+    var moved = pathRec.DrainActions();
+    Assert(moved.Count == 2 && moved[0] == ("Navigate", "https://path-recorder.test/app/next") &&
+        moved[1].Type == "Click",
+        "same-site path change teaches Navigate before the next click");
+}
+await pathPage.CloseAsync();
+
 using (var shadow = new TeachRecorder(page))
 {
     await shadow.SynchronizeAsync();
@@ -369,7 +418,11 @@ await page.ClickAsync("button");
 await Flush(page);
 pausedWindow.TestPauseWithoutDrain();
 pausedWindow.TestTick();
-Assert(pausedWindow.RecordedSteps.Count == 1 && pausedWindow.TestStatus?.StartsWith("Recording paused") == true,
+// Fixture navigates to a new same-site path after capture starts, so a Navigate
+// may precede the click; paused UI must still show after those admitted actions.
+Assert(pausedWindow.RecordedSteps.Count >= 1 &&
+        pausedWindow.RecordedSteps.Any(step => step.Type == "Click") &&
+        pausedWindow.TestStatus?.StartsWith("PAUSED") == true,
     "draining an admitted action preserves paused UI state");
 pausedWindow.TestCancel();
 await pausedWindow.TestWaitForUpdatesAsync();

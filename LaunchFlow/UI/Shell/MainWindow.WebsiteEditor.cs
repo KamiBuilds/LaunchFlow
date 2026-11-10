@@ -32,7 +32,7 @@ public partial class MainWindow
         bool noWorkflows = _configuration.Workflows.Count == 0;
         EmptyStateHeading.Text = noWorkflows ? "No websites yet" : "Select a website";
         EmptyStateDescription.Text = noWorkflows
-            ? "Start by adding one website and choosing a browser and screen. Login and recorded actions are optional."
+            ? "Start by adding one website and choosing a browser and screen."
             : "Choose one of your saved websites on the left to view its settings, or add another website.";
         CreateFirstWorkflowButton.Content = noWorkflows ? "+ Add your first website" : "+ Add another website";
         DuplicateWorkflowButton.IsEnabled = false;
@@ -41,6 +41,7 @@ public partial class MainWindow
         KeepassEntryBox.Text = "";
         ClearCredentialEditor();
         StepList.ItemsSource = null;
+        UpdateEmptyStepsHint();
         CredentialStatus.Text = "No website selected";
         SyncPasswordWebsiteSelector();
         RefreshLoginRecipeLabel(null);
@@ -85,6 +86,7 @@ public partial class MainWindow
         if (MainTabs.SelectedIndex == 1 && SettingsTabs.SelectedIndex == 1 && PasswordSessionIsValid()) LoadCredentialEditor(w);
         StepList.ItemsSource = w.Steps;
         StepList.Items.Refresh();
+        UpdateEmptyStepsHint();
         RefreshLoginRecipeLabel(w);
         _loadingEditor = false;
     }
@@ -95,11 +97,11 @@ public partial class MainWindow
         workflow ??= _editorSession.Selection;
         if (workflow is null)
         {
-            LoginRecipeLabel.Text = "Remembered login shape: —";
+            LoginRecipeLabel.Text = "How this site signs in: —";
             if (ClearLoginRecipeButton is not null) ClearLoginRecipeButton.IsEnabled = false;
             return;
         }
-        LoginRecipeLabel.Text = "Remembered login shape: " + LoginRecipe.DisplayName(workflow.LoginRecipe);
+        LoginRecipeLabel.Text = "How this site signs in: " + LoginRecipe.DisplayName(workflow.LoginRecipe);
         if (ClearLoginRecipeButton is not null)
             ClearLoginRecipeButton.IsEnabled =
                 !string.IsNullOrEmpty(LoginRecipe.Normalize(workflow.LoginRecipe));

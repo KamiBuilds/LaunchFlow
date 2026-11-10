@@ -44,10 +44,10 @@ public sealed partial class AutomationEngine
         {
             if (wantsFirefox)
                 throw new InvalidOperationException(
-                    "Firefox Auto sign-in needs LaunchFlow's automation Firefox (shipped with Setup, or Browser readiness → Install Firefox automation). " +
-                    "Regular Mozilla Firefox cannot be driven. Or choose Edge/Chrome.");
+                    "Firefox automatic sign-in needs LaunchFlow’s special Firefox (included with Setup, or Browser readiness → Install Firefox). " +
+                    "Regular Firefox from Mozilla cannot do automatic sign-in. Or choose Edge, Chrome, Brave, Opera, or Vivaldi.");
             throw new InvalidOperationException(
-                $"The selected browser ({workflow.Browser}) is not installed. Install it or select an available browser in website settings.");
+                $"The selected browser ({workflow.Browser}) is not installed. Install it or pick another browser for this website.");
         }
         var browserType = ResolveBrowserType(workflow.Browser);
         var profileDir = Path.Combine(
@@ -64,14 +64,12 @@ public sealed partial class AutomationEngine
             Headless = false,
             ViewportSize = ViewportSize.NoViewport
         };
-        // Prefer the exact Edge/Chrome binary found on this PC. Channel is the
-        // fallback when App Paths / folders did not resolve a file.
+        // Prefer the exact installed browser found on this PC (Edge, Chrome, Brave,
+        // Opera, Opera GX, Vivaldi). Channel is only a fallback for Edge/Chrome.
         if (!wantsFirefox)
         {
-            var installed = BrowserInstallations.FindExecutable(
-                workflow.Browser.Contains("Chrome", StringComparison.OrdinalIgnoreCase) ? "Chrome" :
-                workflow.Browser.Contains("Edge", StringComparison.OrdinalIgnoreCase) ? "Edge" :
-                workflow.Browser);
+            options.Args = ["--start-maximized"];
+            var installed = BrowserInstallations.FindExecutable(workflow.Browser);
             if (installed is not null)
                 options.ExecutablePath = installed;
             else
@@ -81,13 +79,13 @@ public sealed partial class AutomationEngine
             }
         }
         // Firefox: never point ExecutablePath at mozilla.org firefox.exe — that
-        // opens a blank window and never navigates. Use shipped Playwright Firefox.
+        // opens a blank window and never navigates. Use shipped automation Firefox.
         PlaywrightFirefoxSupport.ConfigureProcessBrowsersPath();
         if (wantsFirefox && !PlaywrightFirefoxSupport.IsAutomationFirefoxInstalled())
         {
             throw new InvalidOperationException(
-                "Firefox Auto sign-in needs LaunchFlow's automation Firefox (shipped with Setup, or Browser readiness → Install Firefox automation). " +
-                "Or choose Edge/Chrome.");
+                "Firefox automatic sign-in needs LaunchFlow’s special Firefox (included with Setup, or Browser readiness → Install Firefox). " +
+                "Or choose Edge, Chrome, Brave, Opera, or Vivaldi.");
         }
         IBrowserContext context;
         try
@@ -99,8 +97,8 @@ public sealed partial class AutomationEngine
                                    ex is not InvalidOperationException)
         {
             throw new InvalidOperationException(
-                "Could not start Firefox automation. Open Browser readiness → Install Firefox automation, " +
-                "or use Edge/Chrome for Auto sign-in. Details: " + ex.GetType().Name, ex);
+                "Could not start Firefox for automatic sign-in. Open Browser readiness → Install Firefox, " +
+                "or use Edge, Chrome, Brave, Opera, or Vivaldi. Details: " + ex.GetType().Name, ex);
         }
         _unclaimedContexts.Add(context);
         try
@@ -163,6 +161,8 @@ public sealed partial class AutomationEngine
     {
         try
         {
+            try { await page.BringToFrontAsync().ConfigureAwait(false); }
+            catch (Exception) { /* bring-to-front is best effort */ }
             var monitors = MonitorService.GetMonitors();
             var monitor = MonitorService.Resolve(workflow, monitors);
             var bounds = monitor.Bounds;
@@ -171,6 +171,8 @@ public sealed partial class AutomationEngine
             var windowJson = await cdp.SendAsync("Browser.getWindowForTarget").ConfigureAwait(false);
             if (!windowJson.HasValue) return;
             var windowId = windowJson.Value.GetProperty("windowId").GetInt32();
+            // Place on the chosen monitor first, then maximize so the site fills
+            // the screen instead of opening a small restored window.
             await cdp.SendAsync("Browser.setWindowBounds", new Dictionary<string, object>
             {
                 ["windowId"] = windowId,
@@ -183,10 +185,18 @@ public sealed partial class AutomationEngine
                     ["windowState"] = "normal"
                 }
             }).ConfigureAwait(false);
+            await cdp.SendAsync("Browser.setWindowBounds", new Dictionary<string, object>
+            {
+                ["windowId"] = windowId,
+                ["bounds"] = new Dictionary<string, object>
+                {
+                    ["windowState"] = "maximized"
+                }
+            }).ConfigureAwait(false);
         }
         catch (Exception)
         {
-            Log("Could not position browser on the selected monitor.");
+            Log("Could not maximize the browser on the selected screen.");
         }
     }
 
@@ -199,12 +209,11 @@ public sealed partial class AutomationEngine
     private IBrowserType ResolveBrowserType(string browser)
     {
         if (_playwright is null) throw new InvalidOperationException("Playwright is not initialized.");
+        // Firefox Auto uses the automation Firefox build. Everything else we detect
+        // (Edge, Chrome, Brave, Opera, Opera GX, Vivaldi) is Chromium-family.
         return browser.Contains("Firefox", StringComparison.OrdinalIgnoreCase)
             ? _playwright.Firefox
-            : browser.Contains("Chrome", StringComparison.OrdinalIgnoreCase) ||
-              browser.Contains("Edge", StringComparison.OrdinalIgnoreCase)
-                ? _playwright.Chromium
-                : _playwright.Chromium;
+            : _playwright.Chromium;
     }
 
     private static string? ResolveChannel(string browser)

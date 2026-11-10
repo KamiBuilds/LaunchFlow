@@ -1,9 +1,12 @@
 using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using LaunchFlow.Models;
 using LaunchFlow.Services;
 using Microsoft.Playwright;
 using MessageBox = System.Windows.MessageBox;
+using MediaColor = System.Windows.Media.Color;
 
 namespace LaunchFlow;
 
@@ -151,13 +154,42 @@ public partial class VisualRecorderWindow : Window
         if (_page.IsClosed)
         {
             CaptureToggle.IsEnabled = false;
-            CaptureStatus.Text = "Browser page closed — save captured clicks or cancel, then start a new Teach session.";
+            CaptureStatus.Text = "Browser page closed";
+            TargetStatus.Text = "Save what you captured, or cancel and start again.";
+            StopRecordingPulse();
             return;
         }
-        CaptureToggle.Content = _recorder.IsCapturing ? "Pause recording" : "Resume recording";
-        CaptureStatus.Text = _recorder.IsCapturing ? "Recording is on" : "Recording paused";
+        var live = _recorder.IsCapturing;
+        CaptureToggle.Content = live ? "Pause" : "Resume";
+        CaptureStatus.Text = live ? "RECORDING" : "PAUSED";
+        RecordingBanner.Background = new SolidColorBrush(
+            live ? MediaColor.FromRgb(0x3A, 0x15, 0x20) : MediaColor.FromRgb(0x2A, 0x2E, 0x38));
+        RecordingBanner.BorderBrush = new SolidColorBrush(
+            live ? MediaColor.FromRgb(0xE0, 0x52, 0x6A) : MediaColor.FromRgb(0x6A, 0x78, 0x8A));
+        RecordingDot.Fill = new SolidColorBrush(
+            live ? MediaColor.FromRgb(0xFF, 0x4D, 0x6A) : MediaColor.FromRgb(0x9A, 0xA8, 0xB8));
+        Topmost = live;
+        if (live) StartRecordingPulse();
+        else StopRecordingPulse();
         if (_recorder.UnsupportedTargetObserved && RecordedSteps.Count == 0)
-            TargetStatus.Text = "Some actions were not recorded for privacy or were outside the original tab. Try a regular button there.";
+            TargetStatus.Text = "Some clicks were not recorded for privacy or were outside the original tab. Try a normal button there.";
+        else if (live)
+            TargetStatus.Text = "Click in the browser LaunchFlow opened — not this window.";
+        else
+            TargetStatus.Text = "Recording paused. Press Resume when you are ready to click again.";
+    }
+
+    private void StartRecordingPulse()
+    {
+        if (FindResource("RecordingPulse") is Storyboard board)
+            board.Begin(this, true);
+    }
+
+    private void StopRecordingPulse()
+    {
+        if (FindResource("RecordingPulse") is Storyboard board)
+            board.Stop(this);
+        RecordingDot.Opacity = 1;
     }
 
     private void DrainActions()
@@ -172,9 +204,9 @@ public partial class VisualRecorderWindow : Window
                 Target = action.Target,
                 Description = action.Type switch
                 {
-                    "Press" => "Press " + action.Target,
-                    "Navigate" => "Open " + action.Target + " (captured automatically)",
-                    _ => "Click " + action.Target
+                    "Press" => "Pressed a key",
+                    "Navigate" => "Opened the next page",
+                    _ => "Clicked something on the page"
                 }
             });
         if (actions.Count > 0) RefreshList();
@@ -355,7 +387,7 @@ public partial class VisualRecorderWindow : Window
     {
         StepList.ItemsSource = null;
         StepList.ItemsSource = RecordedSteps;
-        RecordedCountLabel.Text = $"{RecordedSteps.Count} action{(RecordedSteps.Count == 1 ? "" : "s")}";
+        RecordedCountLabel.Text = $"{RecordedSteps.Count} click{(RecordedSteps.Count == 1 ? "" : "s")}";
         EmptyStepsHint.Visibility = RecordedSteps.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         if (RecordedSteps.Count > 0) StepList.ScrollIntoView(RecordedSteps[^1]);
     }

@@ -19,9 +19,16 @@ iss=(root/'installer/LaunchFlow.iss').read_text(encoding='utf-8')
 check('#define AppVersion "'+version+'"' in iss,'installer matches project version')
 check('AppId={{9B1A7C15-093B-4DBA-BDA7-BF43A2E67320}' in iss,'stable upgrade AppId')
 check('VersionInfoVersion={#AppVersion}.0' in iss,'installer Windows version')
+check('for Attempt := 1 to 960 do' in iss and 'Sleep(250)' in iss,
+      'installer exit wait covers sealed-profile shutdown budget')
 check('return v is null ? "'+version+'"' in
       (root/'LaunchFlow/Services/Platform/AppInfo.cs').read_text(encoding='utf-8'),
       'display version fallback matches installer and project')
+readme=(root/'README.md').read_text(encoding='utf-8')
+changelog=(root/'CHANGELOG.md').read_text(encoding='utf-8')
+check(f'Current build: **v{version}**' in readme, 'README current-build matches project version')
+check(re.search(r'(?m)^#+ v'+re.escape(version)+r'\b', changelog) is not None,
+      'CHANGELOG documents the current project version')
 cs=(root/'LaunchFlow/Services/Platform/DarkWindowChrome.cs').read_text(encoding='utf-8')
 check('System.Windows.Media.Color.FromRgb' in cs,'WPF Color disambiguation')
 app=(root/'LaunchFlow/App.xaml.cs').read_text(encoding='utf-8')

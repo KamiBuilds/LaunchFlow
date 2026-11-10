@@ -189,9 +189,12 @@ public sealed partial class VaultDatabase
 
     private static bool HasColumns(SqliteConnection connection, string table, params string[] expected)
     {
+        // PRAGMA table_info cannot bind identifiers. Only fixed vault table names are allowed.
+        if (table is not ("secure_meta" or "secure_objects" or "secure_credentials"
+            or "vault_meta" or "objects" or "credentials"))
+            throw new ArgumentException("Unsupported vault table identifier.", nameof(table));
         if (!TableExists(connection, table)) return false;
         using var cmd = connection.CreateCommand();
-        // Table identifiers below are fixed internal constants, not user input.
         cmd.CommandText = "PRAGMA table_info(" + table + ");";
         using var reader = cmd.ExecuteReader();
         var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

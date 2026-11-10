@@ -40,7 +40,7 @@ public static class LocalizationService
             ["Stop"] = "Stoppen",
             ["Workflow step"] = "Workflowstap",
             ["Type"] = "Type",
-            ["Target (URL, CSS selector, key, or milliseconds)"] = "Doel (URL, CSS-selector, toets of milliseconden)",
+            ["What to use (web address, recorded click, key, or wait time)"] = "Wat te gebruiken (webadres, opgenomen klik, toets of wachttijd)",
             ["Value (for Fill)"] = "Waarde (voor invullen)",
             ["Description (optional)"] = "Beschrijving (optioneel)",
             ["Never store passwords or access tokens as Fill values. Use the Passwords tab."] =

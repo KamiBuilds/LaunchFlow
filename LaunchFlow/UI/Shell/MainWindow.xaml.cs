@@ -106,6 +106,7 @@ public partial class MainWindow : Window
         _runner = new AutomationEngine(_vault);
         _runner.ApproveLoginOriginAsync = ConfirmLoginOriginAsync;
         _runner.OnWorkflowStatus += QueueWorkflowStatus;
+        _runner.OnStatusMessage += QueueStatusMessage;
         _runner.OnLog += line => Dispatcher.BeginInvoke(new Action(() => AppendLog(line)));
 
         StartupCheck.IsChecked = _configuration.StartWithWindows;
@@ -219,13 +220,24 @@ public partial class MainWindow : Window
                 _vaultLockInProgress || _windowsLocked || _exiting) return;
             var text = state switch
             {
-                AutomationEngine.WorkflowRunState.WaitingForSignIn => "Sign-in needs attention",
+                AutomationEngine.WorkflowRunState.WaitingForSignIn => "Check the browser when ready",
                 AutomationEngine.WorkflowRunState.Completed => "Finished",
-                AutomationEngine.WorkflowRunState.Failed => "Failed",
+                AutomationEngine.WorkflowRunState.Failed => "Couldn't finish",
                 AutomationEngine.WorkflowRunState.Cancelled => "Stopped",
                 _ => "Running"
             };
             WorkflowStatusLabel.Text = $"{workflowName} · {LocalizationService.Text(text, _configuration.UiLanguage)}";
+        }));
+    }
+
+    private void QueueStatusMessage(string workflowName, string message)
+    {
+        var statusLease = _runUi.CaptureLeaseForCallback();
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!_runUi.IsStatusCurrent(statusLease) ||
+                _vaultLockInProgress || _windowsLocked || _exiting || !_runUi.IsRunning) return;
+            WorkflowStatusLabel.Text = $"{workflowName} · {message}";
         }));
     }
 

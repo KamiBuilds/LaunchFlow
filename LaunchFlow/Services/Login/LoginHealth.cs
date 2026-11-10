@@ -148,16 +148,36 @@ public static class LoginHealth
     private static async Task<bool> HasAuthenticatedNpmNavigationAsync(IPage page, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        // Older NPM dashboards keep the logout link inside a closed dropdown.
-        // Require the actual branded header, visible account menu and logout
-        // action together. Never accept a redirected URL alone as login proof.
-        return await page.Locator("a.navbar-brand[href='/']:visible").CountAsync().ConfigureAwait(false) == 1 &&
-               await page.Locator("a.navbar-brand[href='/'] img[src*='/images/favicons/favicon-32x32.png']")
-                   .CountAsync().ConfigureAwait(false) == 1 &&
-               await page.Locator(".dropdown > a.nav-link:visible:has(.avatar)")
-                   .CountAsync().ConfigureAwait(false) == 1 &&
-               await page.Locator("a.dropdown-item.logout[href='/logout']")
-                   .CountAsync().ConfigureAwait(false) == 1;
+        // Never accept a redirected URL alone as login proof. Older NPM keeps
+        // Log out inside a closed dropdown; newer builds vary the favicon path
+        // and header markup — accept several stable signed-in signals.
+        if (await page.Locator("input[type='password']:visible, input[autocomplete='one-time-code']:visible")
+                .CountAsync().ConfigureAwait(false) > 0)
+            return false;
+
+        var classic = await page.Locator("a.navbar-brand[href='/']:visible").CountAsync().ConfigureAwait(false) == 1 &&
+               await page.Locator("a.navbar-brand[href='/'] img[src*='favicon']")
+                   .CountAsync().ConfigureAwait(false) >= 1 &&
+               await page.Locator(".dropdown > a.nav-link:visible:has(.avatar), .dropdown > a.nav-link:visible:has(.user)")
+                   .CountAsync().ConfigureAwait(false) >= 1 &&
+               await page.Locator("a.dropdown-item.logout[href='/logout'], a.dropdown-item[href='/logout']")
+                   .CountAsync().ConfigureAwait(false) >= 1;
+        if (classic) return true;
+
+        // Modern npm-style dashboards: proxy hosts / users nav with an account menu.
+        var modernNav = await page.Locator(
+                "a[href='/']:visible, a[href$='/hosts']:visible, a[href*='proxy']:visible, " +
+                "nav a:has-text('Proxy Hosts'):visible, nav a:has-text('Dashboard'):visible")
+            .CountAsync().ConfigureAwait(false);
+        var account = await page.Locator(
+                "[data-testid='user-menu']:visible, [data-testid='account-menu']:visible, " +
+                "button[aria-label='Account']:visible, button[aria-label='User menu']:visible, " +
+                ".dropdown > a.nav-link:visible:has(.avatar)")
+            .CountAsync().ConfigureAwait(false);
+        var logout = await page.Locator(
+                "a[href='/logout'], a[href*='logout' i], button[aria-label='Sign out'], button[aria-label='Log out']")
+            .CountAsync().ConfigureAwait(false);
+        return modernNav >= 1 && account >= 1 && logout >= 1;
     }
 
     private static async Task<bool> HasInteractiveSecurityChallengeAsync(IPage page, CancellationToken ct)

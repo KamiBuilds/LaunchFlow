@@ -36,6 +36,7 @@ public sealed partial class AutomationEngine
             return null;
         }
 
+        Progress(workflow, "Opening browser…");
         var page = await GetOrCreatePageAsync(workflow, ct).ConfigureAwait(false);
         await PositionWindowAsync(page, workflow).ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
@@ -49,6 +50,7 @@ public sealed partial class AutomationEngine
 
         if (!alreadyOnSite)
         {
+            Progress(workflow, "Opening the website…");
             RequireAutomationUrl(workflow.StartUrl);
             await page.GotoAsync(workflow.StartUrl, new PageGotoOptions
             {
@@ -58,7 +60,9 @@ public sealed partial class AutomationEngine
         }
         else
         {
-            Log($"Reusing open page for '{workflow.Name}'.");
+            // One website entry = one browser window. Never open a second copy.
+            Progress(workflow, "Using the window already open…");
+            Log($"Reusing the open window for '{workflow.Name}' (same site stays in one browser).");
         }
 
         ct.ThrowIfCancellationRequested();

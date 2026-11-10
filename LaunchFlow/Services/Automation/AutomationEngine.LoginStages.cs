@@ -56,22 +56,41 @@ public sealed partial class AutomationEngine
     {
         // The homepage is classified and navigated before a saved password is read.
         // A newsletter email field is never by itself evidence of a login form.
+        Progress(workflow, "Looking for the sign-in page…");
         await TryOpenLoginEntryAsync(workflow, page, ct).ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
         RequireAutomationUrl(page.Url);
-        if (workflow.UsernameSelector == StandardUsernameSelector)
+        if (LoginFieldDiscovery.UsesAutomaticUsernameDiscovery(workflow))
         {
-            await using var identifier = await ResolveAutomaticUsernameAsync(page, ct).ConfigureAwait(false);
-            if (identifier is null)
+            // SPAs (npm, React dashboards) often paint the page before the real
+            // login boxes exist. Wait briefly instead of failing on the first try
+            // and only succeeding after the user clicks Test again on a warm page.
+            Progress(workflow, "Waiting for sign-in boxes…");
+            var deadline = DateTime.UtcNow.AddMilliseconds(
+                Math.Clamp(workflow.LoginWaitSeconds, 5, 180) * 1000);
+            IElementHandle? identifier = null;
+            var resumed = false;
+            while (true)
             {
-                var resumed = LoginFieldDiscovery.UsesAutomaticPasswordDiscovery(workflow)
+                ct.ThrowIfCancellationRequested();
+                identifier = await ResolveAutomaticUsernameAsync(page, ct).ConfigureAwait(false);
+                if (identifier is not null) break;
+                resumed = LoginFieldDiscovery.UsesAutomaticPasswordDiscovery(workflow)
                     ? await HasSupportedResumedPasswordStageAsync(workflow, page, ct).ConfigureAwait(false)
                     : await HasConfiguredResumedPasswordStageAsync(workflow, page, ct).ConfigureAwait(false);
-                if (!resumed)
-                {
-                    Log($"Could not identify the sign-in form safely for '{workflow.Name}'. Continue in the browser.");
-                    return false;
-                }
+                if (resumed) break;
+                if (DateTime.UtcNow >= deadline) break;
+                await page.WaitForTimeoutAsync(250).WaitAsync(ct).ConfigureAwait(false);
+            }
+            if (identifier is not null)
+            {
+                await identifier.DisposeAsync().ConfigureAwait(false);
+                return true;
+            }
+            if (!resumed)
+            {
+                Log($"Could not identify the sign-in form safely for '{workflow.Name}'. Continue in the browser.");
+                return false;
             }
         }
         return true;
@@ -81,6 +100,7 @@ public sealed partial class AutomationEngine
         WebsiteWorkflow workflow, IPage page, SiteCredential credential,
         LoginAttemptState state, CancellationToken ct)
     {
+            Progress(workflow, "Signing in…");
             var requiresUser = !string.IsNullOrWhiteSpace(workflow.UsernameSelector);
             var requiresPassword = !string.IsNullOrWhiteSpace(workflow.PasswordSelector);
             if ((!requiresUser && !requiresPassword) ||
@@ -373,6 +393,7 @@ public sealed partial class AutomationEngine
         WebsiteWorkflow workflow, IPage page, LoginAttemptState state, CancellationToken ct)
     {
             ct.ThrowIfCancellationRequested();
+            Progress(workflow, "Checking that sign-in worked…");
             var waitMs = Math.Clamp(workflow.LoginWaitSeconds, 5, 180) * 1000;
             if (!string.IsNullOrWhiteSpace(workflow.LoginSuccessSelector) ||
                 !string.IsNullOrWhiteSpace(workflow.LoginSuccessUrlContains))

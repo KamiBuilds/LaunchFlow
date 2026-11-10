@@ -81,6 +81,104 @@ try
     SecureTransferService.Export(empty, exportKey, config, facade, true);
     Check(PortableExport.Read(empty, exportKey).Credentials.Count == 0,
         "B1 authorized empty password-inclusive export remains valid");
+
+    // Import validation: decrypted packages with hostile URLs / action types never publish.
+    var hostile = Path.Combine(root, "hostile.launchflow");
+    PortableExport.Write(hostile, exportKey, new PortableExport.PortablePackage
+    {
+        Config = new Configuration
+        {
+            Workflows =
+            {
+                new WebsiteWorkflow
+                {
+                    Id = Guid.NewGuid(),
+                    Name = "'; DROP TABLE secure_credentials;--",
+                    StartUrl = "javascript:alert(1)"
+                }
+            }
+        },
+        Credentials = new()
+    });
+    var hostileRejected = false;
+    try { SecureTransferService.Read(hostile, exportKey); }
+    catch (InvalidDataException) { hostileRejected = true; }
+    Check(hostileRejected, "B3 hostile javascript: import URL is refused after decrypt");
+
+    var sqlNamed = Path.Combine(root, "sql-named.launchflow");
+    var sqlId = Guid.NewGuid();
+    PortableExport.Write(sqlNamed, exportKey, new PortableExport.PortablePackage
+    {
+        Config = new Configuration
+        {
+            Workflows =
+            {
+                new WebsiteWorkflow
+                {
+                    Id = sqlId,
+                    Name = "'; DROP TABLE secure_credentials;--",
+                    StartUrl = "https://example.test/safe"
+                }
+            }
+        },
+        Credentials = new()
+    });
+    var accepted = SecureTransferService.Read(sqlNamed, exportKey);
+    Check(accepted.Config.Workflows.Single().Name.Contains("DROP TABLE", StringComparison.Ordinal),
+        "B3 SQL-looking website names stay data, never query text");
+    VaultDatabase.Current.ReplaceSnapshot(accepted.Config, accepted.Credentials);
+    var reloaded = VaultDatabase.Current.LoadConfiguration();
+    Check(reloaded.Workflows.Single().Name.Contains("DROP TABLE", StringComparison.Ordinal) &&
+          VaultDatabase.Current.Exists,
+        "B3 parameterized vault write survives SQL metacharacters in website name");
+
+    var fillPayload = Path.Combine(root, "fill-payload.launchflow");
+    PortableExport.Write(fillPayload, exportKey, new PortableExport.PortablePackage
+    {
+        Config = new Configuration
+        {
+            Workflows =
+            {
+                new WebsiteWorkflow
+                {
+                    Id = Guid.NewGuid(),
+                    Name = "Fill carrier",
+                    StartUrl = "https://example.test/form",
+                    Steps =
+                    {
+                        new WorkflowStep { Type = "Fill", Target = "#password", Value = "secret-from-backup" }
+                    }
+                }
+            }
+        },
+        Credentials = new()
+    });
+    var fillRejected = false;
+    try { SecureTransferService.Read(fillPayload, exportKey); }
+    catch (InvalidDataException) { fillRejected = true; }
+    Check(fillRejected, "B3 Fill steps with typed values are refused on import");
+
+    var projected = ImportConfigurationProjection.ForThisDevice(
+        new Configuration
+        {
+            KeePassDatabasePath = @"D:\OtherPC\passwords.kdbx",
+            KeePassKeyFilePath = @"D:\OtherPC\key.key",
+            Workflows =
+            {
+                new WebsiteWorkflow
+                {
+                    Id = Guid.NewGuid(),
+                    Name = "KeePass site",
+                    StartUrl = "https://example.test",
+                    KeepassEntryPath = "Group/Entry"
+                }
+            }
+        },
+        config,
+        "Ctrl+M");
+    Check(projected.KeePassDatabasePath is null && projected.KeePassKeyFilePath is null &&
+          projected.Workflows.Single().KeepassEntryPath is null,
+        "B3 imported KeePass paths are cleared for this device");
 }
 finally
 {

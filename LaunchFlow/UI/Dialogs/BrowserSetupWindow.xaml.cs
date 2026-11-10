@@ -18,28 +18,34 @@ public partial class BrowserSetupWindow : Window
         var report = BrowserEnvironment.Probe();
         ReadinessText.Text = report.AnyAutoBrowser
             ? report.Summary
-            : "No Auto-ready browser detected. Install Edge or Chrome, or install Firefox automation below.";
+            : "No browser ready for automatic sign-in yet. Install one below, or install Firefox.";
         DetailText.Text =
-            "Edge: " + Describe(report.Edge, report.EdgePath) + "\n" +
-            "Chrome: " + Describe(report.Chrome, report.ChromePath) + "\n" +
-            "Mozilla Firefox: " + Describe(report.MozillaFirefox, report.MozillaFirefoxPath) + "\n" +
-            "Firefox Auto: " + (report.AutomationFirefox
-                ? "ready — " + report.AutomationFirefoxPath
-                : "not installed");
+            Line("Edge", report.Edge) +
+            Line("Chrome", report.Chrome) +
+            Line("Brave", report.Brave) +
+            Line("Opera", report.Opera) +
+            Line("Opera GX", report.OperaGx) +
+            Line("Vivaldi", report.Vivaldi) +
+            Line("Regular Firefox", report.MozillaFirefox) +
+            "Firefox Auto: " + (report.AutomationFirefox ? "ready" : "not installed");
         FirefoxStatusText.Text = report.AutomationFirefox
-            ? "Firefox automation is ready for Auto sign-in."
-            : "Firefox automation is not installed yet. Edge/Chrome Auto still work when those browsers are found.";
+            ? "Firefox is ready for automatic sign-in."
+            : "Firefox for automatic sign-in is not installed yet. Edge, Chrome, Brave, Opera, and Vivaldi still work when found.";
         InstallFirefoxAutomationButton.IsEnabled = !report.AutomationFirefox;
     }
 
-    private static string Describe(bool found, string? path) =>
-        found ? "found" + (string.IsNullOrWhiteSpace(path) ? "" : " — " + path) : "not found";
+    private static string Line(string name, bool found) =>
+        name + ": " + (found ? "found" : "not found") + "\n";
 
     private void Refresh_Click(object sender, RoutedEventArgs e) => Refresh();
     private void Edge_Click(object sender, RoutedEventArgs e) =>
         OpenOfficial("https://www.microsoft.com/edge/download");
     private void Chrome_Click(object sender, RoutedEventArgs e) =>
         OpenOfficial("https://www.google.com/chrome/");
+    private void Brave_Click(object sender, RoutedEventArgs e) =>
+        OpenOfficial("https://brave.com/download/");
+    private void Opera_Click(object sender, RoutedEventArgs e) =>
+        OpenOfficial("https://www.opera.com/download");
 
     private void InstallFirefoxAutomation_Click(object sender, RoutedEventArgs e)
     {
@@ -50,38 +56,37 @@ public partial class BrowserSetupWindow : Window
         }
 
         if (MessageBox.Show(this,
-                "Download LaunchFlow's Firefox automation browser (~100+ MB) into your user profile?\n\n" +
-                "This is not the Mozilla Firefox from mozilla.org. Regular Firefox cannot be automated.\n\n" +
-                "Prefer Edge or Chrome if they are already installed on this PC.",
-                "Install Firefox automation",
+                "Download LaunchFlow’s Firefox for automatic sign-in (~100+ MB)?\n\n" +
+                "This is a special Firefox LaunchFlow uses. Regular Firefox from Mozilla cannot do automatic sign-in.\n\n" +
+                "If Edge, Chrome, Brave, Opera, or Vivaldi is already installed, you can use those instead.",
+                "Install Firefox",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question) != MessageBoxResult.Yes)
             return;
 
         InstallFirefoxAutomationButton.IsEnabled = false;
-        FirefoxStatusText.Text = "Downloading Firefox automation…";
+        FirefoxStatusText.Text = "Downloading Firefox…";
         try
         {
             var code = PlaywrightFirefoxSupport.InstallAutomationFirefox();
             if (code != 0 || !PlaywrightFirefoxSupport.IsAutomationFirefoxInstalled())
             {
                 MessageBox.Show(this,
-                    "Firefox automation download did not finish (code " + code + "). " +
-                    "Check your network, then try again — or use Edge/Chrome.",
-                    "Browser setup", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    "Firefox download did not finish. Check your internet and try again — or use Edge, Chrome, Brave, Opera, or Vivaldi.",
+                    "Browsers", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
             else
             {
                 MessageBox.Show(this,
-                    "Firefox automation is ready. Choose Firefox on a website and run Auto sign-in again.",
-                    "Browser setup", MessageBoxButton.OK, MessageBoxImage.Information);
+                    "Firefox is ready. Choose Firefox for a website and try automatic sign-in again.",
+                    "Browsers", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             MessageBox.Show(this,
-                "Firefox automation install failed: " + ex.GetType().Name + ". Use Edge or Chrome instead.",
-                "Browser setup", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "Firefox install did not work. Use Edge, Chrome, Brave, Opera, or Vivaldi instead.",
+                "Browsers", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         finally
         {
@@ -92,8 +97,8 @@ public partial class BrowserSetupWindow : Window
     private void OpenOfficial(string url)
     {
         if (MessageBox.Show(this,
-            "Open this publisher's website in your default browser? LaunchFlow will not install anything automatically.",
-            "Open browser website", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            "Open this website in your usual browser? LaunchFlow will not install anything by itself.",
+            "Open website", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
             return;
         try
         {
@@ -101,8 +106,8 @@ public partial class BrowserSetupWindow : Window
         }
         catch (Exception)
         {
-            MessageBox.Show(this, "Your system could not open the browser website. Contact your IT administrator.",
-                "Browser setup", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, "Windows could not open that website. Ask your IT person for help.",
+                "Browsers", MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
 }

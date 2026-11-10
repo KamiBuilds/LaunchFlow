@@ -18,10 +18,34 @@ namespace System.Windows
     public class Window
     {
         public Window? Owner { get; set; }
+        public bool Topmost { get; set; }
         public event EventHandler? Loaded;
         public event EventHandler? Closed;
         public void Close() => Closed?.Invoke(this, EventArgs.Empty);
         protected void RaiseLoaded() => Loaded?.Invoke(this, EventArgs.Empty);
+        public object? FindResource(object key) => null;
+    }
+}
+namespace System.Windows.Media
+{
+    public struct Color
+    {
+        public byte R, G, B, A;
+        public static Color FromRgb(byte r, byte g, byte b) => new() { R = r, G = g, B = b, A = 255 };
+    }
+    public class SolidColorBrush
+    {
+        public Color Color { get; }
+        public SolidColorBrush(Color color) => Color = color;
+    }
+    public class Brush { }
+}
+namespace System.Windows.Media.Animation
+{
+    public class Storyboard
+    {
+        public void Begin(object target, bool isControllable) { }
+        public void Stop(object target) { }
     }
 }
 namespace System.Windows.Threading
@@ -54,6 +78,10 @@ namespace LaunchFlow
     {
         public object? Content { get; set; }
         public string? Text { get; set; }
+        public object? Background { get; set; }
+        public object? BorderBrush { get; set; }
+        public object? Fill { get; set; }
+        public double Opacity { get; set; } = 1;
         public bool IsEnabled { get; set; } = true;
         public System.Windows.Visibility Visibility { get; set; } = System.Windows.Visibility.Visible;
         private object? _selectedItem;
@@ -98,6 +126,8 @@ namespace LaunchFlow
         private readonly TestControl CaptureToggle = new();
         private readonly TestControl CaptureStatus = new();
         private readonly TestControl TargetStatus = new();
+        private readonly TestControl RecordingBanner = new();
+        private readonly TestControl RecordingDot = new();
         private readonly TestControl RecordedCountLabel = new();
         private readonly TestControl EmptyStepsHint = new();
         private readonly TestControl StepList = new();

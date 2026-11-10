@@ -318,49 +318,55 @@
                          Foreground="#C3DEDF" TextWrapping="Wrap" FontSize="12"/>
             </Border>
             <StackPanel Margin="0,0,0,11">
-               <TextBlock Text="3. Recorded actions (optional)" FontSize="16" FontWeight="SemiBold"
+               <TextBlock Text="3. Clicks after sign-in" FontSize="16" FontWeight="SemiBold"
                           Foreground="#D9E7F4" Margin="0,0,0,5"/>
-               <TextBlock Text="Only needed when a website should click buttons or links for you. Recorded actions do not include typed passwords."
+               <TextBlock Text="Record the buttons LaunchFlow should click for you. Passwords are never recorded. You can select and delete anytime."
                           Foreground="#9FB9CB" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,9"/>
-               <WrapPanel Margin="0,0,0,4">
+               <WrapPanel Margin="0,0,0,8">
                  <Button x:Name="TeachButton" Content="● Record clicks" Click="RecordSteps_Click"
                          Style="{StaticResource PrimaryButton}" AutomationProperties.Name="Teach by clicking"
-                         ToolTip="Record safe browser clicks for the selected website" Margin="0,0,8,6"/>
-               </WrapPanel>
-
-               <Expander Header="Extra tools (only if you need them)"
-                         Foreground="#BBD3E4" Background="#192B3E" Padding="9">
-                 <StackPanel>
-                 <WrapPanel Margin="4,8,3,0">
+                         ToolTip="Open the recorder and click in the browser LaunchFlow opened" Margin="0,0,8,6"/>
                  <Button x:Name="RepairButton" Content="Fix sign-in" Click="RepairLogin_Click" Margin="0,0,8,6"
-                         ToolTip="Review and repair a website's sign-in sequence"/>
-                 <Button x:Name="AdvancedSignInButton" Content="Advanced sign-in…" Click="OpenWebsiteAdvancedSignIn_Click"
-                         ToolTip="Open advanced selector and trusted-origin settings for this website" Margin="0,0,8,6"/>
-                   <Button Content="+ Page" Click="AddPage_Click" ToolTip="Open another website/page after sign-in" Margin="0,0,6,6"/>
-                   <Button Content="+ Action" Click="AddStep_Click" Margin="0,0,6,6"/>
-                   <Button Content="Edit selected" Click="EditStep_Click" Margin="0,0,6,6" ToolTip="Edit one selected action; double-click also opens the editor"/>
-                   <Button Content="Wait +1s" Click="QuickWaitStep_Click" Margin="0,0,6,6" ToolTip="Insert a one-second pause after a slow page load"/>
-                   <Button Content="Select all" Click="SelectAllSteps_Click" Margin="0,0,6,6"/>
-                   <Button Content="Delete selected" Click="RemoveStep_Click" Margin="0,0,0,6"/>
-                 </WrapPanel>
+                         ToolTip="Help LaunchFlow learn this website’s sign-in again"/>
+                 <Button Content="Select all" Click="SelectAllSteps_Click" Margin="0,0,8,6"/>
+                 <Button Content="Delete selected" Click="RemoveStep_Click" Margin="0,0,8,6"/>
+                 <Button Content="Edit" Click="EditStep_Click" Margin="0,0,8,6" ToolTip="Change the selected click"/>
+                 <Button Content="Wait +1s" Click="QuickWaitStep_Click" Margin="0,0,8,6" ToolTip="Add a one-second pause"/>
+                 <Button Content="+ Page" Click="AddPage_Click" ToolTip="Open another page after sign-in" Margin="0,0,8,6"/>
+                 <Button Content="+ Action" Click="AddStep_Click" Margin="0,0,0,6"/>
+                 <!-- Hidden control kept so older settings paths still compile; not shown to users. -->
+                 <Button x:Name="AdvancedSignInButton" Visibility="Collapsed"
+                         Click="OpenWebsiteAdvancedSignIn_Click"/>
+               </WrapPanel>
                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                  <TextBlock x:Name="LoginRecipeLabel" TextWrapping="Wrap" Foreground="#9FB7CB"
                             FontSize="11" VerticalAlignment="Center" MaxWidth="520"
-                            Text="Remembered login shape: not learned yet"/>
-                 <Button x:Name="ClearLoginRecipeButton" Content="Forget shape" Margin="12,0,0,0"
+                            Text="How this site signs in: not learned yet"/>
+                 <Button x:Name="ClearLoginRecipeButton" Content="Forget this" Margin="12,0,0,0"
                          Padding="10,4" Click="ClearLoginRecipe_Click"
-                         ToolTip="Clear the remembered Auto login shape so LaunchFlow rediscovers next time"/>
+                         ToolTip="Clear the remembered sign-in pattern so LaunchFlow learns it again next time"/>
                </StackPanel>
-                 </StackPanel>
-               </Expander>
              </StackPanel>
-            <ListBox x:Name="StepList" MinHeight="128" Height="180" FontSize="13" SelectionMode="Extended" MouseDoubleClick="EditStep_Click"
-                     AutomationProperties.Name="Workflow steps after sign-in"/>
+            <Border Background="#0F1826" BorderBrush="#293D53" BorderThickness="1"
+                    CornerRadius="10" Margin="0,0,0,4" MinHeight="148" Height="200">
+              <Grid>
+                <ListBox x:Name="StepList" FontSize="13" SelectionMode="Extended"
+                         DisplayMemberPath="DisplayLabel"
+                         MouseDoubleClick="EditStep_Click" BorderThickness="0"
+                         Background="Transparent"
+                         AutomationProperties.Name="Workflow steps after sign-in"/>
+                <TextBlock x:Name="EmptyStepsHint"
+                           Text="No clicks yet. Press ● Record clicks, then click in the browser LaunchFlow opened."
+                           Foreground="#8FA7BC" FontSize="12" TextAlignment="Center" TextWrapping="Wrap"
+                           IsHitTestVisible="False" VerticalAlignment="Center" HorizontalAlignment="Center"
+                           MaxWidth="420" Margin="18" Visibility="Collapsed"/>
+              </Grid>
+            </Border>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,6,0,0">
               <Button Content="↑ Up" Click="MoveStepUp_Click"/>
               <Button Content="↓ Down" Click="MoveStepDown_Click" Margin="0"/>
             </StackPanel>
-            <TextBlock Text="4. Test: click Test this site above (it saves changes first). Run all opens every enabled website. Actions run in the order listed." TextWrapping="Wrap" Foreground="#96AFC3" FontSize="11" Margin="0,8,0,0"/>
+            <TextBlock Text="4. Test this site above when you’re ready (it saves first). Run all opens every enabled website." TextWrapping="Wrap" Foreground="#96AFC3" FontSize="11" Margin="0,8,0,0"/>
           </StackPanel>
         </ScrollViewer>
         <Grid x:Name="WorkflowEmptyState" Visibility="Visible" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="520" Margin="16">
@@ -369,7 +375,7 @@
               <TextBlock Text="+" FontSize="48" FontWeight="Light" Foreground="#6EE7D7" HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <TextBlock x:Name="EmptyStateHeading" Text="No websites yet" FontSize="26" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,10"/>
-            <TextBlock x:Name="EmptyStateDescription" Text="LaunchFlow opens websites on your chosen screen and can perform recorded actions. Start with one website. Login and automation are optional." Foreground="#A9BDD4" FontSize="14" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="460" Margin="0,0,0,22"/>
+            <TextBlock x:Name="EmptyStateDescription" Text="LaunchFlow opens websites on your chosen screen and can click buttons for you after you record them. Start with one website." Foreground="#A9BDD4" FontSize="14" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="460" Margin="0,0,0,22"/>
             <Border Background="#192B3E" BorderBrush="#2D4B60" BorderThickness="1"
                      CornerRadius="10" Padding="15,12" Margin="0,0,0,18" MaxWidth="470">
                <StackPanel>
@@ -561,41 +567,41 @@
                   <TextBox x:Name="UpdateFeedBox" Visibility="Collapsed"/>
                   <Button Content="Check for updates" Click="CheckUpdates_Click"
                           Style="{StaticResource PrimaryButton}" Padding="16,10" HorizontalAlignment="Left"/>
-                  <Button Content="Check installed browsers" Click="BrowserSetup_Click" Padding="14,9"
+                  <Button Content="Check browsers on this PC" Click="BrowserSetup_Click" Padding="14,9"
                           HorizontalAlignment="Left" Margin="0,10,0,0"
-                          ToolTip="Check approved browsers and open official download pages only with consent"
+                          ToolTip="See which browsers LaunchFlow found and install Firefox if needed"
                           AutomationProperties.Name="Browser setup and readiness"/>
-                  <Button Content="Export redacted support report" Click="ExportDiagnostics_Click" Padding="14,9"
+                  <Button Content="Save a support note" Click="ExportDiagnostics_Click" Padding="14,9"
                           HorizontalAlignment="Left" Margin="0,10,0,0"
-                          ToolTip="Save a local report containing only version, timestamps and redacted event codes"
+                          ToolTip="Saves a short local note with version and safe event codes — no passwords"
                           AutomationProperties.Name="Export redacted diagnostic report"/>
                   <TextBlock x:Name="UpdateStatusLabel" Foreground="#6EE7D7" TextWrapping="Wrap" Margin="0,8,0,0"/>
           </StackPanel>
-        </ScrollViewer></TabItem><TabItem Header="Shortcuts"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="28" MaxWidth="750" HorizontalAlignment="Left"><TextBlock Text="Keyboard shortcut" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,10"/><TextBlock Text="LaunchFlow always listens for this shortcut while running, including when hidden in the system tray. Press a combination containing Ctrl, Alt or Shift." TextWrapping="Wrap" Foreground="#A9BBD3" Margin="0,0,0,20"/><StackPanel Orientation="Horizontal"><TextBox x:Name="ShortcutBox" IsReadOnly="True" Width="210" Text="Ctrl+M" Margin="0,0,14,0"/><Button x:Name="CaptureButton" Content="Change shortcut" Click="CaptureShortcut_Click"/></StackPanel><TextBlock x:Name="ShortcutHelpLabel" Text="Default: Ctrl+M" Margin="0,11,0,0" Foreground="#86DBF3" TextWrapping="Wrap"/></StackPanel></ScrollViewer></TabItem><TabItem Header="Advanced"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="28" MaxWidth="790" HorizontalAlignment="Left"><TextBlock Text="Advanced sign-in options" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,14"/><TextBlock Text="These optional fields apply to the currently selected website. Most websites do not require changing them." Foreground="#ABBDD3" TextWrapping="Wrap" Margin="0,0,0,14"/><Expander Header="Advanced settings (only if the website needs them)" Foreground="#D9F1FC" Background="#18283C" Padding="10" Margin="0,0,0,12" IsExpanded="True">
+        </ScrollViewer></TabItem><TabItem Header="Shortcuts"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="28" MaxWidth="750" HorizontalAlignment="Left"><TextBlock Text="Keyboard shortcut" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,10"/><TextBlock Text="LaunchFlow always listens for this shortcut while running, including when hidden in the system tray. Press a combination containing Ctrl, Alt or Shift." TextWrapping="Wrap" Foreground="#A9BBD3" Margin="0,0,0,20"/><StackPanel Orientation="Horizontal"><TextBox x:Name="ShortcutBox" IsReadOnly="True" Width="210" Text="Ctrl+M" Margin="0,0,14,0"/><Button x:Name="CaptureButton" Content="Change shortcut" Click="CaptureShortcut_Click"/></StackPanel><TextBlock x:Name="ShortcutHelpLabel" Text="Default: Ctrl+M" Margin="0,11,0,0" Foreground="#86DBF3" TextWrapping="Wrap"/></StackPanel></ScrollViewer></TabItem><TabItem Header="Special help" Visibility="Collapsed"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="28" MaxWidth="790" HorizontalAlignment="Left"><TextBlock Text="Special sign-in help" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,14"/><TextBlock Text="LaunchFlow finds the email and password boxes by itself on most sites. Leave these blank unless someone from IT asks you to fill them in for one tricky website." Foreground="#ABBDD3" TextWrapping="Wrap" Margin="0,0,0,14"/><Expander Header="Only if IT asks you to change these" Foreground="#D9F1FC" Background="#18283C" Padding="10" Margin="0,0,0,12" IsExpanded="False">
                   <StackPanel Margin="4,10,4,4">
-                    <TextBlock Text="Trusted username page address (HTTPS; blank = start URL)" Style="{StaticResource FieldLabel}"/>
-                    <TextBox x:Name="CredentialOriginBox" Margin="0,0,0,11" ToolTip="Example: https://login.example.com"/>
-                    <TextBlock Text="Trusted password page address (HTTPS; only if different)" Style="{StaticResource FieldLabel}"/>
-                    <TextBox x:Name="PasswordOriginBox" Margin="0,0,0,11" ToolTip="If email login continues on another host (for example https://idbroker-eu.webex.com), put that HTTPS origin here — or approve it once when LaunchFlow asks."/>
+                    <TextBlock Text="Sign-in page address (https://… — leave blank to use the website’s start address)" Style="{StaticResource FieldLabel}"/>
+                    <TextBox x:Name="CredentialOriginBox" Margin="0,0,0,11" ToolTip="Example: https://login.example.com — leave blank for normal sites"/>
+                    <TextBlock Text="Password page address (only if password appears on a different website)" Style="{StaticResource FieldLabel}"/>
+                    <TextBox x:Name="PasswordOriginBox" Margin="0,0,0,11" ToolTip="If the password step opens on another company login page, paste that https:// address — or just approve it once when LaunchFlow asks."/>
                     <Grid Margin="0,0,0,11">
                       <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                      <StackPanel Grid.Column="0"><TextBlock Text="Username field (CSS)" Style="{StaticResource FieldLabel}"/>
-                        <TextBox x:Name="UsernameSelectorBox"/></StackPanel>
-                      <StackPanel Grid.Column="2"><TextBlock Text="Password field (CSS)" Style="{StaticResource FieldLabel}"/>
-                        <TextBox x:Name="PasswordSelectorBox"/></StackPanel>
+                      <StackPanel Grid.Column="0"><TextBlock Text="Email / username box (leave blank)" Style="{StaticResource FieldLabel}"/>
+                        <TextBox x:Name="UsernameSelectorBox" ToolTip="Leave blank so LaunchFlow finds the box automatically"/></StackPanel>
+                      <StackPanel Grid.Column="2"><TextBlock Text="Password box (leave blank)" Style="{StaticResource FieldLabel}"/>
+                        <TextBox x:Name="PasswordSelectorBox" ToolTip="Leave blank so LaunchFlow finds the box automatically"/></StackPanel>
                     </Grid>
-                    <TextBlock Text="Username continuation selector (optional — automatic for most two-page logins)" Style="{StaticResource FieldLabel}"/>
+                    <TextBlock Text="Next / Continue button after email (leave blank for most sites)" Style="{StaticResource FieldLabel}"/>
                     <TextBox x:Name="UsernameContinueBox" Margin="0,0,0,11"/>
-                    <TextBlock Text="Final sign-in button (CSS; blank means click manually)" Style="{StaticResource FieldLabel}"/>
+                    <TextBlock Text="Sign-in button (leave blank to click it yourself if needed)" Style="{StaticResource FieldLabel}"/>
                     <TextBox x:Name="SubmitSelectorBox" Margin="0,0,0,11"/>
-                    <TextBlock Text="Visible element after successful login (CSS, optional)" Style="{StaticResource FieldLabel}"/>
+                    <TextBlock Text="Something that appears after you are signed in (optional)" Style="{StaticResource FieldLabel}"/>
                     <TextBox x:Name="LoginSuccessSelectorBox" Margin="0,0,0,11"/>
                   </StackPanel>
                 </Expander>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                  <TextBlock Text="Sign-in timeout (seconds)" Foreground="#9DAFC5" VerticalAlignment="Center" Margin="0,0,15,0"/>
+                  <TextBlock Text="How long to wait for sign-in (seconds)" Foreground="#9DAFC5" VerticalAlignment="Center" Margin="0,0,15,0"/>
                   <TextBox x:Name="LoginWaitBox" Width="75" Text="60"/>
-                  <TextBlock Text="MFA always stays under your control." Foreground="#96AFC3" VerticalAlignment="Center" Margin="14,0,0,0"/>
+                  <TextBlock Text="Extra codes and phone approvals always stay under your control." Foreground="#96AFC3" VerticalAlignment="Center" Margin="14,0,0,0"/>
                 </StackPanel>
               </StackPanel></ScrollViewer></TabItem><TabItem Header="Import / Export"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="28" MaxWidth="790" HorizontalAlignment="Left"><TextBlock Text="Move to another PC" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,14"/><TextBlock Text="Transfer websites and saved logins using a password-protected file." Foreground="#B3C6DD" TextWrapping="Wrap" Margin="0,0,0,16"/><CheckBox x:Name="IncludePasswordsCheck" Content="Include saved login passwords in encrypted export" IsChecked="True"/><Button Content="Export encrypted configuration…" Click="Export_Click" Width="275" HorizontalAlignment="Left" Margin="0,12,0,15"/><Button Content="Import configuration…" Click="Import_Click" Width="275" HorizontalAlignment="Left"/>
 <TextBlock Text="Import replaces existing websites after confirmation. Keep your export password safe." Foreground="#E6B6A0" TextWrapping="Wrap" Margin="0,15,0,12"/>

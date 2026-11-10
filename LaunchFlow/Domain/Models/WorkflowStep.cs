@@ -16,15 +16,27 @@ public sealed class WorkflowStep
 
     // Targets, descriptions and even unknown action types may contain credentials.
     // Editors can present them deliberately; implicit formatting must not disclose them.
-    public override string ToString() => Type switch
+    /// <summary>Safe list label; never echoes Target/Value (may hold secrets).</summary>
+    [JsonIgnore]
+    public string DisplayLabel
     {
-        "Navigate" => "Navigate",
-        "Click" => "Click",
-        "Fill" => "Fill",
-        "Wait" => "Wait",
-        "Press" => "Press",
-        "AssertVisible" => "Verify element",
-        "WaitForURL" => "Wait for URL",
-        _ => "Workflow step"
-    };
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(Description))
+                return Description.Trim();
+            return Type switch
+            {
+                "Navigate" => "Open a page",
+                "Click" => "Clicked something on the page",
+                "Fill" => "Fill a field",
+                "Wait" => "Wait",
+                "Press" => "Pressed a key",
+                "AssertVisible" => "Verify element",
+                "WaitForURL" => "Wait for page",
+                _ => "Recorded action"
+            };
+        }
+    }
+
+    public override string ToString() => DisplayLabel;
 }

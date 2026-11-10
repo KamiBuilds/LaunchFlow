@@ -9,8 +9,9 @@ public sealed partial class AutomationEngine
     private const string StandardUsernameSelector = LoginFieldDiscovery.StandardUsernameSelector;
     private const string StandardSubmitSelector = LoginFieldDefaults.SubmitSelector;
     private const string AutomaticUsernameCandidates =
-        "input[autocomplete~='username' i], input[name='login' i], #login_field, " +
-        "input[type='email'], input[name*='user' i], input[name*='email' i], #username, #email";
+        "input[autocomplete~='username' i], input[name='login' i], input[name='identity' i], #login_field, " +
+        "input[type='email'], input[name*='user' i], input[name*='email' i], input[name*='identity' i], " +
+        "#username, #email, #identity";
 
     // Discover only existing same-origin HTTPS links. No guessed /login paths,
     // SSO buttons, cross-origin redirects or free-form page-wide click search.
@@ -20,7 +21,7 @@ public sealed partial class AutomationEngine
         ct.ThrowIfCancellationRequested();
         if (!Uri.TryCreate(page.Url, UriKind.Absolute, out var current) ||
             current.Scheme != Uri.UriSchemeHttps) return false;
-        if (workflow.UsernameSelector == StandardUsernameSelector
+        if (LoginFieldDiscovery.UsesAutomaticUsernameDiscovery(workflow)
                 ? await HasSupportedResumedPasswordStageAsync(workflow, page, ct).ConfigureAwait(false)
                 : await PasswordStageReadyAsync(workflow, page, ct).ConfigureAwait(false))
             return false;
@@ -326,7 +327,7 @@ public sealed partial class AutomationEngine
         if (!string.IsNullOrWhiteSpace(workflow.UsernameContinueSelector) &&
             await LoginFieldReadyAsync(page, workflow.UsernameSelector, ct).ConfigureAwait(false))
             return true;
-        if (workflow.UsernameSelector != StandardUsernameSelector)
+        if (!LoginFieldDiscovery.UsesAutomaticUsernameDiscovery(workflow))
         {
             // A deliberate configured selector can be a no-form SPA.
             return await LoginFieldReadyAsync(page, workflow.UsernameSelector, ct).ConfigureAwait(false);
@@ -357,27 +358,41 @@ public sealed partial class AutomationEngine
             {
                 var score = await element.EvaluateAsync<int>("""
                     field => {
-                      const form = field.form;
-                      if (!form || !field.isConnected || field.ownerDocument.defaultView?.document !== field.ownerDocument)
+                      if (!field.isConnected || field.ownerDocument.defaultView?.document !== field.ownerDocument)
                         return 0;
                       const forbidden = /(?:sign[ -]?up|register|create.?account|forgot|reset|change.?password)/i;
-                      const purpose = [form.id, form.getAttribute('action'), form.getAttribute('aria-label')].join(' ');
+                      const form = field.form;
+                      const path = field.ownerDocument.location.pathname;
+                      const loginPath = /\/(?:login|log-in|signin|sign-in|auth)(?:\/|$)/i.test(path);
+                      // React/Formik pages (modern npm) often have no native <form>.
+                      // Scope to the nearest card/section, or the document, instead.
+                      const root = form || field.closest('form, section, main, [role="main"], .login, #login, .card') ||
+                        field.ownerDocument;
+                      const purpose = form
+                        ? [form.id, form.getAttribute('action'), form.getAttribute('aria-label')].join(' ')
+                        : [root.id || '', root.getAttribute?.('aria-label') || '', path].join(' ');
                       if (forbidden.test(purpose)) return 0;
-                      const controls = Array.from(form.elements);
+                      const controls = form
+                        ? Array.from(form.elements)
+                        : Array.from(root.querySelectorAll('input, button, [role="button"]'));
                       const passwords = controls.filter(el => el instanceof HTMLInputElement &&
-                        el.type === 'password');
+                        el.type === 'password' && el.getClientRects().length > 0);
                       if (passwords.some(el => /new-password|one-time-code/i.test(el.autocomplete || '')) ||
                           passwords.length > 1) return 0;
                       const signInActions = controls.filter(el => {
-                        if (!(el instanceof HTMLButtonElement || el instanceof HTMLInputElement)) return false;
+                        if (!(el instanceof HTMLButtonElement || el instanceof HTMLInputElement ||
+                              el.getAttribute('role') === 'button')) return false;
                         if (el.getClientRects().length === 0) return false;
                         const label = (el.getAttribute('aria-label') || el.innerText || el.value || '').trim();
                         return /^(log in|login|sign in|signin)$/i.test(label);
                       });
                       if (passwords.length === 1)
-                        return signInActions.length === 1 || /(?:login|log-in|signin|sign-in|auth)/i.test(purpose) ? 3 : 0;
+                        return signInActions.length === 1 ||
+                          /(?:login|log-in|signin|sign-in|auth|identity)/i.test(purpose) ||
+                          (loginPath && signInActions.length >= 1) ? 3 : 0;
                       const continuations = controls.filter(el => {
-                        if (!(el instanceof HTMLButtonElement || el instanceof HTMLInputElement)) return false;
+                        if (!(el instanceof HTMLButtonElement || el instanceof HTMLInputElement ||
+                              el.getAttribute('role') === 'button')) return false;
                         if (el.getClientRects().length === 0) return false;
                         const label = (el.getAttribute('aria-label') || el.innerText || el.value || '').trim().toLowerCase();
                         return /^(next|continue|continue to password|log in|login|sign in|signin)$/i.test(label);
@@ -385,15 +400,14 @@ public sealed partial class AutomationEngine
                       if (continuations.length !== 1) return 0;
                       // Email + Continue is not login intent. Require an
                       // authentication-specific form, identifier, or URL.
-                      const explicitIntent = /(?:login|log-in|signin|sign-in|auth|identifier)/i.test(purpose) ||
+                      const explicitIntent = /(?:login|log-in|signin|sign-in|auth|identifier|identity)/i.test(purpose) ||
                         /(?:^|\s)username(?:\s|$)/i.test(field.autocomplete || '') ||
-                        /^(?:login|login_field|username)$/i.test(field.id || '') ||
-                        /^(?:login|username)$/i.test(field.name || '');
+                        /^(?:login|login_field|username|identity)$/i.test(field.id || '') ||
+                        /^(?:login|username|identity)$/i.test(field.name || '');
                       if (explicitIntent) return 2;
-                      const path = field.ownerDocument.location.pathname;
                       const label = (continuations[0].getAttribute('aria-label') ||
                         continuations[0].innerText || continuations[0].value || '').trim();
-                      return /\/(?:login|log-in|signin|sign-in|auth)(?:\/|$)/i.test(path) &&
+                      return loginPath &&
                         /^(?:next|log in|login|sign in|signin)$/i.test(label) ? 1 : 0;
                     }
                     """).ConfigureAwait(false);

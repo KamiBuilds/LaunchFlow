@@ -1,29 +1,33 @@
 <Window x:Class="LaunchFlow.BrowserSetupWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Browser readiness" Width="660" Height="520"
-        MinWidth="440" MinHeight="340" ResizeMode="CanResize"
+        Title="Browsers on this PC" Width="660" Height="560"
+        MinWidth="440" MinHeight="360" ResizeMode="CanResize"
         WindowStartupLocation="CenterOwner" Background="#0D1725"
         Foreground="#EEF6FA" FontFamily="Segoe UI" FontSize="13"
         Icon="pack://application:,,,/Assets/LaunchFlow.ico">
   <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                 CanContentScroll="False" Padding="0" Focusable="False">
     <StackPanel Margin="26">
-      <TextBlock Text="Browser readiness" FontSize="23" FontWeight="SemiBold"/>
+      <TextBlock Text="Browsers on this PC" FontSize="23" FontWeight="SemiBold"/>
       <TextBlock x:Name="ReadinessText" TextWrapping="Wrap" Margin="0,12,0,12"
                  AutomationProperties.Name="Detected supported browsers"/>
       <TextBlock x:Name="DetailText" TextWrapping="Wrap" Foreground="#AEC4DB" Margin="0,0,0,14"
                  AutomationProperties.Name="Per-browser detection details"/>
-      <TextBlock Text="Auto sign-in uses browsers LaunchFlow finds on this PC for Edge and Chrome. Firefox Auto uses a Playwright automation build from Setup, your user profile, or a detected Playwright cache (regular Mozilla Firefox cannot be driven)."
+      <TextBlock Text="LaunchFlow looks for Edge, Chrome, Brave, Opera, Opera GX, and Vivaldi already on this computer. For Firefox, Setup includes a special copy that can sign in automatically (regular Firefox from Mozilla cannot)."
                  TextWrapping="Wrap" Foreground="#AEC4DB" Margin="0,0,0,16"/>
       <WrapPanel>
-        <Button Content="Microsoft Edge website" Click="Edge_Click" Padding="12,9" Margin="0,0,9,9"
+        <Button Content="Get Microsoft Edge" Click="Edge_Click" Padding="12,9" Margin="0,0,9,9"
                 AutomationProperties.Name="Open official Microsoft Edge download site"/>
-        <Button Content="Google Chrome website" Click="Chrome_Click" Padding="12,9" Margin="0,0,9,9"
+        <Button Content="Get Google Chrome" Click="Chrome_Click" Padding="12,9" Margin="0,0,9,9"
                 AutomationProperties.Name="Open official Google Chrome download site"/>
-        <Button x:Name="InstallFirefoxAutomationButton" Content="Install Firefox automation"
+        <Button Content="Get Brave" Click="Brave_Click" Padding="12,9" Margin="0,0,9,9"
+                AutomationProperties.Name="Open official Brave download site"/>
+        <Button Content="Get Opera" Click="Opera_Click" Padding="12,9" Margin="0,0,9,9"
+                AutomationProperties.Name="Open official Opera download site"/>
+        <Button x:Name="InstallFirefoxAutomationButton" Content="Install Firefox"
                 Click="InstallFirefoxAutomation_Click" Padding="12,9" Margin="0,0,9,9"
-                AutomationProperties.Name="Install Playwright Firefox for automation with consent"/>
+                AutomationProperties.Name="Install Firefox for automatic sign-in with consent"/>
         <Button x:Name="BrowserCheckAgainButton" Content="Scan again" Click="Refresh_Click" Padding="12,9" Margin="0,0,9,9"
                 AutomationProperties.Name="Scan installed browsers again"/>
       </WrapPanel>
