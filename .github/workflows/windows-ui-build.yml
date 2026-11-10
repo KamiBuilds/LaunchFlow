@@ -1,0 +1,97 @@
+name: LaunchFlow Windows UI and installer smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: launchflow-ui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+      - name: Verify WPF and release source contracts
+        shell: pwsh
+        run: |
+          python tests/architecture/check_partials.py
+          if ($LASTEXITCODE -ne 0) { throw 'Architecture module check failed' }
+          python tests/ui/verify_ui.py
+          if ($LASTEXITCODE -ne 0) { throw 'UI source contract check failed' }
+          python tools/Verify-LaunchFlow-Source.py
+          if ($LASTEXITCODE -ne 0) { throw 'Source invariants failed' }
+      - name: Validate independently testable service contracts
+        run: dotnet run --project tests/architecture/ServiceContracts.csproj -c Release -p:TreatWarningsAsErrors=true
+      - name: Verify real encrypted SQLite save/reopen and stale vault authorizations
+        run: dotnet run --project tests/save/EncryptedSaveTests.csproj -c Release -p:TreatWarningsAsErrors=true
+      - name: Run production-linked workspace model regressions
+        run: dotnet run --project tests/workspaces/WorkspaceTests.csproj -c Release -p:TreatWarningsAsErrors=true
+      - name: Run production-linked UI orchestration regressions
+        shell: pwsh
+        run: |
+          python tests/workspaces/extract-ui-methods.py
+          if ($LASTEXITCODE -ne 0) { throw 'UI method extraction failed' }
+          dotnet run --project tests/workspaces/UiTests.csproj -c Release -p:TreatWarningsAsErrors=true
+          if ($LASTEXITCODE -ne 0) { throw 'UI orchestration tests failed' }
+      - name: Compile production-linked encrypted-vault and policy test harness
+        run: dotnet build tests/policy/PolicyTests.csproj --configuration Release -warnaserror
+      - name: Build browser recorder regression harness
+        run: dotnet build tests/recorder/RecorderTests.csproj --configuration Release -warnaserror
+      - name: Install isolated Chromium for recorder regression
+        shell: pwsh
+        run: |
+          ./tests/recorder/bin/Release/net8.0/playwright.ps1 install chromium
+          if ($LASTEXITCODE -ne 0) { throw 'Test Chromium installation failed' }
+      - name: Exercise real recorder clicks and protected keyboard behavior
+        run: dotnet run --project tests/recorder/RecorderTests.csproj -c Release --no-build
+      - name: Verify real Chromium multi-stage login and SSO consent
+        shell: pwsh
+        run: |
+          dotnet run --project tests/runtime/RuntimeTests.csproj -c Release -- --staged-login-only
+          if ($LASTEXITCODE -ne 0) { throw 'Multi-stage sign-in regressions failed' }
+      - name: Compile LaunchFlow WPF application
+        run: dotnet build LaunchFlow/LaunchFlow.csproj --configuration Release -warnaserror
+      - name: Install Inno Setup on builder
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          ./BUILD-INSTALLER.ps1 -NoAutoInstall
+          if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
+          [xml]$project = Get-Content ./LaunchFlow/LaunchFlow.csproj
+          $version = [string]$project.Project.PropertyGroup.Version
+          $setup = "dist/LaunchFlow-Setup-v$version-x64.exe"
+          if (-not (Test-Path -LiteralPath $setup -PathType Leaf)) { throw 'Expected installer missing' }
+          $hash = Get-FileHash -LiteralPath $setup -Algorithm SHA256
+          "$($hash.Hash.ToLowerInvariant())  $(Split-Path $setup -Leaf)" |
+            Set-Content -LiteralPath dist/UI-SHA256SUMS.txt -Encoding ascii
+          "LF_VERSION=$version" >> $env:GITHUB_ENV
+      - name: Count all tracked files and source lines
+        shell: pwsh
+        run: |
+          python tools/Count-LaunchFlow-Lines.py
+          if ($LASTEXITCODE -ne 0) { throw 'Source inventory failed' }
+      - name: Upload unsigned UI test installer
+        uses: actions/upload-artifact@v6
+        with:
+          name: LaunchFlow-v${{ env.LF_VERSION }}-UI-${{ github.sha }}
+          path: |
+            dist/LaunchFlow-Setup-v${{ env.LF_VERSION }}-x64.exe
+            dist/UI-SHA256SUMS.txt
+            dist/LaunchFlow-v0.7.46-file-lines.csv
+            dist/LaunchFlow-v0.7.46-file-lines.md
+          if-no-files-found: error
+          retention-days: 7
