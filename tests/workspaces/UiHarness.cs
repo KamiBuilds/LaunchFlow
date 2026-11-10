@@ -427,10 +427,30 @@ var tests = new List<(string Name, Func<Task> Body)>
         Check(ui._runUi.AttachCancellation(syntheticLease, new CancellationTokenSource()), "synthetic token not owned");
             var values = new Dictionary<string, object?>();
             using var policy = EnterprisePolicy.UseProviderForTesting(() => values);
-            MessageBox.Hook = () => { if (denial == "cancel") ui._runUi.RequestStop(); else if (denial == "lock") VaultDatabase.Current.Lock(); else values["AllowedHosts"] = "site.example"; };
+            // Explicit Allow is simulated, then authorization is revoked
+            // while the modal pumps the dispatcher. Production must deny.
+            PasswordOriginApprovalWindow.Result = true;
+            PasswordOriginApprovalWindow.Hook = () => { if (denial == "cancel") ui._runUi.RequestStop(); else if (denial == "lock") VaultDatabase.Current.Lock(); else values["AllowedHosts"] = "site.example"; };
             Check(!await ui.Approve(workflow, "https://idp.example"), "SSO approved after " + denial);
             Check(workflow.ApprovedLoginOrigins.Count == 0 && ui._store.Saves == 0, "SSO persisted after " + denial);
         }
+    }),
+    ("cross-origin dialog defaults to denial and commits only after explicit Allow", async () =>
+    {
+        var ui = new UiFixture();
+        var workflow = ui._configuration.Workflows[0];
+        workflow.StartUrl = "https://site.example";
+        Check(ui._runUi.TryBeginRun(out var lease), "synthetic run lease missing");
+        Check(ui._runUi.AttachCancellation(lease, new CancellationTokenSource()), "synthetic token missing");
+        PasswordOriginApprovalWindow.Result = false;
+        Check(!await ui.Approve(workflow, "https://idp.example") &&
+              workflow.ApprovedLoginOrigins.Count == 0 && ui._store.Saves == 0,
+              "dismissed cross-origin modal persisted a password-site authorization");
+        PasswordOriginApprovalWindow.Result = true;
+        Check(await ui.Approve(workflow, "https://idp.example") &&
+              workflow.ApprovedLoginOrigins.Contains("https://idp.example") &&
+              ui._store.Saves == 1 && workflow.PasswordCredentialOrigin == "https://idp.example",
+              "explicitly approved origin was not saved or linked to this workflow");
     }),
     ("mixed login attention and failed steps retain failure counts and select duplicate names by ID without rerun", async () =>
     {
@@ -766,7 +786,7 @@ partial class UiFixture
     public int Prompts;
     public bool Cleared;
     public readonly List<string> Notifications = new();
-    public UiFixture() { VaultDatabase.Current.IsUnlocked = true; VaultDatabase.Current.Credentials.Clear(); ProfileVaultService.Seals = 0; ProfileVaultService.FailSeal = false; KeePassXcService.Reset(); MessageBox.Hook = null; MessageBox.Result = MessageBoxResult.Yes; MessageBox.Messages.Clear(); }
+    public UiFixture() { VaultDatabase.Current.IsUnlocked = true; VaultDatabase.Current.Credentials.Clear(); ProfileVaultService.Seals = 0; ProfileVaultService.FailSeal = false; KeePassXcService.Reset(); MessageBox.Hook = null; MessageBox.Result = MessageBoxResult.Yes; MessageBox.Messages.Clear(); PasswordOriginApprovalWindow.Hook = null; PasswordOriginApprovalWindow.Result = false; }
     public readonly MasterPasswordService _master = new();
     public readonly ConfigStore _store = new();
     public bool _passwordsUnlocked = true;
@@ -825,7 +845,8 @@ partial class UiFixture
     public readonly Control KeePassDbBox = new(), KeePassKeyBox = new(), SettingsTabs = new();
     public void SetKeePassDatabase(string path) => KeePassDbBox.Text = path;
     public readonly FakeDispatcher Dispatcher = new();
-    public bool IsVisible => true;
+    public bool IsVisible { get; set; } = true;
+    public WindowState WindowState { get; set; } = WindowState.Normal;
     public void Hide() { }
     public static string MakeBrowserFriendlyMessage(Exception ex) => ex.GetType().Name;
 }
@@ -839,6 +860,27 @@ sealed class BrowserSetupWindow
 {
     public object? Owner { get; set; }
     public bool? ShowDialog() => true;
+}
+// Portable modal seam: only the decision is simulated; native focus and
+// topmost behavior are checked separately by Windows WPF compilation and UI contracts.
+enum WindowState { Normal, Minimized, Maximized }
+sealed class PasswordOriginApprovalWindow
+{
+    public static Action? Hook;
+    public static bool? Result = false;
+    public object? Owner { get; set; }
+    public string Website { get; }
+    public string Origin { get; }
+    public PasswordOriginApprovalWindow(string website, string origin)
+    {
+        Website = website;
+        Origin = origin;
+    }
+    public bool? ShowDialog()
+    {
+        Hook?.Invoke();
+        return Result;
+    }
 }
 sealed class SignInDecisionWindow
 {
