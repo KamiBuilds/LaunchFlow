@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <StartupObject>BootstrapperFormTests</StartupObject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Registry and UI names intentionally resolve to inert seams; their unused UI events are intentional. -->
+    <NoWarn>CS0436;CS0067</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="PlatformStubs.cs" />
+    <Compile Include="../../bootstrapper/Program.cs" Link="BootstrapperProgram.cs" />
+    <Compile Include="../../bootstrapper/ReleasePolicy.cs" Link="ReleasePolicy.cs" />
+    <Compile Include="../../bootstrapper/ReleaseHttp.cs" Link="ReleaseHttp.cs" />
+    <Compile Include="../../bootstrapper/VerifiedDownload.cs" Link="VerifiedDownload.cs" />
+    <EmbeddedResource Include="release-source.txt" LogicalName="LaunchFlow.ReleaseSource" />
+  </ItemGroup>
+</Project>
