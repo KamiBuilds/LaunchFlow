@@ -330,6 +330,7 @@
 
                <Expander Header="Extra tools (only if you need them)"
                          Foreground="#BBD3E4" Background="#192B3E" Padding="9">
+                 <StackPanel>
                  <WrapPanel Margin="4,8,3,0">
                  <Button x:Name="RepairButton" Content="Fix sign-in" Click="RepairLogin_Click" Margin="0,0,8,6"
                          ToolTip="Review and repair a website's sign-in sequence"/>
@@ -350,6 +351,7 @@
                          Padding="10,4" Click="ClearLoginRecipe_Click"
                          ToolTip="Clear the remembered Auto login shape so LaunchFlow rediscovers next time"/>
                </StackPanel>
+                 </StackPanel>
                </Expander>
              </StackPanel>
             <ListBox x:Name="StepList" MinHeight="128" Height="180" FontSize="13" SelectionMode="Extended" MouseDoubleClick="EditStep_Click"

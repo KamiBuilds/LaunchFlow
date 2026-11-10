@@ -271,6 +271,13 @@ check('WindowsApplicationControl.CheckRequiredComponents()' in (root / "LaunchFl
       "startup checks blocked DLLs before new vault setup")
 wizard_xml = (root / "LaunchFlow/UI/Dialogs/NewWorkflowWindow.xaml").read_text(encoding="utf-8")
 main_xml = (root / "LaunchFlow/UI/Shell/MainWindow.xaml").read_text(encoding="utf-8")
+main_ui_tree = ET.parse(root / "LaunchFlow/UI/Shell/MainWindow.xaml").getroot()
+extra_tools = [node for node in main_ui_tree.iter()
+               if node.tag.endswith("}Expander") and
+               node.get("Header") == "Extra tools (only if you need them)"]
+check(len(extra_tools) == 1 and len(extra_tools[0]) == 1 and
+      extra_tools[0][0].tag.endswith("}StackPanel"),
+      "collapsed advanced tools have one WPF content child and compile cleanly")
 check('x:Name="EditSelectedWebsiteLoginButton"' in main_xml and
       'Click="EditSelectedWebsiteLogin_Click"' in main_xml and
       main_xml.index('2. Website sign-in') < main_xml.index('3. Recorded actions (optional)') and
