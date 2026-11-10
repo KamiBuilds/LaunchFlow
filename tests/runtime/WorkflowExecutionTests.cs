@@ -78,7 +78,7 @@ internal static class WorkflowExecutionTests
               "generic Fill steps cannot insert embedded secrets into password fields");
         workflow.Steps.Clear();
         workflow.Enabled = false;
-        workflow.LoginMode = WebsiteLoginMode.None;
+        workflow.LoginMode = "None";
         await page.SetContentAsync("<div id='ready'>Website available</div>");
         workflow.Steps.Add(new() { Type = "AssertVisible", Target = "#ready" });
         var skippedDisabled = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
