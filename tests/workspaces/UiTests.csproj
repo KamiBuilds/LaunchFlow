@@ -12,6 +12,7 @@
     <Compile Include="../../LaunchFlow/Domain/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
     <Compile Include="../../LaunchFlow/UI/Controllers/*.cs" Link="Controllers/%(Filename)%(Extension)" />
     <Compile Include="../../LaunchFlow/Services/Workspaces/WorkspaceCatalog.cs" Link="WorkspaceCatalog.cs" />
+    <Compile Include="../../LaunchFlow/Services/Workspaces/ExitSafety.cs" Link="ExitSafety.cs" />
     <Compile Include="../../LaunchFlow/Services/Browser/MonitorService.cs" Link="MonitorService.cs" />
     <Compile Include="../../LaunchFlow/Services/Browser/PlaywrightFirefoxSupport.cs" Link="PlaywrightFirefoxSupport.cs" />
     <Compile Include="../../LaunchFlow/Services/Platform/LocalizationService.cs" Link="LocalizationService.cs" />
