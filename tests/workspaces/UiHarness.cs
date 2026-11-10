@@ -418,7 +418,7 @@ var tests = new List<(string Name, Func<Task> Body)>
     }),
     ("SSO modal rechecks cancellation, vault authorization and fresh host policy before approval", async () =>
     {
-        foreach (var denial in new[] { "cancel", "lock", "policy" })
+        foreach (var denial in new[] { "cancel", "lock", "relock", "policy" })
         {
             var ui = new UiFixture();
             var workflow = ui._configuration.Workflows[0];
@@ -427,10 +427,26 @@ var tests = new List<(string Name, Func<Task> Body)>
         Check(ui._runUi.AttachCancellation(syntheticLease, new CancellationTokenSource()), "synthetic token not owned");
             var values = new Dictionary<string, object?>();
             using var policy = EnterprisePolicy.UseProviderForTesting(() => values);
-            MessageBox.Hook = () => { if (denial == "cancel") ui._runUi.RequestStop(); else if (denial == "lock") VaultDatabase.Current.Lock(); else values["AllowedHosts"] = "site.example"; };
+            MessageBox.Hook = () => { if (denial == "cancel") ui._runUi.RequestStop(); else if (denial == "lock") VaultDatabase.Current.Lock(); else if (denial == "relock") { VaultDatabase.Current.Lock(); VaultDatabase.Current.IsUnlocked = true; } else values["AllowedHosts"] = "site.example"; };
             Check(!await ui.Approve(workflow, "https://idp.example"), "SSO approved after " + denial);
             Check(workflow.ApprovedLoginOrigins.Count == 0 && ui._store.Saves == 0, "SSO persisted after " + denial);
         }
+    }),
+    ("approved SSO origin is stored durably and mirrored without dirtying the editor", async () =>
+    {
+        var ui = new UiFixture();
+        var workflow = ui._configuration.Workflows[0];
+        workflow.StartUrl = "https://site.example";
+        ui._editorSession.Select(workflow);
+        Check(ui._runUi.TryBeginRun(out var lease) &&
+              ui._runUi.AttachCancellation(lease, new CancellationTokenSource()),
+              "SSO fixture run was not admitted");
+        Check(await ui.Approve(workflow, "https://trusted-idp.example"), "explicit approval rejected safe fixture origin");
+        Check(workflow.ApprovedLoginOrigins.Contains("https://trusted-idp.example") &&
+              workflow.PasswordCredentialOrigin == "https://trusted-idp.example" &&
+              ui.PasswordOriginBox.Text == "https://trusted-idp.example" &&
+              ui._store.DurableSaves == 1 && !ui._editorSession.IsDirty,
+              "accepted password origin was not durably saved or created spurious unsaved edits");
     }),
     ("mixed login attention and failed steps retain failure counts and select duplicate names by ID without rerun", async () =>
     {
@@ -753,7 +769,7 @@ partial class UiFixture
     public bool _installerShutdownInProgress = false, _installerProfileSealFailed = false;
     public long _workspaceRevision;
     public readonly Control RetryVaultLockButton = new();
-    public bool _windowsLocked = false, _vaultLockInProgress = false, _exiting = false;
+    public bool _windowsLocked = false, _vaultLockInProgress = false, _exiting = false, _loadingEditor = false;
     public VisualRecorderWindow? _activeRecorder;
     public Task _vaultLockTask = Task.CompletedTask;
     public Task? _profileSealTask;
@@ -803,6 +819,8 @@ partial class UiFixture
     public void RefreshSteps() { }
     public int SaveAllCalls;
     public bool SaveAll() { SaveAllCalls++; return true; }
+    // The exact deferred-save method is compiled and exercised by tests/autosave.
+    public void FlushDeferredEnabledToggle() { }
     public void RefreshControls() => UpdateRunButtons();
     public Action? KeePassHook;
     public bool EnsureKeePass() => EnsureKeePassPasswordForRun(_configuration.Workflows);
@@ -858,6 +876,12 @@ sealed class SignInDecisionWindow
         Choice = decision;
         Closed?.Invoke(this, EventArgs.Empty);
     }
+}
+sealed class LoginOriginConsentWindow
+{
+    public object? Owner { get; init; }
+    public LoginOriginConsentWindow(string website, string origin) { }
+    public bool? ShowDialog() { MessageBox.Hook?.Invoke(); return MessageBox.Result == MessageBoxResult.Yes; }
 }
 sealed class VisualRecorderWindow
 {
