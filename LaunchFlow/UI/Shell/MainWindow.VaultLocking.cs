@@ -135,7 +135,7 @@ public partial class MainWindow
                 {
                     // A timed-out seal continues under the same task ownership.
                     // Never start a second seal while the first is still using the directory.
-                    if (_profileSealTask.IsCompleted) _profileSealTask = null;
+                    if (_profileSealTask?.IsCompleted == true) _profileSealTask = null;
                     _profileSealFailed = true;
                     if (_installerShutdownInProgress) _installerProfileSealFailed = true;
                     AppendLog("Could not seal browser profiles; source files retained: " + ex.GetType().Name);
