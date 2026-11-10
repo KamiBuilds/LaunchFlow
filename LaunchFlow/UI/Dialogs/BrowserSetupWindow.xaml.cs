@@ -23,7 +23,9 @@ public partial class BrowserSetupWindow : Window
             "Edge: " + Describe(report.Edge, report.EdgePath) + "\n" +
             "Chrome: " + Describe(report.Chrome, report.ChromePath) + "\n" +
             "Mozilla Firefox: " + Describe(report.MozillaFirefox, report.MozillaFirefoxPath) + "\n" +
-            "Firefox Auto: " + (report.AutomationFirefox ? "ready (shipped or consent-installed)" : "not installed");
+            "Firefox Auto: " + (report.AutomationFirefox
+                ? "ready — " + report.AutomationFirefoxPath
+                : "not installed");
         FirefoxStatusText.Text = report.AutomationFirefox
             ? "Firefox automation is ready for Auto sign-in."
             : "Firefox automation is not installed yet. Edge/Chrome Auto still work when those browsers are found.";

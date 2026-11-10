@@ -13,7 +13,8 @@ public static class BrowserEnvironment
         string? EdgePath,
         string? ChromePath,
         string? MozillaFirefoxPath,
-        string Summary)
+        string Summary,
+        string? AutomationFirefoxPath = null)
     {
         public bool Firefox => MozillaFirefox || AutomationFirefox;
         public bool AnyAutoBrowser => Edge || Chrome || AutomationFirefox;
@@ -24,7 +25,8 @@ public static class BrowserEnvironment
         var edgePath = BrowserInstallations.FindExecutable("Edge");
         var chromePath = BrowserInstallations.FindExecutable("Chrome");
         var mozillaPath = BrowserInstallations.FindExecutable("Firefox");
-        var automationFirefox = PlaywrightFirefoxSupport.IsAutomationFirefoxInstalled();
+        var automationFirefoxPath = PlaywrightFirefoxSupport.InstalledBrowsersPath;
+        var automationFirefox = automationFirefoxPath is not null;
 
         var parts = new List<string>();
         if (edgePath is not null) parts.Add("Edge (installed)");
@@ -36,7 +38,7 @@ public static class BrowserEnvironment
         var summary = parts.Count == 0
             ? "No supported browser detected. Install Microsoft Edge or Google Chrome, or use Browser readiness."
             : "Found on this PC: " + string.Join(", ", parts) +
-              ". Auto uses your installed Edge/Chrome; Firefox Auto uses the Setup-shipped automation build.";
+              ". Auto uses installed Edge/Chrome; Firefox Auto uses the detected Playwright automation build.";
 
         return new Report(
             edgePath is not null,
@@ -46,6 +48,7 @@ public static class BrowserEnvironment
             edgePath,
             chromePath,
             mozillaPath,
-            summary);
+            summary,
+            automationFirefoxPath);
     }
 }

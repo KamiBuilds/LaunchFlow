@@ -1,3 +1,11 @@
+# v0.7.59 — Browser readiness and Firefox cache consistency
+
+- Resolve Firefox automation readiness and Playwright launch from the same installed browser root, including existing default `ms-playwright` caches.
+- Distinguish bundled, consent-installed and cached Firefox builds in the readiness dialog; preserve stock Firefox exclusion.
+- Make Browser readiness resizable with vertical scrolling for long installation paths and localized/low-resolution layouts.
+- Align the in-app troubleshooting step, generated getting-started guide and **Scan again** button.
+- Add synthetic browser-path priority/fallback tests and source UI regression checks; preserve vault format and installer AppId.
+
 # v0.7.58 — Find installed Edge/Chrome/Firefox on this PC
 
 - Scans App Paths + common folders for Edge, Chrome, and Mozilla Firefox; Auto launches the exact Edge/Chrome `.exe` found.

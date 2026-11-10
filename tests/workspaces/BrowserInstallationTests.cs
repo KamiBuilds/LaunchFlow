@@ -21,9 +21,12 @@ internal static class BrowserInstallationTests
             foreach (var name in names)
             {
                 var file = BrowserInstallations.FindExecutable(name);
-                Check(file is not null && File.Exists(file) &&
-                    BrowserInstallations.IsInstalled(name),
-                    "browser was claimed installed without a matching executable");
+                Check(string.Equals(name, "Firefox", StringComparison.OrdinalIgnoreCase)
+                        ? PlaywrightFirefoxSupport.IsAutomationFirefoxInstalled() &&
+                          BrowserInstallations.IsInstalled(name)
+                        : file is not null && File.Exists(file) &&
+                          BrowserInstallations.IsInstalled(name),
+                    "browser was claimed installed without an available automation executable");
             }
             if (!OperatingSystem.IsWindows())
                 Check(names.Count == 0 && BrowserInstallations.FindExecutable("Firefox") is null,
@@ -47,6 +50,34 @@ internal static class BrowserInstallationTests
                     "stock Mozilla Firefox alone must not offer Auto Firefox");
             }
         });
+        yield return ("Firefox readiness selects the same browser cache used at launch", () =>
+        {
+            var temp = Path.Combine(Path.GetTempPath(), "launchflow-firefox-test-" + Guid.NewGuid().ToString("N"));
+            var bundled = Path.Combine(temp, "bundled");
+            var user = Path.Combine(temp, "user");
+            var cache = Path.Combine(temp, "ms-playwright");
+            try
+            {
+                Check(PlaywrightFirefoxSupport.ResolveLaunchBrowsersPath(bundled, user, cache) == user,
+                    "no Firefox build must fall back to the consent-install directory");
+                CreateFirefoxBuild(cache);
+                Check(PlaywrightFirefoxSupport.ResolveLaunchBrowsersPath(bundled, user, cache) == cache,
+                    "a default-cache-only Firefox must launch from its detected cache");
+                Directory.CreateDirectory(user);
+                Check(PlaywrightFirefoxSupport.ResolveLaunchBrowsersPath(bundled, user, cache) == cache,
+                    "an empty user directory must not hide a valid default cache");
+                CreateFirefoxBuild(user);
+                Check(PlaywrightFirefoxSupport.ResolveLaunchBrowsersPath(bundled, user, cache) == user,
+                    "a consent-installed Firefox must take priority over the default cache");
+                CreateFirefoxBuild(bundled);
+                Check(PlaywrightFirefoxSupport.ResolveLaunchBrowsersPath(bundled, user, cache) == bundled,
+                    "the bundled Firefox must take priority over user and default caches");
+            }
+            finally
+            {
+                if (Directory.Exists(temp)) Directory.Delete(temp, recursive: true);
+            }
+        });
         yield return ("Edge and Chrome Auto use discovered installed executables when present", () =>
         {
             var report = BrowserEnvironment.Probe();
@@ -64,6 +95,13 @@ internal static class BrowserInstallationTests
                   report.Summary.Contains("No supported browser", StringComparison.Ordinal),
                 "probe summary must describe discovery results");
         });
+    }
+
+    private static void CreateFirefoxBuild(string root)
+    {
+        var bin = Path.Combine(root, "firefox-1234", "firefox");
+        Directory.CreateDirectory(bin);
+        File.WriteAllBytes(Path.Combine(bin, "firefox.exe"), Array.Empty<byte>());
     }
 
     private static void Check(bool condition, string reason)

@@ -269,8 +269,8 @@ public partial class TutorialWindow : Window
             ["recovery"] =
             [
                 new("HELP-01", "A browser is unavailable",
-                    "Open Browser readiness and select Check again after installing an approved browser.",
-                    "Browser readiness", "Browser readiness dialog", "Check again",
+                    "Open Browser readiness and select Scan again after installing an approved browser.",
+                    "Browser readiness", "Browser readiness dialog", "Scan again",
                     "The dialog updates its detected browser information.",
                     "The dialog does not silently install browsers. Use official downloads only when authorized by your device's software policy.",
                     "BrowserSetupWindow", "BrowserCheckAgainButton"),

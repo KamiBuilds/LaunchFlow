@@ -179,8 +179,8 @@ After PASS-04, Saved password continues with PASS-05–08. No login required and
 
 ## Troubleshooting
 
-1. **A browser is unavailable** (HELP-01): Open Browser readiness and select Check again after installing an approved browser.
-   - **Where:** Browser readiness → Browser readiness dialog. Look for **Check again**.
+1. **A browser is unavailable** (HELP-01): Open Browser readiness and select Scan again after installing an approved browser.
+   - **Where:** Browser readiness → Browser readiness dialog. Look for **Scan again**.
    - **You should see:** The dialog updates its detected browser information.
    - **Can't find it?** The dialog does not silently install browsers. Use official downloads only when authorized by your device's software policy.
 2. **The wrong website is selected** (HELP-02): Select the correct website in YOUR WEBSITES.

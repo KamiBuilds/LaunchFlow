@@ -189,6 +189,24 @@ style = (root / "LaunchFlow/App.xaml").read_text(encoding="utf-8")
 check('SelectionBoxItemTemplate' in style and 'PART_Popup' in style
       and 'ItemsPresenter' in style,
       "dropdown renders display-member templates and accessible popup items")
+browser_setup = ET.parse(root / "LaunchFlow/UI/Dialogs/BrowserSetupWindow.xaml").getroot()
+setup_scroll = browser_setup.find(presentation + "ScrollViewer")
+setup_names = {node.get(xns + "Name"): node for node in browser_setup.iter()
+               if node.get(xns + "Name")}
+check(browser_setup.get("ResizeMode") == "CanResize" and
+      setup_scroll is not None and
+      setup_scroll.get("VerticalScrollBarVisibility") == "Auto" and
+      setup_scroll.get("HorizontalScrollBarVisibility") == "Disabled" and
+      all(setup_names[name].get("TextWrapping") == "Wrap" for name in
+          ("ReadinessText", "DetailText", "FirefoxStatusText")) and
+      setup_names["BrowserCheckAgainButton"].get("Content") == "Scan again",
+      "browser readiness dialog resizes and scrolls long discovery paths without clipping controls")
+firefox_support = (root / "LaunchFlow/Services/Browser/PlaywrightFirefoxSupport.cs").read_text(encoding="utf-8")
+check('ResolveLaunchBrowsersPath(' in firefox_support and
+      'DefaultMsPlaywrightCachePath()' in firefox_support and
+      'Environment.SetEnvironmentVariable("PLAYWRIGHT_BROWSERS_PATH", selected)' in firefox_support and
+      'InstalledBrowsersPath' in firefox_support,
+      "Firefox readiness and launch resolve the same supported browser cache")
 check('BrowserChoices.Refresh(BrowserCombo, w.Browser)' in source and
       'BrowserCombo_DropDownOpened' in ET.tostring(ui, encoding="unicode") and
       'BrowserInstallations.IsInstalled(browser)' in (root / "LaunchFlow/UI/Dialogs/NewWorkflowWindow.xaml.cs").read_text(encoding="utf-8"),
