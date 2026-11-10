@@ -508,6 +508,9 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
+            // Preserve this in-memory recipe change as dirty if the immediate
+            // durable write fails. Clean-exit fast path must not drop it.
+            MarkUnsavedChanges();
             AppendLog("Login shape was learned in memory but not saved yet: " + ex.GetType().Name);
         }
     }

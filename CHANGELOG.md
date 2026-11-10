@@ -4,7 +4,7 @@
 - Close independent tracked browser sessions concurrently, retaining failed contexts for a safe retry before encrypted-profile sealing.
 - Use faster ZIP compression for browser-profile sealing without changing the encryption, key, archive layout, or publication ordering.
 - Display closing phases in the main window while browser cleanup and encrypted-profile sealing run.
-- Add browser-session concurrency/failure regression cases and clean-exit persistence fast-path cases.
+- Add browser-session concurrency/failure regression cases and clean-exit persistence fast-path cases. Failed remembered-login writes remain pending so a fast exit cannot discard them.
 - No automatic merge or release. Native Windows acceptance still required.
 
 # v0.7.59 — Browser readiness and Firefox cache consistency

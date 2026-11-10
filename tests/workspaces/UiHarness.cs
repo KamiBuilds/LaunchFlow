@@ -19,6 +19,21 @@ var tests = new List<(string Name, Func<Task> Body)>
         finally { ui._runner.CloseRelease.TrySetResult(); await task.WaitAsync(TimeSpan.FromSeconds(3)); }
         Check(ProfileVaultService.Seals == 1, "profiles not sealed after browser cleanup");
     }),
+    ("failed remembered login write remains dirty for fast safe-exit gate", () =>
+    {
+        var ui = new UiFixture();
+        ui._store.FailNextSave = true;
+        var result = new AutomationEngine.RunResult();
+        result.LoginRecipesUpdated.Add(ui._configuration.Workflows[0].Id);
+        ui.PersistRecipes(result);
+        Check(ui._editorSession.IsDirty && ui._store.DurableSaves == 0,
+            "failed learned-login save was not made pending for exit protection");
+        var retry = 0;
+        Check(ExitSafety.TryPersistForExit(() => true, () => ui._editorSession.IsDirty,
+                () => { retry++; ui._editorSession.TryAcknowledge(ui._editorSession.Revision); return true; }) && retry == 1,
+            "dirty remembered login could not be retried on exit");
+        return Task.CompletedTask;
+    }),
     ("run buttons disable throughout a run and recover after cancellation", async () =>
     {
         var ui = new UiFixture();
@@ -783,6 +798,8 @@ partial class UiFixture
     public void MarkSaved() { }
     public void MarkSaved(long? committedRevision) { }
     public void RefreshLoginRecipeLabel(WebsiteWorkflow? workflow = null) { }
+    public void MarkUnsavedChanges() => _editorSession.MarkEdited();
+    public void PersistRecipes(AutomationEngine.RunResult result) => PersistLearnedLoginRecipes(result);
     public bool IsLoaded => true;
     public static void AppendLog(string _) { }
     public void ClearCredentialEditor() { Cleared = true; UsernameBox.Clear(); PasswordInput.Clear(); _loadedCredentialWorkflowId = null; }
@@ -993,8 +1010,13 @@ namespace LaunchFlow.Services
     {
         public int Saves;
         public int DurableSaves;
+        public bool FailNextSave;
         public void Save(Configuration configuration) { if (!VaultDatabase.Current.IsUnlocked) throw new Exception("fixture vault locked"); Saves++; }
-        public void SaveDurable(Configuration configuration) { Save(configuration); DurableSaves++; }
+        public void SaveDurable(Configuration configuration)
+        {
+            if (FailNextSave) { FailNextSave = false; throw new IOException("synthetic durable write refusal"); }
+            Save(configuration); DurableSaves++;
+        }
         public void NoteCommittedExternally() { DurableSaves++; }
         public void SaveDurable(Configuration configuration, long expectedSession)
         {
