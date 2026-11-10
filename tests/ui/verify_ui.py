@@ -347,7 +347,8 @@ check('if (_editorSession.IsDirty && !VaultDatabase.Current.IsUnlocked)' in sour
       'Encrypted-profile sealing failed.' in lifecycle_source and
       'Browser session cleanup did not finish safely.' in lifecycle_source and
       'Unlock LaunchFlow and save your edits before updating.' in source and
-      'if (VaultDatabase.Current.IsUnlocked && !SaveAll())' in source and
+      'if (_editorSession.IsDirty && !SaveAll())' in source and
+      'if (_editorSession.IsDirty && VaultDatabase.Current.IsUnlocked && !SaveAll())' in source and
       'await CompleteOwnedExitAsync(installer: true)' in source,
       "installer refuses dirty locked-vault edits and distinguishes browser/profile cleanup failures")
 check('IsCurrentStepEditorOwner(WebsiteWorkflow workflow, long revision)' in source and

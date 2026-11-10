@@ -13,6 +13,8 @@ internal static class EngineLifecycleTests
         await ClosedPageOwnershipAsync(playwright);
         await CloseFromRunningStatusAsync();
         await CloseActiveRunAsync(playwright);
+        await ParallelContextCloseAsync(playwright);
+        await PartialContextCloseFailureAsync(playwright);
         if (!OperatingSystem.IsLinux())
         {
             Console.WriteLine("SKIP LaunchRaceAsync: Linux XDG isolation harness only");
@@ -61,6 +63,94 @@ internal static class EngineLifecycleTests
         await close!;
         EngineBehaviorTests.Check(cancelled && !returnedBeforeRunFinished && run.IsCompleted,
             "a Running-status close cannot finish before its newly admitted run task is registered and finished");
+    }
+
+    private static async Task ParallelContextCloseAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var firstContext = await browser.NewContextAsync();
+        await using var secondContext = await browser.NewContextAsync();
+        var firstPage = await firstContext.NewPageAsync();
+        var secondPage = await secondContext.NewPageAsync();
+        var firstEntered = Signal();
+        var secondEntered = Signal();
+        var release = Signal();
+        var firstCloseCalls = 0;
+        var secondCloseCalls = 0;
+        async Task CloseFirstAsync()
+        {
+            Interlocked.Increment(ref firstCloseCalls);
+            firstEntered.TrySetResult();
+            await release.Task;
+            await firstContext.CloseAsync();
+        }
+        async Task CloseSecondAsync()
+        {
+            Interlocked.Increment(ref secondCloseCalls);
+            secondEntered.TrySetResult();
+            await release.Task;
+            await secondContext.CloseAsync();
+        }
+        var first = ForwardProxy<IBrowserContext>.Create(firstContext, (method, _) =>
+            method.Name == nameof(IBrowserContext.CloseAsync) ? (true, CloseFirstAsync()) : (false, null));
+        var second = ForwardProxy<IBrowserContext>.Create(secondContext, (method, _) =>
+            method.Name == nameof(IBrowserContext.CloseAsync) ? (true, CloseSecondAsync()) : (false, null));
+        await using var engine = new AutomationEngine(new CredentialVault());
+        EngineBehaviorTests.Track(engine, new WebsiteWorkflow(), first, firstPage);
+        EngineBehaviorTests.Track(engine, new WebsiteWorkflow(), second, secondPage);
+        try
+        {
+            var close = engine.CloseSessionsAsync();
+            await Task.WhenAll(firstEntered.Task, secondEntered.Task).WaitAsync(TimeSpan.FromSeconds(5));
+            var duplicate = engine.CloseSessionsAsync();
+            EngineBehaviorTests.Check(!close.IsCompleted && ReferenceEquals(close, duplicate),
+                "independent context close attempts start together and duplicate callers join the barrier");
+            release.TrySetResult();
+            await close.WaitAsync(TimeSpan.FromSeconds(15));
+            EngineBehaviorTests.Check(firstCloseCalls == 1 && secondCloseCalls == 1 && SessionCount(engine) == 0,
+                "parallel exit closes each context once and releases ownership only after success");
+        }
+        finally { release.TrySetResult(); }
+    }
+
+    private static async Task PartialContextCloseFailureAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var firstContext = await browser.NewContextAsync();
+        await using var secondContext = await browser.NewContextAsync();
+        var firstPage = await firstContext.NewPageAsync();
+        var secondPage = await secondContext.NewPageAsync();
+        var reject = true;
+        var firstCalls = 0;
+        var secondCalls = 0;
+        var first = ForwardProxy<IBrowserContext>.Create(firstContext, (method, _) =>
+        {
+            if (method.Name != nameof(IBrowserContext.CloseAsync)) return (false, null);
+            firstCalls++;
+            return reject ? (true, Task.FromException(new InvalidOperationException("private-browser-info")))
+                : (true, firstContext.CloseAsync());
+        });
+        var second = ForwardProxy<IBrowserContext>.Create(secondContext, (method, _) =>
+        {
+            if (method.Name != nameof(IBrowserContext.CloseAsync)) return (false, null);
+            secondCalls++;
+            return (true, secondContext.CloseAsync());
+        });
+        await using var engine = new AutomationEngine(new CredentialVault());
+        EngineBehaviorTests.Track(engine, new WebsiteWorkflow(), first, firstPage);
+        EngineBehaviorTests.Track(engine, new WebsiteWorkflow(), second, secondPage);
+        var rejected = false;
+        try { await engine.CloseSessionsAsync().WaitAsync(TimeSpan.FromSeconds(10)); }
+        catch (InvalidOperationException ex)
+        { rejected = !ex.Message.Contains("private-browser-info", StringComparison.Ordinal); }
+        EngineBehaviorTests.Check(rejected && SessionCount(engine) == 1 && firstCalls == 1 && secondCalls == 1,
+            "partial close retains failed context, releases successful one, and never leaks private errors");
+        EngineBehaviorTests.Check(await RejectedAsync(() => engine.RunAsync(Array.Empty<WebsiteWorkflow>(), CancellationToken.None)),
+            "partial browser cleanup keeps automation admission blocked");
+        reject = false;
+        await engine.CloseSessionsAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        EngineBehaviorTests.Check(SessionCount(engine) == 0 && firstCalls == 2 && secondCalls == 1,
+            "successful browser close is not repeated during a safe retry");
     }
 
     private static async Task LaunchRaceAsync(IPlaywright playwright, bool teach, bool cleanupFailure = false)

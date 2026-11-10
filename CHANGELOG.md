@@ -1,3 +1,12 @@
+## v0.7.60 — Safe exit performance and shutdown visibility (test candidate)
+
+- Skip redundant encrypted configuration writes when an exit or background hide has no unsaved edits; preserve the fail-closed dirty-vault save contract.
+- Close independent tracked browser sessions concurrently, retaining failed contexts for a safe retry before encrypted-profile sealing.
+- Use faster ZIP compression for browser-profile sealing without changing the encryption, key, archive layout, or publication ordering.
+- Display closing phases in the main window while browser cleanup and encrypted-profile sealing run.
+- Add browser-session concurrency/failure regression cases and clean-exit persistence fast-path cases.
+- No automatic merge or release. Native Windows acceptance still required.
+
 # v0.7.59 — Browser readiness and Firefox cache consistency
 
 - Resolve Firefox automation readiness and Playwright launch from the same installed browser root, including existing default `ms-playwright` caches.

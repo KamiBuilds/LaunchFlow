@@ -10,6 +10,20 @@ internal static class ExitSafetyTests
             Check(ExitSafety.TryPersistForExit(() => false, () => false, () => { saves++; return true; })
                 && saves == 0, "clean locked exit was blocked or attempted a save");
         });
+        yield return ("clean unlocked exit skips unnecessary encrypted configuration write", () =>
+        {
+            int saves = 0;
+            Check(ExitSafety.TryPersistForExit(() => true, () => false, () => { saves++; return false; })
+                && saves == 0, "clean exit rewrote encrypted data or failed without pending edits");
+        });
+        yield return ("clean exit does not need to query a locked vault", () =>
+        {
+            Check(ExitSafety.TryPersistForExit(
+                    () => throw new Exception("clean exit unexpectedly queried vault"),
+                    () => false,
+                    () => throw new Exception("clean exit unexpectedly saved")),
+                "clean exit was not fast-pathed");
+        });
         yield return ("dirty locked vault refuses explicit exit without losing edits", () =>
         {
             int saves = 0;

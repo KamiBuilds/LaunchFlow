@@ -268,23 +268,29 @@ public sealed partial class AutomationEngine : IAsyncDisposable
             await _sessionGate.WaitAsync().ConfigureAwait(false);
             try
             {
-                foreach (var entry in _sessions.ToArray())
+                // Independent browser windows can shut down together. Keep
+                // ownership until each context actually reports success; a
+                // single failure must still block profile sealing and exit.
+                var tracked = _sessions.ToArray();
+                var unclaimed = _unclaimedContexts.ToArray();
+                var results = await Task.WhenAll(tracked.Select(async entry =>
                 {
-                    try
-                    {
-                        await entry.Value.Context.CloseAsync().ConfigureAwait(false);
-                        _sessions.Remove(entry.Key);
-                    }
-                    catch { failed = true; }
+                    try { await entry.Value.Context.CloseAsync().ConfigureAwait(false); return true; }
+                    catch { return false; }
+                }).Concat(unclaimed.Select(async context =>
+                {
+                    try { await context.CloseAsync().ConfigureAwait(false); return true; }
+                    catch { return false; }
+                }))).ConfigureAwait(false);
+                for (var i = 0; i < tracked.Length; i++)
+                {
+                    if (results[i]) _sessions.Remove(tracked[i].Key);
+                    else failed = true;
                 }
-                foreach (var context in _unclaimedContexts.ToArray())
+                for (var i = 0; i < unclaimed.Length; i++)
                 {
-                    try
-                    {
-                        await context.CloseAsync().ConfigureAwait(false);
-                        _unclaimedContexts.Remove(context);
-                    }
-                    catch { failed = true; }
+                    if (results[tracked.Length + i]) _unclaimedContexts.Remove(unclaimed[i]);
+                    else failed = true;
                 }
             }
             finally { _sessionGate.Release(); }

@@ -403,7 +403,7 @@ public partial class MainWindow : Window
             UpdateRunButtons();
             if (_editorSession.IsDirty && !VaultDatabase.Current.IsUnlocked)
                 throw new InvalidOperationException("Unlock LaunchFlow and save your edits before updating.");
-            if (VaultDatabase.Current.IsUnlocked && !SaveAll())
+            if (_editorSession.IsDirty && !SaveAll())
                 throw new InvalidOperationException("Save your unsaved edits before updating.");
             if (_editorSession.IsDirty)
                 throw new InvalidOperationException("Unsaved changes remain; the update cannot replace running files.");
@@ -463,7 +463,7 @@ public partial class MainWindow : Window
 
     private void HideToTray_Click(object sender, RoutedEventArgs e)
     {
-        if (SaveAll()) Hide();
+        if (!_editorSession.IsDirty || SaveAll()) Hide();
     }
 
     private static string MakeBrowserFriendlyMessage(Exception ex)
@@ -759,7 +759,7 @@ public partial class MainWindow : Window
         }
         if (choice.Choice == CloseChoice.Background)
         {
-            if (VaultDatabase.Current.IsUnlocked && !SaveAll())
+            if (_editorSession.IsDirty && VaultDatabase.Current.IsUnlocked && !SaveAll())
             {
                 e.Cancel = true;
                 return;

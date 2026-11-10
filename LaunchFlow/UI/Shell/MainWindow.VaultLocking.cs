@@ -110,6 +110,7 @@ public partial class MainWindow
             }
             if (_configuration.SealBrowserProfilesOnLock)
             {
+                if (_exiting) WorkflowStatusLabel.Text = "Closing LaunchFlow — encrypting browser profiles…";
                 try { await Task.Run(ProfileVaultService.SealAll); }
                 catch (Exception ex)
                 {

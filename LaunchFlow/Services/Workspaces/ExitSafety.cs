@@ -13,8 +13,10 @@ public static class ExitSafety
         ArgumentNullException.ThrowIfNull(hasUnsavedChanges);
         ArgumentNullException.ThrowIfNull(save);
 
-        // Already locked and clean is a legitimate exit; no password prompt.
-        if (!vaultUnlocked()) return !hasUnsavedChanges();
+        // A clean editor already has durable state. Avoid decrypting/re-writing
+        // encrypted configuration merely because the user is exiting.
+        if (!hasUnsavedChanges()) return true;
+        if (!vaultUnlocked()) return false;
         if (!save()) return false;
         // A save callback can reenter WPF and change the pending editor.
         return !hasUnsavedChanges();

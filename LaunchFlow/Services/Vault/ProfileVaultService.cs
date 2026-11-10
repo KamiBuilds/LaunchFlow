@@ -81,7 +81,10 @@ public static class ProfileVaultService
         try
         {
             // Keep the origin/both envelope: rollback readers cannot open LFPS2.
-            ZipFile.CreateFromDirectory(directory, zip, CompressionLevel.Optimal, includeBaseDirectory: false);
+            // Browser profiles contain many short-lived cache objects. Fastest
+            // avoids spending minutes optimizing ZIP size on every safe exit;
+            // encryption, publication ordering and restore format are unchanged.
+            ZipFile.CreateFromDirectory(directory, zip, CompressionLevel.Fastest, includeBaseDirectory: false);
             plain = zip.ToArray();
             var sealedBytes = Encrypt(plain, key);
             using (var output = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))

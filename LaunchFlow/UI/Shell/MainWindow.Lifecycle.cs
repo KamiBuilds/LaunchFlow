@@ -18,6 +18,9 @@ public partial class MainWindow
         _exiting = true;
         IsEnabled = false;
         UpdateRunButtons();
+        WorkflowStatusLabel.Text = "Closing LaunchFlow — securing browser sessions…";
+        // Let the dispatcher paint shutdown progress before starting I/O.
+        await Task.Yield();
         try
         {
             await _exitDrain.PrepareAsync(async () =>
@@ -39,6 +42,7 @@ public partial class MainWindow
                     throw new InvalidOperationException(
                         "New unsaved changes appeared. Unlock and save them before exiting.");
 
+                WorkflowStatusLabel.Text = "Closing LaunchFlow — finalizing…";
                 await _runner.DisposeAsync();
             });
             Close();
