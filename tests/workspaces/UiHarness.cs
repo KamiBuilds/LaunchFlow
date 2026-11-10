@@ -792,7 +792,7 @@ partial class UiFixture
     public void ChooseEntry() => ChooseKeePassEntry_Click(this, new RoutedEventArgs());
     public readonly CredentialVault _vault = new();
     public Guid? _loadedCredentialWorkflowId;
-    public readonly Control CredentialStatus = new(), UsernameBox = new(), PasswordInput = new(), AutoLoginCheck = new(), KeepassEntryBox = new(), WorkflowList = new(), PasswordWebsiteCombo = new();
+    public readonly Control CredentialStatus = new(), UsernameBox = new(), PasswordInput = new(), PasswordOriginBox = new(), AutoLoginCheck = new(), KeepassEntryBox = new(), WorkflowList = new(), PasswordWebsiteCombo = new();
     public readonly Control KeePassDbBox = new(), KeePassKeyBox = new(), SettingsTabs = new();
     public void SetKeePassDatabase(string path) => KeePassDbBox.Text = path;
     public readonly FakeDispatcher Dispatcher = new();
@@ -805,6 +805,11 @@ sealed class UnlockWindow
     public required UiFixture Owner { get; init; }
     public string Password => "synthetic-fixture-only";
     public bool? ShowDialog() { Owner.Prompts++; Owner.PromptHook?.Invoke(); Owner.UnlockHook?.Invoke(); return true; }
+}
+sealed class BrowserSetupWindow
+{
+    public object? Owner { get; set; }
+    public bool? ShowDialog() => true;
 }
 sealed class SignInDecisionWindow
 {
@@ -1026,6 +1031,7 @@ namespace LaunchFlow.Services
         public Task<bool> ConfirmSignedInAsync(WebsiteWorkflow workflow, CancellationToken ct = default) =>
             Task.FromResult(true);
         public sealed record StepAttention(Guid WorkflowId, string WorkflowName, string StepType);
+        public sealed record WorkflowFailure(Guid WorkflowId, string WorkflowName, string Reason);
         public enum WorkflowRunState { Running, WaitingForSignIn, Completed, Failed, Cancelled }
         public Task<Microsoft.Playwright.IPage> GetPageForRecorderAsync(WebsiteWorkflow workflow) { LastTeachId = workflow.Id; TeachCalls++; return StallTeach ? PendingTeach.Task : Task.FromResult<Microsoft.Playwright.IPage>(new Microsoft.Playwright.FakePage()); }
         public int TeachCalls;
@@ -1036,6 +1042,7 @@ namespace LaunchFlow.Services
         {
             public List<LoginAttention> LoginNeedsAttention { get; } = new();
             public List<StepAttention> StepsNeedAttention { get; } = new();
+            public List<WorkflowFailure> Failures { get; } = new();
             public List<Guid> LoginRecipesUpdated { get; } = new();
             public int FinishedCount { get; set; }
             public int FailedCount { get; set; }

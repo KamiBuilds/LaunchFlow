@@ -5,6 +5,7 @@
 - Make Browser readiness resizable with vertical scrolling for long installation paths and localized/low-resolution layouts.
 - Align the in-app troubleshooting step, generated getting-started guide and **Scan again** button.
 - Add synthetic browser-path priority/fallback tests and source UI regression checks; preserve vault format and installer AppId.
+- Keep the portable UI regression harness linked to the newer Firefox readiness and run-failure production methods.
 
 # v0.7.58 — Find installed Edge/Chrome/Firefox on this PC
 
