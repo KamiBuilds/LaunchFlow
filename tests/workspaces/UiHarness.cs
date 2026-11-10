@@ -746,6 +746,7 @@ partial class UiFixture
     public bool _windowsLocked = false, _vaultLockInProgress = false, _exiting = false;
     public VisualRecorderWindow? _activeRecorder;
     public Task _vaultLockTask = Task.CompletedTask;
+    public Task? _profileSealTask;
     public string? _keepassMasterPassword;
     public readonly Control StopButton = new() { IsEnabled = false }, RunAllButton = new(), RunSelectedButton = new(), RunWorkspaceButton = new(), PreviewWorkspaceButton = new(), TeachButton = new(), RepairButton = new(), MainTabs = new();
     public readonly Control WorkspaceCombo = new(), WorkspaceNameBox = new();
