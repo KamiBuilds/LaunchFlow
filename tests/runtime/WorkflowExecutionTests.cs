@@ -76,6 +76,19 @@ internal static class WorkflowExecutionTests
         Check(protectedPassword.FailedCount == 1 &&
               await page.InputValueAsync("#password") == "",
               "generic Fill steps cannot insert embedded secrets into password fields");
+        workflow.Steps.Clear();
+        workflow.Enabled = false;
+        workflow.LoginMode = WebsiteLoginMode.None;
+        await page.SetContentAsync("<div id='ready'>Website available</div>");
+        workflow.Steps.Add(new() { Type = "AssertVisible", Target = "#ready" });
+        var skippedDisabled = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(skippedDisabled.FinishedCount == 0 && skippedDisabled.FailedCount == 0,
+            "a disabled website must be excluded from ordinary Run all");
+        var selectedDisabled = await engine.RunAsync(new[] { workflow }, CancellationToken.None,
+            includeDisabled: true);
+        Check(selectedDisabled.FinishedCount == 1 && selectedDisabled.FailedCount == 0,
+            "Test this site must still execute the selected website when its enabled toggle is off");
+
     }
 
     private static void Check(bool condition, string description) => EngineBehaviorTests.Check(condition, description);

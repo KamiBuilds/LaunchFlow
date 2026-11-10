@@ -25,6 +25,7 @@ public partial class MainWindow
     // A synchronous save owns exactly one edit generation and live configuration.
     // No UI/control references enter the draft or encrypted persistence boundary.
     private bool _saveInProgress;
+    private bool _enabledToggleWaitingForRun;
 
     private ConfigurationEditDraft CaptureConfigurationDraft(bool showNotification)
     {
@@ -108,6 +109,32 @@ public partial class MainWindow
         // Credentials are NOT implicitly saved by Save All, tab navigation, or shutdown.
         // The Settings → Passwords category has an explicit Save credentials button. This avoids
         // accidentally overwriting a working login when switching workflows.
+    }
+
+    private void SaveEnabledToggleImmediately()
+    {
+        if (_loadingEditor || _configuration is null || _editorSession.Selection is null || _exiting) return;
+        MarkUnsavedChanges();
+        if (_runUi.IsRunning)
+        {
+            _enabledToggleWaitingForRun = true;
+            return;
+        }
+        if (_autoSaving || _saveInProgress || _vaultLockInProgress || _windowsLocked ||
+            _installerShutdownInProgress || HasPendingEditorDialog || !VaultDatabase.Current.IsUnlocked)
+            return;
+        // A discrete enabled/disabled choice should not need the debounce delay
+        // or a manual Save before the user can test the selected site.
+        if (!SaveAll()) ShowAutoSaveFailed();
+    }
+
+    private void FlushDeferredEnabledToggle()
+    {
+        if (!_enabledToggleWaitingForRun) return;
+        _enabledToggleWaitingForRun = false;
+        if (!_editorSession.IsDirty || _exiting || _vaultLockInProgress || _windowsLocked ||
+            _installerShutdownInProgress || !VaultDatabase.Current.IsUnlocked) return;
+        if (!SaveAll()) ShowAutoSaveFailed();
     }
 
     private void MarkUnsavedChanges()

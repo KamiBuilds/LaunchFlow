@@ -99,6 +99,45 @@ try
               read.Workflows.Single().Steps.Single().AdditionalSettings!.ContainsKey("future_action"),
               "unknown configuration/action fields were discarded");
     });
+    Run("website enable switch saves immediately and is durable on cold reopen", () =>
+    {
+        var ui = new AutoSaveFixture();
+        Check(ui.Selected!.Enabled, "setup workflow must start enabled");
+        ui.EnabledCheck.IsChecked = false;
+        Check(!ui.Dirty && !ui.Selected.Enabled && ui.SaveStatusLabel.Text == "All changes saved",
+            "disabling a site must commit without clicking Save or waiting for debounce");
+        Check(!ColdRead().Workflows.Single().Enabled,
+            "disabled flag was not written to encrypted SQLite");
+        ui.EnabledCheck.IsChecked = true;
+        Check(ui.Selected.Enabled && !ui.Dirty && ColdRead().Workflows.Single().Enabled,
+            "re-enabling a site must also save immediately");
+    });
+    Run("enable switch while run is active defers saving until run completion", () =>
+    {
+        var ui = new AutoSaveFixture();
+        ui.BeginSimulatedRun();
+        ui.EnabledCheck.IsChecked = false;
+        Check(ui.Dirty && ui.Selected!.Enabled && ColdRead().Workflows.Single().Enabled,
+            "active automation must not publish a partial editor change");
+        ui.CompleteSimulatedRun();
+        Check(!ui.Dirty && !ui.Selected.Enabled && !ColdRead().Workflows.Single().Enabled,
+            "completion must flush the disabled state without manual Save");
+    });
+    Run("immediate toggle reports storage failure and explicit retry preserves the edit", () =>
+    {
+        var ui = new AutoSaveFixture();
+        Sql("CREATE TRIGGER deny_toggle BEFORE UPDATE ON secure_objects WHEN NEW.id='config' BEGIN SELECT RAISE(ABORT, 'synthetic toggle refusal'); END;");
+        try
+        {
+            ui.EnabledCheck.IsChecked = false;
+            Check(ui.Dirty && ui.Selected!.Enabled &&
+                  ui.SaveStatusLabel.Text == "Save failed" && ColdRead().Workflows.Single().Enabled,
+                  "storage refusal must never advertise success or change live enable state");
+        }
+        finally { Sql("DROP TRIGGER IF EXISTS deny_toggle;"); }
+        Check(ui.ManualSave() && !ui.Dirty && !ColdRead().Workflows.Single().Enabled,
+              "retry must durably commit the checkbox after a failed immediate save");
+    });
     Run("invalid late input keeps earlier edits out of live and cold vault", () =>
     {
         var ui = new AutoSaveFixture();
@@ -367,4 +406,16 @@ partial class AutoSaveFixture
     public bool TimerEnabled => _autoSaveTimer.IsEnabled;
     public void FireTimer() => _autoSaveTimer.Fire();
     public bool ManualSave() => SaveAll();
+    private long _simulatedRunLease;
+    public void BeginSimulatedRun()
+    {
+        if (!_runUi.TryBeginRun(out _simulatedRunLease))
+            throw new InvalidOperationException("Could not begin simulated run");
+    }
+    public void CompleteSimulatedRun()
+    {
+        if (!_runUi.Complete(_simulatedRunLease))
+            throw new InvalidOperationException("Could not end simulated run");
+        FlushDeferredEnabledToggle();
+    }
 }

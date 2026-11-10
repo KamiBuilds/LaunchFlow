@@ -364,6 +364,7 @@ public partial class MainWindow
             if (cancellation?.IsCancellationRequested == true)
                 WorkflowStatusLabel.Text = LocalizationService.Text("Stopped", _configuration.UiLanguage);
             _runUi.Complete(runLease);
+            FlushDeferredEnabledToggle();
             cancellation?.Dispose();
             UpdateRunButtons();
         }

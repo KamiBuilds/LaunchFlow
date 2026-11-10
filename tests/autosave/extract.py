@@ -33,7 +33,7 @@ methods = [
     ("StartAutoSave", "AutoSaveTimer_Tick", "ShowAutoSaveFailed")
 ] + [
     extract_method(persistence, name) for name in
-    ("CaptureConfigurationDraft", "MarkUnsavedChanges", "MarkSaved", "SaveAll")
+    ("CaptureConfigurationDraft", "SaveEnabledToggleImmediately", "FlushDeferredEnabledToggle", "MarkUnsavedChanges", "MarkSaved", "SaveAll")
 ]
 generated = """// Source-linked verbatim production methods and constructor subscriptions.
 // Do not edit; rerun tests/autosave/extract.py after production changes.

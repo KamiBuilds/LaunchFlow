@@ -403,5 +403,25 @@ check('CleanupRetainedSealedDirectories();' in profile_seal and
       'VerifyAuthenticatedSnapshot(sealedPath);' in profile_seal,
       'plaintext quarantine cleanup must authenticate its snapshot before deletion')
 
+consent_markup = (root / "LaunchFlow/UI/Dialogs/LoginOriginConsentWindow.xaml").read_text(encoding="utf-8")
+consent_code = (root / "LaunchFlow/UI/Dialogs/LoginOriginConsentWindow.xaml.cs").read_text(encoding="utf-8")
+check('Topmost="True"' in consent_markup and
+      'ShowActivated="True"' in consent_markup and
+      'WindowStartupLocation="CenterScreen"' in consent_markup and
+      'IsDefault="True"' in consent_markup and
+      'new LoginOriginConsentWindow(workflow.Name, newOrigin) { Owner = this }' in source and
+      'accepted = dialog.ShowDialog() == true;' in source and
+      'if (!accepted || !Authorized()) return false;' in source and
+      'VaultDatabase.Current.SessionGeneration == admittedSession' in source and
+      '_store.SaveDurable(admittedConfiguration, admittedSession)' in source and
+      'DialogResult = true;' in consent_code and 'DialogResult = false;' in consent_code,
+      "password-origin consent stays above the browser with default deny and session-bound persistence")
+check('EnabledCheck.Checked += (_, _) => SaveEnabledToggleImmediately();' in source and
+      'EnabledCheck.Unchecked += (_, _) => SaveEnabledToggleImmediately();' in source and
+      'FlushDeferredEnabledToggle();' in source and
+      'private void SaveEnabledToggleImmediately()' in source and
+      'if (!SaveAll()) ShowAutoSaveFailed();' in source,
+      "website enable/disable changes are durably saved or retained dirty for retry")
+
 print(f"{len(errors)} visual/release contract errors")
 sys.exit(bool(errors))

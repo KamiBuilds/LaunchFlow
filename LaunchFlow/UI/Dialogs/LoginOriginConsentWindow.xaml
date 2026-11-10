@@ -1,0 +1,41 @@
+<Window x:Class="LaunchFlow.LoginOriginConsentWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Confirm password website" Width="560" Height="350"
+        MinWidth="510" MinHeight="325" ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen" Topmost="True"
+        ShowActivated="True" ShowInTaskbar="True"
+        Background="#111A2A" Foreground="#E9F1FB" FontFamily="Segoe UI"
+        FontSize="13" Icon="pack://application:,,,/Assets/LaunchFlow.ico">
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <TextBlock x:Name="WebsiteTitle" FontSize="20" FontWeight="SemiBold"
+                   TextWrapping="Wrap" Text="Password website permission"/>
+        <TextBlock Grid.Row="1" Margin="0,13,0,12" TextWrapping="Wrap"
+                   Foreground="#CADBEC" Text="Your sign-in has moved to another website. Allow LaunchFlow to enter the saved password there only if you recognize this address."/>
+        <Border Grid.Row="2" Background="#1A2940" BorderBrush="#365372"
+                BorderThickness="1" CornerRadius="6" Padding="14,12"
+                Margin="0,0,0,14">
+            <StackPanel>
+                <TextBlock Text="Password destination" FontWeight="SemiBold"
+                           Foreground="#B9CFE5" Margin="0,0,0,8"/>
+                <TextBlock x:Name="OriginText" TextWrapping="Wrap"
+                           FontSize="16" Foreground="#FFFFFF"/>
+                <TextBlock Text="This permission applies to this saved website. It never bypasses MFA."
+                           TextWrapping="Wrap" Foreground="#A9BED6" Margin="0,12,0,0"/>
+            </StackPanel>
+        </Border>
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="RejectButton" Content="Not now" Width="112"
+                    Height="38" Margin="0,0,12,0" IsCancel="True"
+                    IsDefault="True" Click="Reject_Click"/>
+            <Button Content="Allow password here" Width="175" Height="38"
+                    Style="{StaticResource PrimaryButton}" Click="Approve_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

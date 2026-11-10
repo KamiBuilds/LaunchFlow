@@ -129,8 +129,8 @@ public partial class MainWindow : Window
         // Track user-visible website configuration edits without inspecting credential values.
         NameBox.TextChanged += (_, _) => MarkUnsavedChanges();
         StartUrlBox.TextChanged += (_, _) => MarkUnsavedChanges();
-        EnabledCheck.Checked += (_, _) => MarkUnsavedChanges();
-        EnabledCheck.Unchecked += (_, _) => MarkUnsavedChanges();
+        EnabledCheck.Checked += (_, _) => SaveEnabledToggleImmediately();
+        EnabledCheck.Unchecked += (_, _) => SaveEnabledToggleImmediately();
         BrowserCombo.SelectionChanged += (_, _) => MarkUnsavedChanges();
         MonitorCombo.SelectionChanged += (_, _) => MarkUnsavedChanges();
         KeepassEntryBox.TextChanged += (_, _) => MarkUnsavedChanges();
@@ -490,10 +490,14 @@ public partial class MainWindow : Window
     private async Task<bool> ConfirmLoginOriginAsync(WebsiteWorkflow workflow, string newOrigin)
     {
         var cancellation = _runUi.Cancellation;
+        var admittedConfiguration = _configuration;
+        var admittedSession = VaultDatabase.Current.SessionGeneration;
         bool Authorized()
         {
             var policy = EnterprisePolicy.Current;
             return cancellation is { IsCancellationRequested: false } && ReferenceEquals(_runUi.Cancellation, cancellation) &&
+                ReferenceEquals(_configuration, admittedConfiguration) &&
+                VaultDatabase.Current.SessionGeneration == admittedSession &&
                 !_vaultLockInProgress && !_windowsLocked && !_exiting && VaultDatabase.Current.IsUnlocked &&
                 !policy.DisableAutomation && !policy.DisableCredentialFill && !policy.DisableCredentialStorage &&
                 policy.IsUrlAllowed(workflow.StartUrl) && policy.IsUrlAllowed(newOrigin) &&
@@ -505,22 +509,26 @@ public partial class MainWindow : Window
             if (!Authorized()) return false;
             var wasHidden = !IsVisible;
             if (wasHidden) ShowFromTray();
-            var result = MessageBox.Show(this,
-                $"'{workflow.Name}' needs the password on another website:\n\n{newOrigin}\n\n" +
-                "This is common (company SSO / Cisco / Microsoft / Okta).\n" +
-                "Allow LaunchFlow to type this website's saved password there?\n" +
-                "Only click Yes if you recognize that sign-in page.",
-                "Confirm password website", MessageBoxButton.YesNo, MessageBoxImage.Question,
-                MessageBoxResult.No);
-            if (wasHidden) Hide();
-            // ShowDialog pumps the dispatcher: lock, Stop and machine policy can change.
-            if (result != MessageBoxResult.Yes || !Authorized()) return false;
+            bool accepted;
+            try
+            {
+                // Topmost applies only to this short-lived approval window, never to LaunchFlow itself.
+                // The automated browser can remain foreground without covering the decision.
+                var dialog = new LoginOriginConsentWindow(workflow.Name, newOrigin) { Owner = this };
+                accepted = dialog.ShowDialog() == true;
+            }
+            finally
+            {
+                if (wasHidden && !_exiting) Hide();
+            }
+            // The modal dialog pumps WPF messages: a vault lock, import, Stop or policy edit
+            // must invalidate the approval before any saved password is released.
+            if (!accepted || !Authorized()) return false;
             bool added = !workflow.ApprovedLoginOrigins.Contains(newOrigin);
             var previousPasswordOrigin = workflow.PasswordCredentialOrigin;
             if (added) workflow.ApprovedLoginOrigins.Add(newOrigin);
-            // Remember IdP host so the next Run does not ask again.
             workflow.PasswordCredentialOrigin = newOrigin;
-            try { _store.Save(_configuration); }
+            try { _store.SaveDurable(admittedConfiguration, admittedSession); }
             catch (Exception ex)
             {
                 if (added) workflow.ApprovedLoginOrigins.Remove(newOrigin);
@@ -529,7 +537,17 @@ public partial class MainWindow : Window
                 return false;
             }
             if (PasswordOriginBox is not null && ReferenceEquals(_editorSession.Selection, workflow))
-                PasswordOriginBox.Text = newOrigin;
+            {
+                // Reflect an already committed trusted origin without creating a new dirty edit.
+                var wasLoading = _loadingEditor;
+                try
+                {
+                    _loadingEditor = true;
+                    PasswordOriginBox.Text = newOrigin;
+                }
+                finally { _loadingEditor = wasLoading; }
+            }
+            if (!_editorSession.IsDirty) MarkSaved();
             AppendLog($"Approved password website for '{workflow.Name}': {newOrigin}");
             return true;
         });
