@@ -22,6 +22,10 @@ on:
         required: false
         default: ''
 
+env:
+  # A PR merge ref is not the source commit owners review or install.
+  LF_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 permissions:
   contents: read
 
@@ -38,7 +42,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
+          ref: ${{ env.LF_SOURCE_SHA }}
           fetch-depth: 0
+      - name: Reject unpinned source checkout
+        run: test "$(git rev-parse HEAD)" = "$LF_SOURCE_SHA"
       - name: Install .NET 8 SDK (builder only)
         uses: actions/setup-dotnet@v6
         with:
@@ -112,7 +119,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
+          ref: ${{ env.LF_SOURCE_SHA }}
           fetch-depth: 1
+      - name: Reject unpinned source checkout
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD).Trim() -cne $env:LF_SOURCE_SHA) {
+            throw 'Windows builder checkout differs from the selected source commit.'
+          }
       - name: Install .NET 8 SDK (builder only)
         uses: actions/setup-dotnet@v6
         with:
@@ -130,7 +144,7 @@ jobs:
           $version = [string](@($p.Project.PropertyGroup.Version | Where-Object { $_ })[0])
           Get-LaunchFlowSetupPath -Root $PWD -Version $version | Out-Null
           if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -cne "v$version") { throw 'Release tag does not match project version.' }
-          Assert-LaunchFlowDraftRelease -Requested ($env:REQUEST_DRAFT -eq 'true') -Version $version -Commit $env:GITHUB_SHA -Confirmation $env:RELEASE_CONFIRMATION -WindowsEvidence $env:WINDOWS_TEST_EVIDENCE
+          Assert-LaunchFlowDraftRelease -Requested ($env:REQUEST_DRAFT -eq 'true') -Version $version -Commit $env:LF_SOURCE_SHA -Confirmation $env:RELEASE_CONFIRMATION -WindowsEvidence $env:WINDOWS_TEST_EVIDENCE
           "LF_VERSION=$version" >> $env:GITHUB_ENV
           "version=$version" >> $env:GITHUB_OUTPUT
       - name: Run installer behavior tests
@@ -164,11 +178,6 @@ jobs:
         shell: pwsh
         run: |
           ./tests/native/ExitCodeContract.Tests.ps1
-      - name: Exercise actual Windows silent installation and safe removal
-        shell: pwsh
-        run: |
-          ./tests/native/InstallerSmoke.Tests.ps1 -SetupPath "dist/LaunchFlow-Setup-v$env:LF_VERSION-x64.exe" -Version $env:LF_VERSION
-          if ($LASTEXITCODE -ne 0) { throw 'Native silent installer smoke failed' }
       - name: Build self-contained universal installer
         shell: pwsh
         run: |
@@ -186,7 +195,7 @@ jobs:
       - name: Upload build artifacts (not a release)
         uses: actions/upload-artifact@v6
         with:
-          name: LaunchFlow-v${{ env.LF_VERSION }}-${{ github.sha }}-Windows
+          name: LaunchFlow-v${{ env.LF_VERSION }}-${{ env.LF_SOURCE_SHA }}-Windows
           path: |
             dist/LaunchFlow-Setup-v${{ env.LF_VERSION }}-x64.exe
             dist/LaunchFlow-Universal-Installer.exe
@@ -194,9 +203,51 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  native-installer-smoke:
+    name: Native Windows clean-user install, repair and uninstall
+    needs: windows
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact source commit for native test code
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.LF_SOURCE_SHA }}
+          fetch-depth: 1
+      - name: Download exact-build installer to a fresh Windows runner
+        uses: actions/download-artifact@v5
+        with:
+          name: LaunchFlow-v${{ needs.windows.outputs.version }}-${{ env.LF_SOURCE_SHA }}-Windows
+          path: dist
+      - name: Verify checkout and setup digest before execution
+        shell: pwsh
+        env:
+          LF_VERSION: ${{ needs.windows.outputs.version }}
+        run: |
+          if ((git rev-parse HEAD).Trim() -cne $env:LF_SOURCE_SHA) {
+            throw 'Native test checkout differs from tested source commit.'
+          }
+          $file = "LaunchFlow-Setup-v$env:LF_VERSION-x64.exe"
+          $path = Join-Path dist $file
+          if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            throw 'The exact installer was not downloaded.'
+          }
+          $digest = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expected = "$digest  $file"
+          if (@(Get-Content -LiteralPath dist/SHA256SUMS.txt) -cnotcontains $expected) {
+            throw 'The downloaded installer does not match the tested build manifest.'
+          }
+      - name: Exercise actual Windows silent installation and safe removal
+        shell: pwsh
+        env:
+          LF_VERSION: ${{ needs.windows.outputs.version }}
+        run: |
+          ./tests/native/InstallerSmoke.Tests.ps1 -SetupPath "dist/LaunchFlow-Setup-v$env:LF_VERSION-x64.exe" -Version $env:LF_VERSION
+          if ($LASTEXITCODE -ne 0) { throw 'Native silent installer smoke failed' }
+
   draft-release:
     name: Draft-release readiness — verify artifact, no publication
-    needs: windows
+    needs: [windows, native-installer-smoke]
     runs-on: windows-latest
     timeout-minutes: 10
     permissions:
@@ -205,7 +256,7 @@ jobs:
       - name: Download installers from this exact tested run
         uses: actions/download-artifact@v5
         with:
-          name: LaunchFlow-v${{ needs.windows.outputs.version }}-${{ github.sha }}-Windows
+          name: LaunchFlow-v${{ needs.windows.outputs.version }}-${{ env.LF_SOURCE_SHA }}-Windows
           path: dist
       - name: Verify exact installers and SHA-256 manifest
         shell: pwsh
@@ -231,7 +282,7 @@ jobs:
               throw "SHA-256 verification failed for $filename"
             }
           }
-          Write-Host "Verified both installers and their checksums on commit $env:GITHUB_SHA (no release created)."
+          Write-Host "Verified both installers and their checksums on commit $env:LF_SOURCE_SHA (no release created)."
 
   publish-draft:
     if: github.event_name == 'workflow_dispatch' && inputs.publish_release
@@ -255,7 +306,7 @@ jobs:
       - name: Download artifacts from this exact build
         uses: actions/download-artifact@v5
         with:
-          name: LaunchFlow-v${{ needs.windows.outputs.version }}-${{ github.sha }}-Windows
+          name: LaunchFlow-v${{ needs.windows.outputs.version }}-${{ env.LF_SOURCE_SHA }}-Windows
           path: dist
       - name: Require approved Authenticode signatures before draft publication
         shell: pwsh
@@ -279,16 +330,16 @@ jobs:
           $body = @{
             tag_name = "v$env:LF_VERSION"
             name = "LaunchFlow $env:LF_VERSION"
-            target_commitish = $env:GITHUB_SHA
+            target_commitish = $env:LF_SOURCE_SHA
             draft = $true
             prerelease = $false
             make_latest = 'false'
             generate_release_notes = $true
-            body = "Windows test evidence (publisher attestation): $env:WINDOWS_TEST_EVIDENCE`nBuild commit: $env:GITHUB_SHA`nDRAFT ONLY. Test these exact artifacts before manually publishing stable."
+            body = "Windows test evidence (publisher attestation): $env:WINDOWS_TEST_EVIDENCE`nBuild commit: $env:LF_SOURCE_SHA`nDRAFT ONLY. Test these exact artifacts before manually publishing stable."
           } | ConvertTo-Json
           # POST creates a new draft; unlike an upsert action, it cannot modify a published release.
           $release = Invoke-RestMethod -Method Post -Uri $api -Headers $headers -ContentType 'application/json' -Body $body
-          if ($release.draft -ne $true -or $release.prerelease -ne $false -or $release.tag_name -cne "v$env:LF_VERSION" -or $release.target_commitish -cne $env:GITHUB_SHA) { throw 'Created draft metadata did not match the requested build.' }
+          if ($release.draft -ne $true -or $release.prerelease -ne $false -or $release.tag_name -cne "v$env:LF_VERSION" -or $release.target_commitish -cne $env:LF_SOURCE_SHA) { throw 'Created draft metadata did not match the requested build.' }
           $releaseUri = "$api/$($release.id)"
           $uploadBase = "https://uploads.github.com/repos/$env:GITHUB_REPOSITORY/releases/$($release.id)/assets"
           $files = @("dist/LaunchFlow-Setup-v$env:LF_VERSION-x64.exe", 'dist/LaunchFlow-Universal-Installer.exe', 'dist/SHA256SUMS.txt')
@@ -297,7 +348,7 @@ jobs:
             Invoke-RestMethod -Method Post -Uri "${uploadBase}?name=$name" -Headers $headers -ContentType 'application/octet-stream' -InFile $file | Out-Null
           }
           $verified = Invoke-RestMethod -Uri $releaseUri -Headers $headers
-          if ($verified.draft -ne $true -or $verified.prerelease -ne $false -or $verified.target_commitish -cne $env:GITHUB_SHA -or $verified.tag_name -cne "v$env:LF_VERSION" -or @($verified.assets).Count -ne $files.Count) { throw 'Draft read-back failed. Stop and inspect the draft manually.' }
+          if ($verified.draft -ne $true -or $verified.prerelease -ne $false -or $verified.target_commitish -cne $env:LF_SOURCE_SHA -or $verified.tag_name -cne "v$env:LF_VERSION" -or @($verified.assets).Count -ne $files.Count) { throw 'Draft read-back failed. Stop and inspect the draft manually.' }
           foreach ($file in $files) {
             $asset = @($verified.assets | Where-Object { $_.name -ceq (Split-Path $file -Leaf) })
             $digest = 'sha256:' + (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()

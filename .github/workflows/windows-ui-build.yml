@@ -5,6 +5,9 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  LF_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 permissions:
   contents: read
 
@@ -18,6 +21,14 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.LF_SOURCE_SHA }}
+      - name: Reject unpinned source checkout
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD).Trim() -cne $env:LF_SOURCE_SHA) {
+            throw 'UI build checkout differs from the selected source commit.'
+          }
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
@@ -87,7 +98,7 @@ jobs:
       - name: Upload unsigned UI test installer
         uses: actions/upload-artifact@v6
         with:
-          name: LaunchFlow-v${{ env.LF_VERSION }}-UI-${{ github.sha }}
+          name: LaunchFlow-v${{ env.LF_VERSION }}-UI-${{ env.LF_SOURCE_SHA }}
           path: |
             dist/LaunchFlow-Setup-v${{ env.LF_VERSION }}-x64.exe
             dist/UI-SHA256SUMS.txt

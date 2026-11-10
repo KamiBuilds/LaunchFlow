@@ -14,7 +14,12 @@ checks = {
     "tray never closes directly": "CompleteOwnedExitAsync(installer: false)" in tray and "Close();" not in tray,
     "installer uses same completion operation": "await CompleteOwnedExitAsync(installer: true)" in installer,
     "OnClosed no longer owns normal asynchronous cleanup": "private void OnClosed(" in src and "private async void OnClosed(" not in src,
-    "browser close/lock finishes before disposal and WPF Close": module.index("await SecureVaultLockAsync(") < module.index("await _runner.DisposeAsync();") < module.index("Close();"),
+    "browser close/lock finishes before disposal and WPF Close": (
+        0 <= module.find("await SecureVaultLockAsync(")
+        < module.find("_finalRunnerDisposeTask ??= _runner.DisposeAsync().AsTask();")
+        < module.find("await ExitCleanupWait.RequireAsync(_finalRunnerDisposeTask,")
+        < module.find("            });\n            Close();")
+    ),
     "failed drain revokes permit and re-enables UI": "_exitDrain.RevokePermit();" in module and "IsEnabled = true;" in module,
     "UI disabled while exit is pending": "IsEnabled = false;" in module,
     "installer error catch avoids modal dialog": "MessageBox.Show(" not in installer and "ShowFromTray();" not in installer,
