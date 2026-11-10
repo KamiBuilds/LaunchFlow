@@ -7,6 +7,7 @@ internal static class StagedLoginTests
     public static async Task RunAsync(IPlaywright playwright)
     {
         await SinglePageLoginAsync(playwright);
+        await LegacyNpmWithoutAdvancedSettingsAsync(playwright);
         await EmailThenPasswordAsync(playwright);
         await IdBrokerStyleContinuationAsync(playwright);
         await DifferentFinalSubmitAsync(playwright);
@@ -55,6 +56,72 @@ internal static class StagedLoginTests
         Check(result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
               page.Url.EndsWith("/dashboard") && vault.ReadCount == 1,
               "single-page username + password submission still works without recording");
+    }
+
+    private static async Task LegacyNpmWithoutAdvancedSettingsAsync(IPlaywright playwright)
+    {
+        const string origin = "https://npm-legacy.test";
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(3000);
+        await context.RouteAsync(origin + "/**", route => route.FulfillAsync(new()
+        {
+            ContentType = "text/html",
+            Body = route.Request.Url.EndsWith("/login", StringComparison.Ordinal)
+                ? """
+                  <form action="" method="post"
+                    onsubmit="event.preventDefault(); if (this.elements.identity.value === 'test@example.invalid' && this.elements.secret.value === 'test-only-password') location.href='/'; else document.getElementById('error').textContent='Invalid credentials';">
+                    <input name="identity" type="email" required>
+                    <input name="secret" type="password" required>
+                    <button type="submit">Sign in</button>
+                    <p id="error"></p>
+                  </form>
+                  """
+                : """
+                  <header>
+                    <a class="navbar-brand" href="/"><img src="/images/favicons/favicon-32x32.png">Nginx Proxy Manager</a>
+                    <div class="dropdown">
+                      <a href="#" class="nav-link"><span class="avatar"></span><span class="text-default">Admin</span></a>
+                      <div class="dropdown-menu" style="display:none">
+                        <a class="dropdown-item logout" href="/logout">Log out</a>
+                      </div>
+                    </div>
+                  </header>
+                  <main>Proxy Hosts</main>
+                  """
+        }));
+        var page = await context.NewPageAsync();
+        await page.GotoAsync(origin + "/login");
+        var workflow = new WebsiteWorkflow { StartUrl = origin + "/login", LoginWaitSeconds = 5 };
+        var vault = new CredentialVault
+        {
+            Credential = new SiteCredential("test@example.invalid", "test-only-password")
+        };
+        await using var engine = new AutomationEngine(vault);
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
+              page.Url == origin + "/" && vault.ReadCount == 1,
+              "NPM legacy identity/secret login completes with default selectors");
+        Check(!await page.Locator("a.dropdown-item.logout").IsVisibleAsync() &&
+              await LoginHealth.VerifiedApplicationSessionAsync(page, workflow.StartUrl),
+              "NPM dashboard verifies while account logout is hidden in dropdown");
+        var again = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(again.FinishedCount == 1 && again.LoginNeedsAttention.Count == 0 &&
+              vault.ReadCount == 1,
+              "NPM signed-in browser is reused without inserting credentials again");
+
+        await page.GotoAsync(origin + "/login");
+        Check(!await LoginHealth.VerifiedApplicationSessionAsync(page, workflow.StartUrl),
+              "NPM email/password screen cannot be accepted as authenticated");
+        await page.SetContentAsync("""
+            <header><a class="navbar-brand" href="/"><img src="/images/favicons/favicon-32x32.png"></a>
+              <div class="dropdown"><a class="nav-link" href="#"><span class="avatar"></span>Admin</a>
+              <a class="dropdown-item logout" href="/logout">Log out</a></div></header>
+            <h2>Verification required</h2><input autocomplete="one-time-code">
+            """);
+        Check(!await LoginHealth.VerifiedApplicationSessionAsync(page, workflow.StartUrl),
+              "NPM-shaped verification challenge never counts as a signed-in session");
     }
 
     private static async Task DifferentFinalSubmitAsync(IPlaywright playwright)

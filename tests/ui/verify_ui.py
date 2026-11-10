@@ -168,6 +168,14 @@ check(wizard_named["AutoLoginCheck"].get("IsChecked") == "False" and
       'LoginMode = autoLogin ? "Auto" : "None"' in
       (root / "LaunchFlow/UI/Dialogs/NewWorkflowWindow.xaml.cs").read_text(encoding="utf-8"),
       "new local websites default to explicit No login required without credential prompts")
+check('x:Name="EditSelectedWebsiteLoginButton"' in main_xml and
+      'Click="EditSelectedWebsiteLogin_Click"' in main_xml and
+      main_xml.index('2. Website sign-in') < main_xml.index('3. Recorded actions (optional)') and
+      main_xml.index('Extra tools (only if you need them)') <
+      main_xml.index('x:Name="AdvancedSignInButton"') and
+      'SettingsTabs.SelectedIndex = 1;' in
+      (root / "LaunchFlow/UI/Shell/MainWindow.Navigation.cs").read_text(encoding="utf-8"),
+      "simple per-website sign-in routes to secured password editor; advanced tools are collapsed")
 # Username/email is intentionally readable in the create-website wizard.
 # The password must remain a WPF PasswordBox and must never be read as ordinary Text.
 wizard_code = (root / "LaunchFlow/UI/Dialogs/NewWorkflowWindow.xaml.cs").read_text(encoding="utf-8")
@@ -274,14 +282,14 @@ main_xml = (root / "LaunchFlow/UI/Shell/MainWindow.xaml").read_text(encoding="ut
 tutorial_code = (root / "LaunchFlow/UI/Dialogs/TutorialWindow.xaml.cs").read_text(encoding="utf-8")
 check('START HERE · 3 EASY STEPS' in main_xml and
       'Show the step-by-step guide' in main_xml and
-      '2. Recorded actions (optional)' in main_xml and
+      '3. Recorded actions (optional)' in main_xml and
       'More actions (advanced)' in main_xml and
       'x:Name="TeachButton"' in main_xml and 'x:Name="RepairButton"' in main_xml,
       "Websites screen provides beginner steps and retains optional advanced actions")
 check('1. Which website?' in wizard_xml and
       '2. Where should it open?' in wizard_xml and
       '3. Automatic login (optional)' in wizard_xml and
-      'Advanced: connection type and port (optional)' in wizard_xml and
+      'Extra address options (usually not needed)' in wizard_xml and
       'DataTrigger Binding="{Binding IsChecked, ElementName=AutoLoginCheck}" Value="True"' in wizard_xml and
       all(f'x:Name="{n}"' in wizard_xml for n in
           ('ProtocolCombo','PortBox','UrlBox','NameBox','AutoLoginCheck','UsernameBox','PasswordBox','BrowserCombo','MonitorCombo')),

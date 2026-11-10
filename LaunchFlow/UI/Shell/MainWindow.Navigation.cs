@@ -106,6 +106,22 @@ public partial class MainWindow
         SettingsNav.IsChecked = MainTabs.SelectedIndex == 1;
     }
 
+    private void EditSelectedWebsiteLogin_Click(object sender, RoutedEventArgs e)
+    {
+        if (_editorSession.Selection is null || _vaultLockInProgress ||
+            _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked ||
+            !SaveAll()) return;
+
+        // Keep existing password-session gating and exact selected-site ownership.
+        MainTabs.SelectedIndex = 1;
+        SettingsTabs.SelectedIndex = 1;
+        if (PasswordSessionIsValid())
+        {
+            SyncPasswordWebsiteSelector();
+            UsernameBox.Focus();
+        }
+    }
+
     // The password editor is a secured Settings category, not a separate
     // top-level workspace. Authorization is required before showing it; leaving
     // the category clears pending secret inputs but retains the one-hour session.

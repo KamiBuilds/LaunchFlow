@@ -92,7 +92,7 @@ public static class LoginHealth
             var evidenceCount = Math.Min(await evidence.CountAsync().ConfigureAwait(false), 24);
             for (var i = 0; i < evidenceCount; i++)
                 if (await evidence.Nth(i).IsVisibleAsync().ConfigureAwait(false)) return true;
-            return false;
+            return await HasAuthenticatedNpmNavigationAsync(page, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception) { return false; }
@@ -138,10 +138,26 @@ public static class LoginHealth
                     signOutVisible = true;
                     break;
                 }
-            return accountVisible && signOutVisible;
+            return (accountVisible && signOutVisible) ||
+                await HasAuthenticatedNpmNavigationAsync(page, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception) { return false; }
+    }
+
+    private static async Task<bool> HasAuthenticatedNpmNavigationAsync(IPage page, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        // Older NPM dashboards keep the logout link inside a closed dropdown.
+        // Require the actual branded header, visible account menu and logout
+        // action together. Never accept a redirected URL alone as login proof.
+        return await page.Locator("a.navbar-brand[href='/']:visible").CountAsync().ConfigureAwait(false) == 1 &&
+               await page.Locator("a.navbar-brand[href='/'] img[src*='/images/favicons/favicon-32x32.png']")
+                   .CountAsync().ConfigureAwait(false) == 1 &&
+               await page.Locator(".dropdown > a.nav-link:visible:has(.avatar)")
+                   .CountAsync().ConfigureAwait(false) == 1 &&
+               await page.Locator("a.dropdown-item.logout[href='/logout']")
+                   .CountAsync().ConfigureAwait(false) == 1;
     }
 
     private static async Task<bool> HasInteractiveSecurityChallengeAsync(IPage page, CancellationToken ct)

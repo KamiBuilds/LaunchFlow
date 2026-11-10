@@ -43,7 +43,7 @@
           <TextBox x:Name="UrlBox" Text="" VerticalContentAlignment="Center"
                    ToolTip="Examples: example.com, 192.168.1.50, localhost:3000, http://192.168.1.50:8080"/>
         </DockPanel>
-        <Expander Header="Advanced: connection type and port (optional)"
+        <Expander Header="Extra address options (usually not needed)"
                   Foreground="#C0D6E5" Background="#17283A" Padding="10" Margin="0,0,0,16">
           <StackPanel Margin="3,8,3,4">
             <TextBlock Text="Usually you can leave these settings unchanged."
@@ -84,10 +84,10 @@
                   ToolTip="Shows installed browsers. The default browser opens without automatic login."/>
         <TextBlock Text="Screen (monitor)" FontWeight="SemiBold"/>
         <ComboBox x:Name="MonitorCombo" Margin="0,6,0,12"/>
-        <TextBlock Text="3. Automatic login (optional)" Foreground="#6EE7D7" FontSize="16"
+        <TextBlock Text="3. Sign in (optional)" Foreground="#6EE7D7" FontSize="16"
                    FontWeight="SemiBold" Margin="0,0,0,9"/>
-        <CheckBox x:Name="AutoLoginCheck" Content="Yes, automatically sign in to this website" IsChecked="False"/>
-        <TextBlock Text="No login required? Leave this unchecked. Email-first sites with a separate password page are supported automatically. For sites that need a password, enter your details. You can change them later in Passwords."
+        <CheckBox x:Name="AutoLoginCheck" Content="Sign in automatically using email and password" IsChecked="False"/>
+        <TextBlock Text="If there is no login required, leave this unchecked. Otherwise enter your email and password. LaunchFlow finds sign-in fields automatically, including two-step login pages. No recording or advanced settings needed."
                    TextWrapping="Wrap" Foreground="#B4CCDB" FontSize="11" Margin="0,5,0,9"/>
         <StackPanel>
           <StackPanel.Style>
