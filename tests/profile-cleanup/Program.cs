@@ -22,7 +22,9 @@ try
     error=null;try{ProfileVaultService.SealAll();}catch(AggregateException ex){error=ex;}
     Check(error is not null,"retry is blocked while plaintext quarantine cleanup still fails");
     Check(File.ReadAllBytes(archive).SequenceEqual(original),"rejected retry preserves the original authenticated ciphertext");
-    File.SetUnixFileMode(child,UnixFileMode.UserRead|UnixFileMode.UserWrite|UnixFileMode.UserExecute);
+    var quarantined = Directory.EnumerateDirectories(ProfileVaultService.ProfilesRoot, ".sealed-*").Single();
+    File.SetUnixFileMode(Path.Combine(quarantined, "locked"),
+        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
     var corrupt=(byte[])original.Clone();corrupt[14]^=1;
     File.WriteAllBytes(archive,corrupt);
     error=null;try{ProfileVaultService.SealAll();}catch(AggregateException ex){error=ex;}
