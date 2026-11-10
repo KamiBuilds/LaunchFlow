@@ -24,7 +24,7 @@ function Test-LaunchFlowDraftWorkflow {
     $names = @('LaunchFlow-Setup-v0.7.19-x64.exe', 'LaunchFlow-Universal-Installer.exe', 'SHA256SUMS.txt')
     foreach ($name in $names) { Set-Content -LiteralPath (Join-Path $fixture "dist/$name") -Value 'synthetic non-executable artifact' }
     $oldLocation = Get-Location
-    $keys = @('GH_TOKEN', 'LF_VERSION', 'GITHUB_REPOSITORY', 'GITHUB_SHA', 'WINDOWS_TEST_EVIDENCE')
+    $keys = @('GH_TOKEN', 'LF_VERSION', 'GITHUB_REPOSITORY', 'LF_SOURCE_SHA', 'WINDOWS_TEST_EVIDENCE')
     $oldEnvironment = @{}
     foreach ($key in $keys) { $oldEnvironment[$key] = [Environment]::GetEnvironmentVariable($key) }
     function Invoke-RestMethod {
@@ -55,7 +55,7 @@ function Test-LaunchFlowDraftWorkflow {
         $env:GH_TOKEN = 'synthetic-offline-token'
         $env:LF_VERSION = '0.7.19'
         $env:GITHUB_REPOSITORY = 'Owner/LaunchFlow'
-        $env:GITHUB_SHA = 'a' * 40
+        $env:LF_SOURCE_SHA = 'a' * 40
         $env:WINDOWS_TEST_EVIDENCE = 'synthetic-offline-attestation'
         foreach ($mode in @('success', 'bad-create', 'upload-failure', 'bad-digest', 'public-readback')) {
             Test-Case "draft workflow $mode uses create-only API and verifies read-back" {
