@@ -34,8 +34,8 @@ After unlocking, click Getting started. This modeless guide does not click, save
    - **Where:** Add a website - LaunchFlow → 2. Where should it open?. Look for **Screen (monitor)**.
    - **You should see:** Screen (monitor) shows your selected display.
    - **Can't find it?** A single-monitor PC does not need Screen 2. Monitor numbers vary by device; you can change the choice later.
-7. **Keep login optional** (BASIC-07): Leave Yes, automatically sign in to this website unchecked.
-   - **Where:** Add a website - LaunchFlow → 3. Automatic login (optional). Look for **Yes, automatically sign in to this website**.
+7. **Keep login optional** (BASIC-07): Leave Sign in automatically using email and password unchecked.
+   - **Where:** Add a website - LaunchFlow → 3. Sign in (optional). Look for **Sign in automatically using email and password**.
    - **You should see:** The checkbox remains unchecked and no website password is required for this example.
    - **Can't find it?** For a first test, leave login off. If the checkbox was enabled, uncheck it. Website credentials belong to an optional later guide.
 8. **Create the website** (BASIC-08): Click Create website.
