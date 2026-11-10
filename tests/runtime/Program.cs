@@ -72,9 +72,15 @@ if (!args.Contains("--profile-only"))
     await page.GotoAsync(workflow.StartUrl);
     var login = typeof(AutomationEngine).GetMethod("TryAutoLoginAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
     await (Task)login.Invoke(engine, new object?[] { workflow, page, CancellationToken.None, null, null })!;
-    Assert(prompts.Count == 0, "unmapped IdP password is rejected before origin approval");
+    // New cross-origin IdP hosts may be offered for explicit approval, but
+    // refusal must leave the password empty and the workflow unmapped.
+    Assert(prompts.SequenceEqual(new[] { "https://other.test" }),
+        "unmapped IdP requires explicit approval before a password can be filled");
+    Assert(string.IsNullOrWhiteSpace(workflow.PasswordCredentialOrigin),
+        "denied unmapped IdP cannot persist itself as a trusted password destination");
     Assert(await page.InputValueAsync("#password") == "", "unmapped redirect never receives the test password");
 
+    prompts.Clear();
     workflow.PasswordCredentialOrigin = "https://other.test";
     await page.GotoAsync(workflow.StartUrl);
     await (Task)login.Invoke(engine, new object?[] { workflow, page, CancellationToken.None, null, null })!;
