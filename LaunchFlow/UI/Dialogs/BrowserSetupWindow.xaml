@@ -1,0 +1,33 @@
+<Window x:Class="LaunchFlow.BrowserSetupWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Browser readiness" Width="660" Height="520"
+        MinWidth="440" MinHeight="340" ResizeMode="CanResize"
+        WindowStartupLocation="CenterOwner" Background="#0D1725"
+        Foreground="#EEF6FA" FontFamily="Segoe UI" FontSize="13"
+        Icon="pack://application:,,,/Assets/LaunchFlow.ico">
+  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                CanContentScroll="False" Padding="0" Focusable="False">
+    <StackPanel Margin="26">
+      <TextBlock Text="Browser readiness" FontSize="23" FontWeight="SemiBold"/>
+      <TextBlock x:Name="ReadinessText" TextWrapping="Wrap" Margin="0,12,0,12"
+                 AutomationProperties.Name="Detected supported browsers"/>
+      <TextBlock x:Name="DetailText" TextWrapping="Wrap" Foreground="#AEC4DB" Margin="0,0,0,14"
+                 AutomationProperties.Name="Per-browser detection details"/>
+      <TextBlock Text="Auto sign-in uses browsers LaunchFlow finds on this PC for Edge and Chrome. Firefox Auto uses a Playwright automation build from Setup, your user profile, or a detected Playwright cache (regular Mozilla Firefox cannot be driven)."
+                 TextWrapping="Wrap" Foreground="#AEC4DB" Margin="0,0,0,16"/>
+      <WrapPanel>
+        <Button Content="Microsoft Edge website" Click="Edge_Click" Padding="12,9" Margin="0,0,9,9"
+                AutomationProperties.Name="Open official Microsoft Edge download site"/>
+        <Button Content="Google Chrome website" Click="Chrome_Click" Padding="12,9" Margin="0,0,9,9"
+                AutomationProperties.Name="Open official Google Chrome download site"/>
+        <Button x:Name="InstallFirefoxAutomationButton" Content="Install Firefox automation"
+                Click="InstallFirefoxAutomation_Click" Padding="12,9" Margin="0,0,9,9"
+                AutomationProperties.Name="Install Playwright Firefox for automation with consent"/>
+        <Button x:Name="BrowserCheckAgainButton" Content="Scan again" Click="Refresh_Click" Padding="12,9" Margin="0,0,9,9"
+                AutomationProperties.Name="Scan installed browsers again"/>
+      </WrapPanel>
+      <TextBlock x:Name="FirefoxStatusText" Margin="0,8,0,0" Foreground="#819AB4" TextWrapping="Wrap"/>
+    </StackPanel>
+  </ScrollViewer>
+</Window>
