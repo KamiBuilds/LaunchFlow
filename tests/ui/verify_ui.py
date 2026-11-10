@@ -283,12 +283,12 @@ tutorial_code = (root / "LaunchFlow/UI/Dialogs/TutorialWindow.xaml.cs").read_tex
 check('START HERE · 3 EASY STEPS' in main_xml and
       'Show the step-by-step guide' in main_xml and
       '3. Recorded actions (optional)' in main_xml and
-      'More actions (advanced)' in main_xml and
+      'Extra tools (only if you need them)' in main_xml and
       'x:Name="TeachButton"' in main_xml and 'x:Name="RepairButton"' in main_xml,
       "Websites screen provides beginner steps and retains optional advanced actions")
 check('1. Which website?' in wizard_xml and
       '2. Where should it open?' in wizard_xml and
-      '3. Automatic login (optional)' in wizard_xml and
+      '3. Sign in (optional)' in wizard_xml and
       'Extra address options (usually not needed)' in wizard_xml and
       'DataTrigger Binding="{Binding IsChecked, ElementName=AutoLoginCheck}" Value="True"' in wizard_xml and
       all(f'x:Name="{n}"' in wizard_xml for n in
