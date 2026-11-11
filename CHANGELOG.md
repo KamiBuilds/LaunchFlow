@@ -1,3 +1,10 @@
+# v0.7.72 — Restore source gate and portable backup round-trip contract
+
+- Update the source-validation gate for the v0.7.69 beginner UI; ensure the simple sign-in and recorder controls remain wired while the legacy advanced button remains hidden.
+- Before creating or replacing a portable encrypted export, validate the exact captured vault snapshot against the same rules used for import.
+- Refuse legacy Fill actions and typed recorded values with an actionable, non-secret warning. Do not silently strip steps, write an unusable backup, or replace an existing valid archive.
+- Add encrypted backup round-trip and no-clobber regression tests. Vault format and installer AppId unchanged; unsigned test build.
+
 # v0.7.71 — Import hardening + clearer click labels
 
 - Portable import clears KeePass database/key/entry paths so another PC’s files are never assumed here.
