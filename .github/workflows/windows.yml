@@ -94,6 +94,8 @@ jobs:
         run: |
           ./tests/runtime/bin/Release/net8.0/playwright.ps1 install --with-deps chromium
           if ($LASTEXITCODE -ne 0) { throw 'Development Chromium installation failed' }
+      - name: Verify automatic login stages before the full browser suite
+        run: dotnet run --project tests/runtime/RuntimeTests.csproj -c Release --no-build -- --auto-login-only
       - name: Exercise production automation with synthetic browser fixtures
         run: dotnet run --project tests/runtime/RuntimeTests.csproj -c Release --no-build
       - name: Exercise privacy-safe diagnostic export

@@ -209,6 +209,8 @@ internal static class AutomaticEntryTests
         var workflow = Workflow(page.Url);
         var vault = Vault();
         await using var engine = new AutomationEngine(vault);
+        var loginEvents = new List<string>();
+        engine.OnLog += loginEvents.Add;
         EngineBehaviorTests.Track(engine, workflow, context, page);
         var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
         // A fetch() kicked off by onclick can be cancelled during navigation.
@@ -218,9 +220,15 @@ internal static class AutomaticEntryTests
             "() => Number(sessionStorage.getItem('auto03-next') || 0)");
         var finalSubmits = await page.EvaluateAsync<int>(
             "() => Number(sessionStorage.getItem('auto03-submit') || 0)");
+        var passwordFilled = page.Url.EndsWith("/password", StringComparison.Ordinal) &&
+            await page.Locator("input[type='password']").First.InputValueAsync() == vault.Credential.Password;
+        var selectorMatches = await page.Locator(workflow.PasswordSelector).CountAsync();
         Console.WriteLine($"AUTO-03 observed: finished={result.FinishedCount} " +
             $"attention={result.LoginNeedsAttention.Count} path={new Uri(page.Url).AbsolutePath} " +
-            $"nextClicks={continuations} submitClicks={finalSubmits} vaultReads={vault.ReadCount}");
+            $"nextClicks={continuations} submitClicks={finalSubmits} vaultReads={vault.ReadCount} " +
+            $"passwordFilled={passwordFilled} passwordSelectorMatches={selectorMatches}");
+        if (result.FinishedCount != 1)
+            Console.WriteLine("AUTO-03 engine: " + string.Join(" | ", loginEvents.TakeLast(12)));
         Check(result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
               page.Url.EndsWith("/dashboard") && continuations == 1 &&
               finalSubmits == 1 && vault.ReadCount == 1,

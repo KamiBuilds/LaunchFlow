@@ -770,6 +770,10 @@ static void Check(bool condition, string message) { if (!condition) throw new Ex
 
 partial class UiFixture
 {
+    // Native WPF window geometry is represented by inert numeric properties.
+    public double Left { get; set; } = 100;
+    public double Top { get; set; } = 100;
+    public double ActualWidth { get; set; } = 1200;
     public readonly AutomationEngine _runner = new();
     public Task ShowSignInAttention(IReadOnlyList<AutomationEngine.LoginAttention> items) =>
         OfferRepairForLoginAttentionAsync(items);
@@ -912,6 +916,9 @@ sealed class SignInDecisionWindow
 }
 sealed class VisualRecorderWindow
 {
+    public double Left { get; set; }
+    public double Top { get; set; }
+    public double Width { get; set; } = 560;
     public object? Owner { get; init; }
     public VisualRecorderWindow(Microsoft.Playwright.IPage page) { }
     public List<WorkflowStep> RecordedSteps { get; } = new() { new WorkflowStep { Type = "Click", Target = "#synthetic" } };
@@ -1006,7 +1013,7 @@ sealed class Control
     public void Clear() { Text = ""; Password = ""; }
 }
 
-namespace System.Windows.Forms { public enum ToolTipIcon { Info, Error, Warning } }
+namespace System.Windows.Forms { public enum ToolTipIcon { None, Info, Error, Warning } }
 namespace LaunchFlow.Services
 {
     sealed class VaultDatabase

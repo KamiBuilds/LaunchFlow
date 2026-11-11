@@ -70,6 +70,11 @@ jobs:
         run: |
           dotnet run --project tests/runtime/RuntimeTests.csproj -c Release -- --staged-login-only
           if ($LASTEXITCODE -ne 0) { throw 'Multi-stage sign-in regressions failed' }
+      - name: Verify automatic two-stage login independently on Windows
+        shell: pwsh
+        run: |
+          dotnet run --project tests/runtime/RuntimeTests.csproj -c Release -- --auto-login-only
+          if ($LASTEXITCODE -ne 0) { throw 'Automatic staged sign-in regressions failed' }
       - name: Compile LaunchFlow WPF application
         run: dotnet build LaunchFlow/LaunchFlow.csproj --configuration Release -warnaserror
       - name: Install Inno Setup on builder
