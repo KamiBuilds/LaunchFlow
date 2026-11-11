@@ -75,6 +75,11 @@ jobs:
         run: |
           dotnet run --project tests/runtime/RuntimeTests.csproj -c Release -- --auto-login-only
           if ($LASTEXITCODE -ne 0) { throw 'Automatic staged sign-in regressions failed' }
+      - name: Verify monitor placement and maximize order on Windows
+        shell: pwsh
+        run: |
+          dotnet run --project tests/runtime/RuntimeTests.csproj -c Release -- --monitor-only
+          if ($LASTEXITCODE -ne 0) { throw 'Monitor placement regression failed' }
       - name: Compile LaunchFlow WPF application
         run: dotnet build LaunchFlow/LaunchFlow.csproj --configuration Release -warnaserror
       - name: Install Inno Setup on builder
