@@ -176,8 +176,6 @@ internal static class AutomaticEntryTests
         await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
         await using var context = await browser.NewContextAsync();
         context.SetDefaultTimeout(3000);
-        var continuations = 0;
-        var finalSubmits = 0;
         await context.RouteAsync("https://auto-staged.test/**", route =>
         {
             var path = new Uri(route.Request.Url).AbsolutePath;
@@ -187,32 +185,52 @@ internal static class AutomaticEntryTests
                 Body = path switch
                 {
                     "/login" => """
-                        <form id="identifier" onsubmit="event.preventDefault();location.href='/password'">
+                        <form id="identifier" onsubmit="event.preventDefault();
+                            if (this.elements.login.value === 'test@example.invalid') location.href='/password'">
                           <input id="login_field" name="login" type="text" autocomplete="username">
-                          <button type="submit" onclick="fetch('/continued',{method:'POST'})">Next</button>
+                          <button type="submit" onclick="sessionStorage.setItem('auto03-next',
+                            String(Number(sessionStorage.getItem('auto03-next') || 0) + 1))">Next</button>
                         </form>
                         """,
                     "/password" => """
-                        <form id="secret" onsubmit="event.preventDefault();location.href='/dashboard'">
-                          <input id="password" type="password" autocomplete="current-password">
-                          <button type="submit" onclick="fetch('/submitted',{method:'POST'})">Sign in</button>
+                        <form id="secret" onsubmit="event.preventDefault();
+                            if (this.elements.password.value === 'synthetic-password-only') location.href='/dashboard'">
+                          <input id="password" name="password" type="password" autocomplete="current-password">
+                          <button type="submit" onclick="sessionStorage.setItem('auto03-submit',
+                            String(Number(sessionStorage.getItem('auto03-submit') || 0) + 1))">Sign in</button>
                         </form>
                         """,
                     _ => "<h1 id='signed-in'>Authenticated</h1>"
                 }
             });
         });
-        await context.RouteAsync("https://auto-staged.test/continued", async route => { Interlocked.Increment(ref continuations); await route.FulfillAsync(new() { Status = 204 }); });
-        await context.RouteAsync("https://auto-staged.test/submitted", async route => { Interlocked.Increment(ref finalSubmits); await route.FulfillAsync(new() { Status = 204 }); });
         var page = await context.NewPageAsync();
         await page.GotoAsync("https://auto-staged.test/login");
         var workflow = Workflow(page.Url);
-        await using var engine = new AutomationEngine(Vault());
+        var vault = Vault();
+        await using var engine = new AutomationEngine(vault);
         EngineBehaviorTests.Track(engine, workflow, context, page);
         var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
-        Check(result.FinishedCount == 1 && page.Url.EndsWith("/dashboard") &&
-              continuations == 1 && finalSubmits == 1,
+        // A fetch() kicked off by onclick can be cancelled during navigation.
+        // Synchronous sessionStorage counters survive both same-origin redirects,
+        // and measure real button clicks without an unrelated network race.
+        var continuations = await page.EvaluateAsync<int>(
+            "() => Number(sessionStorage.getItem('auto03-next') || 0)");
+        var finalSubmits = await page.EvaluateAsync<int>(
+            "() => Number(sessionStorage.getItem('auto03-submit') || 0)");
+        Console.WriteLine($"AUTO-03 observed: finished={result.FinishedCount} " +
+            $"attention={result.LoginNeedsAttention.Count} path={new Uri(page.Url).AbsolutePath} " +
+            $"nextClicks={continuations} submitClicks={finalSubmits} vaultReads={vault.ReadCount}");
+        Check(result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
+              page.Url.EndsWith("/dashboard") && continuations == 1 &&
+              finalSubmits == 1 && vault.ReadCount == 1,
             "AUTO-03 identifier stage must continue once then submit the bound password form exactly once");
+        var again = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        Check(again.FinishedCount == 1 && again.LoginNeedsAttention.Count == 0 &&
+              vault.ReadCount == 1 &&
+              await page.EvaluateAsync<int>("() => Number(sessionStorage.getItem('auto03-next') || 0)") == 1 &&
+              await page.EvaluateAsync<int>("() => Number(sessionStorage.getItem('auto03-submit') || 0)") == 1,
+            "AUTO-03 signed-in staged session is reused without extra clicks or credential reads");
     }
 
     private static async Task ResumedPasswordOnlyAsync(IPlaywright playwright)
