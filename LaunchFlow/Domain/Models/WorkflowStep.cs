@@ -38,5 +38,17 @@ public sealed class WorkflowStep
         }
     }
 
-    public override string ToString() => DisplayLabel;
+    // Implicit formatting may be written to logs or diagnostic output.
+    // Never include a user-supplied description, selector, value or action type.
+    public override string ToString() => Type switch
+    {
+        "Navigate" => "Navigate",
+        "Click" => "Click",
+        "Fill" => "Fill",
+        "Wait" => "Wait",
+        "Press" => "Press",
+        "AssertVisible" => "AssertVisible",
+        "WaitForURL" => "WaitForURL",
+        _ => "Workflow step"
+    };
 }
