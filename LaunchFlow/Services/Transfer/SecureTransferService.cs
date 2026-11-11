@@ -31,6 +31,25 @@ public static class SecureTransferService
             Config = snapshot.Config,
             Credentials = snapshot.Credentials
         };
+        // The importer is deliberately stricter than older editable workflows.
+        // Check the exact encrypted snapshot *before* opening a destination so
+        // export never claims success for a backup that cannot be restored.
+        if (package.Config.Workflows?.Any(w => w?.Steps?.Any(s =>
+                string.Equals(s?.Type, "Fill", StringComparison.Ordinal)) == true) == true)
+            throw new InvalidOperationException(
+                "This backup cannot be exported while a website has a Fill action. " +
+                "Remove the Fill action from that website's recorded steps and retry. " +
+                "Your existing backup was not changed.");
+        try
+        {
+            PortableImportValidation.Validate(package);
+        }
+        catch (InvalidDataException ex)
+        {
+            throw new InvalidOperationException(
+                "Cannot export a backup that LaunchFlow could not import: " + ex.Message +
+                " Fix the recorded website settings and retry. Your existing backup was not changed.", ex);
+        }
         PortableExport.Write(path, exportPassword, package);
     }
 

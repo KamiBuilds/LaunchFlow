@@ -33,13 +33,59 @@ try
     current.Initialize(master, config, new Dictionary<Guid, SiteCredential> { [workflow] = saved });
     var inclusive = Path.Combine(root, "inclusive.launchflow");
     SecureTransferService.Export(inclusive, exportKey, config, facade, true);
-    Check(PortableExport.Read(inclusive, exportKey).Credentials.TryGetValue(workflow, out var present) &&
-          present == saved, "B1 inclusive export retains credential");
+    Check(SecureTransferService.Read(inclusive, exportKey).Credentials.TryGetValue(workflow, out var present) &&
+          present == saved, "B1 inclusive export round-trips through the real import validator");
 
     var configOnly = Path.Combine(root, "configuration-only.launchflow");
     SecureTransferService.Export(configOnly, exportKey, config, facade, false);
-    Check(PortableExport.Read(configOnly, exportKey).Credentials.Count == 0,
-        "B1 explicit configuration-only backup omits passwords");
+    Check(SecureTransferService.Read(configOnly, exportKey).Credentials.Count == 0,
+        "B1 configuration-only backup round-trips and omits passwords");
+
+    // Existing workflows can still hold Fill actions from older versions.
+    // Do not write a backup that this same app would reject on import, and
+    // do not erase an older, valid backup if such an export is attempted.
+    var legacyConfig = new Configuration { Workflows = new()
+    {
+        new WebsiteWorkflow
+        {
+            Id = workflow, Name = "Legacy Fill site", StartUrl = "https://example.test/form",
+            Steps = new() { new WorkflowStep { Type = "Fill", Target = "#search", Value = "legacy-private-text" } }
+        }
+    }};
+    current.SaveConfiguration(legacyConfig);
+    var validPriorBackup = File.ReadAllBytes(inclusive);
+    var legacyTarget = Path.Combine(root, "legacy-fill-target.launchflow");
+    File.WriteAllBytes(legacyTarget, validPriorBackup);
+    bool legacyRejected = false;
+    string legacyMessage = "";
+    try { SecureTransferService.Export(legacyTarget, exportKey, config, facade, true); }
+    catch (InvalidOperationException ex) { legacyRejected = true; legacyMessage = ex.Message; }
+    Check(legacyRejected && legacyMessage.Contains("Fill action", StringComparison.Ordinal) &&
+          !legacyMessage.Contains("legacy-private-text", StringComparison.Ordinal) &&
+          File.ReadAllBytes(legacyTarget).SequenceEqual(validPriorBackup) &&
+          SecureTransferService.Read(legacyTarget, exportKey).Credentials[workflow] == saved,
+          "B3 unsafe legacy Fill export refuses with actionable message and preserves previous restorable backup");
+
+    var brandNewFillTarget = Path.Combine(root, "legacy-fill-new.launchflow");
+    bool configOnlyRejected = false;
+    try { SecureTransferService.Export(brandNewFillTarget, exportKey, config, facade, false); }
+    catch (InvalidOperationException) { configOnlyRejected = true; }
+    Check(configOnlyRejected && !File.Exists(brandNewFillTarget) &&
+          !Directory.EnumerateFiles(root, "*.tmp", SearchOption.TopDirectoryOnly).Any(),
+          "B3 config-only export cannot smuggle Fill values or leave staging files");
+
+    // This guards against other invalid action shapes being exported, not just Fill.
+    legacyConfig.Workflows[0].Steps = new()
+    {
+        new WorkflowStep { Type = "Click", Target = "#safe", Value = "unexpected-text" }
+    };
+    current.SaveConfiguration(legacyConfig);
+    bool typedRejected = false;
+    try { SecureTransferService.Export(brandNewFillTarget, exportKey, config, facade, true); }
+    catch (InvalidOperationException) { typedRejected = true; }
+    Check(typedRejected && !File.Exists(brandNewFillTarget),
+          "B3 export checks every recorded action against the same import validator");
+    current.SaveConfiguration(config);
 
     var staleSession = current.SessionGeneration;
     current.Lock();

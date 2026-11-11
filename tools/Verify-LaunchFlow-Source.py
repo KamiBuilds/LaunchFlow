@@ -194,8 +194,12 @@ wizard_xaml=(root/'LaunchFlow/UI/Dialogs/NewWorkflowWindow.xaml').read_text(enco
 main_ui=(root/'LaunchFlow/UI/Shell/MainWindow.xaml').read_text(encoding='utf-8')
 check('Extra address options (usually not needed)' in wizard_xaml and
       'DataTrigger Binding="{Binding IsChecked, ElementName=AutoLoginCheck}" Value="True"' in wizard_xaml and
-      'Extra tools (only if you need them)' in main_ui and
-      'START HERE · 3 EASY STEPS' in main_ui,
+      'START HERE · 3 EASY STEPS' in main_ui and
+      'Text="3. Clicks after sign-in"' in main_ui and
+      'x:Name="TeachButton"' in main_ui and
+      'x:Name="RepairButton"' in main_ui and
+      'Content="Set up or change sign-in"' in main_ui and
+      'x:Name="AdvancedSignInButton" Visibility="Collapsed"' in main_ui,
       'beginner setup presents clear next steps while optional controls stay available')
 print('\n'+ ('FAILED: '+', '.join(errors) if errors else 'Source/configuration checks PASS. Native Windows build remains required.'))
 sys.exit(bool(errors))
