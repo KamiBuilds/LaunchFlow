@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../LaunchFlow/Domain/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
+    <Compile Include="../../LaunchFlow/Services/Policy/EnterprisePolicy.cs" Link="Services/EnterprisePolicy.cs" />
+    <Compile Include="../../LaunchFlow/Services/Vault/VaultDatabase.cs" Link="Services/VaultDatabase.cs" />
+    <Compile Include="../../LaunchFlow/Services/Vault/VaultDatabase.Strict.cs" Link="Services/VaultDatabase.Strict.cs" />
+    <Compile Include="../../LaunchFlow/Services/Vault/VaultDatabase.Upgrade.cs" Link="Services/VaultDatabase.Upgrade.cs" />
+    <Compile Include="../../LaunchFlow/Services/Vault/VaultRecordCodec.cs" Link="Services/VaultRecordCodec.cs" />
+    <Compile Include="../../LaunchFlow/Services/Persistence/ConfigStore.cs" Link="Services/ConfigStore.cs" />
+    <Compile Include="../../LaunchFlow/Services/Vault/PasswordStrength.cs" Link="Services/PasswordStrength.cs" />
+    <Compile Include="../../LaunchFlow/Services/Persistence/WorkflowConfigurationService.cs" Link="Services/WorkflowConfigurationService.cs" />
+    <Compile Include="../../LaunchFlow/Services/Login/WebsiteLoginMode.cs" Link="Services/WebsiteLoginMode.cs" />
+    <Compile Include="../../LaunchFlow/Services/Persistence/ConfigurationSaveTransaction.cs" Link="Services/ConfigurationSaveTransaction.cs" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.31" />
+    <PackageReference Include="Konscious.Security.Cryptography.Argon2" Version="1.3.1" />
+  </ItemGroup>
+</Project>
