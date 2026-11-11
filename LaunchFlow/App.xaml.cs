@@ -425,6 +425,10 @@ public partial class App : Application
                     if (string.IsNullOrEmpty(dialog.Password)) continue;
                     if (db.Unlock(dialog.Password))
                     {
+                        // Hello returns a recovered secret through the same Password
+                        // property; only a successful typed unlock refreshes the timer.
+                        if (!dialog.UsedWindowsHello)
+                            WindowsHelloService.MarkPasswordVerified();
                         try { ProfileVaultService.UnsealAll(); }
                         catch (Exception ex)
                         {

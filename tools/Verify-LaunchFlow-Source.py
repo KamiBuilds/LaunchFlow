@@ -108,8 +108,12 @@ check('FindDatabases()' in keepass_code and 'SearchOption.TopDirectoryOnly' in k
       'KeePassXC database discovery uses familiar folders')
 check('ListEntriesAsync' in keepass_code and 'ArgumentList.Add("ls")' in keepass_code,
       'KeePassXC login picker lists entry names')
-check('ChooseKeePassEntry_Click' in main_code and 'FirstOrDefault(w => w.Id == workflowId)' in main_code,
-      'selected KeePassXC login belongs to the original workflow')
+check('ChooseKeePassEntry_Click' in main_code and
+      'CaptureOwnership()' in main_code and
+      '_saveTransaction.Commit(' in main_code and
+      'ownedWorkflow' in main_code and
+      'StillOwns()' in main_code,
+      'selected KeePassXC login binds original workflow/config/session ownership')
 check('ArgumentList.Add("show")' not in keepass_code and (root/'LaunchFlow/UI/Dialogs/KeePassEntryPickerWindow.xaml').exists(),
       'entry picker does not display KeePassXC secrets')
 main_xaml=(root/'LaunchFlow/UI/Shell/MainWindow.xaml').read_text(encoding='utf-8')

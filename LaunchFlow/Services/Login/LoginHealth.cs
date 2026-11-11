@@ -180,6 +180,19 @@ public static class LoginHealth
         return modernNav >= 1 && account >= 1 && logout >= 1;
     }
 
+    /// <summary>
+    /// Structural OTP / authenticator / passkey challenge evidence only.
+    /// Shared with manual confirmation; excludes dashboard text heuristics.
+    /// </summary>
+    public static async Task<bool> HasStructuralSecurityChallengeAsync(IPage page, CancellationToken ct = default)
+    {
+        if (await page.Locator(
+                "input[autocomplete='one-time-code']:visible, input[name='otp' i]:visible, input[type='password']:visible")
+                .CountAsync().ConfigureAwait(false) > 0)
+            return true;
+        return await HasInteractiveSecurityChallengeAsync(page, ct).ConfigureAwait(false);
+    }
+
     private static async Task<bool> HasInteractiveSecurityChallengeAsync(IPage page, CancellationToken ct)
     {
         var inputs = page.Locator("input:visible, textarea:visible, [role='textbox']:visible");

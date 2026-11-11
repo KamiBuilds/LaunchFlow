@@ -505,18 +505,40 @@ public sealed partial class AutomationEngine
             if (isPassword)
                 RequireCurrentPasswordDestination(workflow, origin);
             await element.FillAsync(value).ConfigureAwait(false);
+            // Post-FillAsync model sync is a separate credential write. Re-validate
+            // cancellation, policy, destination and captured DOM ownership first.
+            ct.ThrowIfCancellationRequested();
+            RequireCredentialAccess();
+            RequireAutomationUrl(origin);
+            if (isPassword)
+                RequireCurrentPasswordDestination(workflow, origin);
+            if (Volatile.Read(ref navigated) != 0 || frame.IsDetached)
+                throw new InvalidOperationException("Credential document changed. Retry sign-in manually.");
+            var syncForm = expectedForm ?? ownerForm;
+            if (expectedDocument is not null &&
+                !await element.EvaluateAsync<bool>(
+                    "(field, document) => field.isConnected && field.ownerDocument === document && document.defaultView?.document === document",
+                    expectedDocument).ConfigureAwait(false))
+                throw new InvalidOperationException("Credential document changed. Retry sign-in manually.");
+            // ownerForm may be a JS null handle for no-form SPAs; treat null as
+            // "still has no form", not as a missing connected HTMLFormElement.
+            if (syncForm is not null &&
+                !await element.EvaluateAsync<bool>(
+                    "(field, form) => field.isConnected && (form == null ? field.form == null : (form.isConnected && field.form === form))",
+                    syncForm).ConfigureAwait(false))
+                throw new InvalidOperationException("Credential form changed. Retry sign-in manually.");
             // Vue 3 (ThousandEyes #ssoForm / #login) binds through InputEvent.
-            // Plain Event('input') alone can leave the model empty so Log In
-            // appears clicked but never advances to the password stage.
+            // Do not put the secret in InputEvent.data.
             await element.EvaluateAsync("""
                 (el, next) => {
+                  if (!el.isConnected) throw new Error('detached');
                   const setter = Object.getOwnPropertyDescriptor(
                     window.HTMLInputElement.prototype, 'value')?.set;
                   if (setter) setter.call(el, next);
                   else el.value = next;
                   try {
                     el.dispatchEvent(new InputEvent('input', {
-                      bubbles: true, cancelable: true, inputType: 'insertFromPaste', data: next
+                      bubbles: true, cancelable: true, inputType: 'insertFromPaste'
                     }));
                   } catch (_) { /* older engines without InputEvent */ }
                   el.dispatchEvent(new Event('input', { bubbles: true }));

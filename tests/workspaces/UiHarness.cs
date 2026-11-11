@@ -637,6 +637,74 @@ var tests = new List<(string Name, Func<Task> Body)>
         }
         finally { File.Delete(database); }
     }),
+    ("KeePass selection commits for the original owner and ignores superseded configuration", async () =>
+    {
+        var ui = new UiFixture();
+        var original = ui._configuration.Workflows[0];
+        ui._editorSession.Select(original);
+        var database = Path.GetTempFileName();
+        try
+        {
+            ui.KeePassDbBox.Text = database;
+            ui.KeePassKeyBox.Text = "key-a";
+            ui._keepassMasterPassword = "synthetic-list-only";
+            var pending = AsyncVoidTracker.Run(() => ui.ChooseEntry());
+            await KeePassXcService.ListEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            var replacement = new Configuration { Workflows = new() { new WebsiteWorkflow { Id = original.Id, Name = "replaced" } } };
+            typeof(UiFixture).GetField("_configuration")!.SetValue(ui, replacement);
+            ui._editorSession.Select(replacement.Workflows[0]);
+            KeePassXcService.ListRelease.SetResult(new() { "synthetic-entry" });
+            await pending.WaitAsync(TimeSpan.FromSeconds(3));
+            Check(ui._store.DurableSaves == 0 && string.IsNullOrEmpty(original.KeepassEntryPath),
+                "stale KeePass completion does not publish into a replaced configuration");
+            Check(string.IsNullOrEmpty(replacement.Workflows[0].KeepassEntryPath),
+                "replaced workflow GUID alone cannot inherit a stale KeePass selection");
+        }
+        finally { File.Delete(database); }
+    }),
+    ("KeePass selection refuses when vault session generation changes during listing", async () =>
+    {
+        var ui = new UiFixture();
+        ui._editorSession.Select(ui._configuration.Workflows[0]);
+        var database = Path.GetTempFileName();
+        try
+        {
+            ui.KeePassDbBox.Text = database;
+            ui._keepassMasterPassword = "synthetic-list-only";
+            var pending = AsyncVoidTracker.Run(() => ui.ChooseEntry());
+            await KeePassXcService.ListEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            VaultDatabase.Current.Lock();
+            VaultDatabase.Current.IsUnlocked = true; // new SessionGeneration
+            KeePassXcService.ListRelease.SetResult(new() { "synthetic-entry" });
+            await pending.WaitAsync(TimeSpan.FromSeconds(3));
+            Check(ui._store.DurableSaves == 0 &&
+                string.IsNullOrEmpty(ui._configuration.Workflows[0].KeepassEntryPath),
+                "KeePass selection after session change does not commit");
+        }
+        finally { File.Delete(database); }
+    }),
+    ("typed master unlock refreshes Hello freshness; Hello-derived unlock does not", () =>
+    {
+        var typed = new UiFixture();
+        typed._passwordsUnlocked = false;
+        typed._passwordSessionExpiresUtc = DateTimeOffset.MinValue;
+        typed.NextUnlockUsesHello = false;
+        Check(typed.Unlock(forcePrompt: true) && WindowsHelloService.Marks == 1,
+            "successful typed RequireMasterPassword publishes Hello freshness");
+        var hello = new UiFixture();
+        hello._passwordsUnlocked = false;
+        hello._passwordSessionExpiresUtc = DateTimeOffset.MinValue;
+        hello.NextUnlockUsesHello = true;
+        Check(hello.Unlock(forcePrompt: true) && WindowsHelloService.Marks == 0,
+            "Hello-derived RequireMasterPassword does not refresh typed-password freshness");
+        var wrong = new UiFixture();
+        wrong._passwordsUnlocked = false;
+        wrong._passwordSessionExpiresUtc = DateTimeOffset.MinValue;
+        wrong._master.AcceptNext = false;
+        Check(!wrong.Unlock(forcePrompt: true) && WindowsHelloService.Marks == 0,
+            "failed typed verification never publishes Hello freshness");
+        return Task.CompletedTask;
+    }),
     ("A2: retained modeless Repair choice cannot acquire recorder while a newer workflow run owns the UI", async () =>
     {
         var ui = new UiFixture();
@@ -890,7 +958,7 @@ partial class UiFixture
     public int Prompts;
     public bool Cleared;
     public readonly List<string> Notifications = new();
-    public UiFixture() { VaultDatabase.Current.IsUnlocked = true; VaultDatabase.Current.Credentials.Clear(); ProfileVaultService.Seals = 0; ProfileVaultService.FailSeal = false; KeePassXcService.Reset(); MessageBox.Hook = null; MessageBox.Result = MessageBoxResult.Yes; MessageBox.Messages.Clear(); PasswordOriginApprovalWindow.Hook = null; PasswordOriginApprovalWindow.Result = false; }
+    public UiFixture() { VaultDatabase.Current.IsUnlocked = true; VaultDatabase.Current.Credentials.Clear(); ProfileVaultService.Seals = 0; ProfileVaultService.FailSeal = false; KeePassXcService.Reset(); WindowsHelloService.Reset(); NextUnlockUsesHello = false; UnlockDialogResult = true; MessageBox.Hook = null; MessageBox.Result = MessageBoxResult.Yes; MessageBox.Messages.Clear(); PasswordOriginApprovalWindow.Hook = null; PasswordOriginApprovalWindow.Result = false; }
     public readonly MasterPasswordService _master = new();
     public readonly ConfigStore _store = new();
     // The actual coordinator + transaction are linked into this portable fixture.
@@ -901,6 +969,8 @@ partial class UiFixture
     public DateTimeOffset _passwordSessionExpiresUtc = DateTimeOffset.MaxValue;
     public static readonly TimeSpan PasswordSessionDuration = TimeSpan.FromHours(1);
     public Action? UnlockHook;
+    public bool NextUnlockUsesHello;
+    public bool? UnlockDialogResult = true;
     public readonly TaskCompletionSource<bool> RecorderResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource RecorderDrainRelease = CompletedDrain();
     private static TaskCompletionSource CompletedDrain()
@@ -962,7 +1032,15 @@ sealed class UnlockWindow
 {
     public required UiFixture Owner { get; init; }
     public string Password => "synthetic-fixture-only";
-    public bool? ShowDialog() { Owner.Prompts++; Owner.PromptHook?.Invoke(); Owner.UnlockHook?.Invoke(); return true; }
+    public bool UsedWindowsHello { get; set; }
+    public bool? ShowDialog()
+    {
+        Owner.Prompts++;
+        Owner.PromptHook?.Invoke();
+        Owner.UnlockHook?.Invoke();
+        UsedWindowsHello = Owner.NextUnlockUsesHello;
+        return Owner.UnlockDialogResult;
+    }
 }
 sealed class BrowserSetupWindow
 {
@@ -1169,7 +1247,25 @@ namespace LaunchFlow.Services
     {
         public bool IsConfigured => true;
         public int Verifications;
-        public bool Verify(string password) { Verifications++; VaultDatabase.Current.IsUnlocked = true; return true; }
+        public bool AcceptNext = true;
+        public bool Verify(string password)
+        {
+            Verifications++;
+            if (!AcceptNext) return false;
+            VaultDatabase.Current.IsUnlocked = true;
+            return true;
+        }
+    }
+    static class WindowsHelloService
+    {
+        public static int Marks;
+        public static DateTimeOffset? LastVerifiedUtc;
+        public static void MarkPasswordVerified()
+        {
+            Marks++;
+            LastVerifiedUtc = DateTimeOffset.UtcNow;
+        }
+        public static void Reset() { Marks = 0; LastVerifiedUtc = null; }
     }
     sealed class ConfigStore
     {

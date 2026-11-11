@@ -71,8 +71,21 @@ public static class ProfileVaultService
 
     public static void WipeAllProfiles()
     {
-        TryDeleteDir(ProfilesRoot);
-        TryDeleteDir(SealedRoot);
+        // Best-effort helper for non-destructive cleanup paths that must not
+        // mask an outer exception. Explicit reset uses WipeAllProfilesStrict.
+        _ = WipeAllProfilesStrict(bestEffort: true);
+    }
+
+    /// <summary>
+    /// Deletes plaintext and sealed profile roots. When <paramref name="bestEffort"/>
+    /// is false, every deletion failure is returned for the caller to surface.
+    /// </summary>
+    public static IReadOnlyList<Exception> WipeAllProfilesStrict(bool bestEffort = false)
+    {
+        var failures = new List<Exception>();
+        TryDeleteDir(ProfilesRoot, failures, bestEffort);
+        TryDeleteDir(SealedRoot, failures, bestEffort);
+        return failures;
     }
 
     private static void SealDirectory(string directory)
@@ -366,7 +379,7 @@ public static class ProfileVaultService
         }
     }
 
-    private static void TryDeleteDir(string path)
+    private static void TryDeleteDir(string path, List<Exception>? failures = null, bool bestEffort = true)
     {
         try
         {
@@ -376,6 +389,8 @@ public static class ProfileVaultService
         catch (Exception ex)
         {
             CrashLog.Write("ProfileDelete", ex);
+            if (!bestEffort)
+                failures?.Add(new IOException($"Could not delete profile root '{path}'.", ex));
         }
     }
 }

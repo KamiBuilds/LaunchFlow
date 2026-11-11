@@ -191,13 +191,19 @@ public partial class MainWindow
         {
             var info = await UpdateChecker.CheckAsync(_configuration.UpdateFeedUrl);
             UpdateStatusLabel.Text = info.Message;
-            if (info.UpdateAvailable && !string.IsNullOrWhiteSpace(info.ReleaseUrl))
+            if (info.UpdateAvailable &&
+                UpdateChecker.TryValidateReleasePageUrl(info.ReleaseUrl, out var releasePage) &&
+                releasePage is not null)
             {
                 var go = MessageBox.Show(this,
                     info.Message + "\n\nOpen the release page?",
                     "Update available", MessageBoxButton.YesNo, MessageBoxImage.Information);
                 if (go == MessageBoxResult.Yes)
-                    Process.Start(new ProcessStartInfo { FileName = info.ReleaseUrl, UseShellExecute = true });
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = releasePage.AbsoluteUri,
+                        UseShellExecute = true
+                    });
             }
         }
         catch (Exception ex)

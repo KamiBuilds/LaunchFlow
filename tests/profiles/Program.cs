@@ -93,11 +93,120 @@ try
     Assert(Directory.Exists(profile), "failed sealing retains the current plaintext profile");
     Assert(originalCipher.SequenceEqual(File.ReadAllBytes(Path.Combine(ProfileVaultService.SealedRoot, Path.GetFileName(profile) + ".profile.aes"))), "legacy ciphertext is never overwritten without its key");
     ExperimentalReadTests.RunBudget();
+    RunVaultResetHonestyTests();
     Console.WriteLine("Profile tests passed (simulated DPAPI contract; native Windows gate remains).");
 }
 finally
 {
     if (Directory.Exists(root)) Directory.Delete(root, true);
+}
+
+static void RunVaultResetHonestyTests()
+{
+    var resetRoot = Path.Combine(Path.GetTempPath(), "launchflow-reset-test-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(resetRoot);
+    var previous = VaultDatabase.Current.DataDirectory;
+    VaultDatabase.Current.DataDirectory = resetRoot;
+    WindowsHelloService.DisableCalls = 0;
+    try
+    {
+        File.WriteAllText(VaultDatabase.Current.DatabasePath, "fixture-db");
+        var plainMarker = Path.Combine(ProfileVaultService.ProfilesRoot, "plain-marker");
+        var sealedMarker = Path.Combine(ProfileVaultService.SealedRoot, "sealed-marker");
+        Directory.CreateDirectory(plainMarker);
+        Directory.CreateDirectory(sealedMarker);
+        File.WriteAllText(Path.Combine(plainMarker, "cookie.txt"), "fixture");
+        File.WriteAllText(Path.Combine(sealedMarker, "blob.bin"), "fixture");
+
+        var ok = VaultResetService.ResetLocalVault(wipeProfiles: true);
+        Assert(ok.Succeeded && !File.Exists(VaultDatabase.Current.DatabasePath),
+            "healthy reset removes the vault database");
+        Assert(!Directory.Exists(ProfileVaultService.ProfilesRoot) && !Directory.Exists(ProfileVaultService.SealedRoot),
+            "healthy reset removes plaintext and sealed profile roots");
+        Assert(WindowsHelloService.DisableCalls >= 1, "reset disables Windows Hello unlock material");
+        var helloAfterHealthy = WindowsHelloService.DisableCalls;
+
+        File.WriteAllText(VaultDatabase.Current.DatabasePath, "fixture-db");
+        Directory.CreateDirectory(plainMarker);
+        File.WriteAllText(Path.Combine(plainMarker, "cookie.txt"), "retained");
+        Directory.CreateDirectory(sealedMarker);
+        File.WriteAllText(Path.Combine(sealedMarker, "blob.bin"), "must-keep-if-db-locked");
+        using (var lockedDb = new FileStream(
+            VaultDatabase.Current.DatabasePath,
+            FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            AggregateException? error = null;
+            try { VaultResetService.ResetLocalVault(wipeProfiles: true); }
+            catch (AggregateException ex) { error = ex; }
+            Assert(error is not null, "database wipe failure is reported instead of silent success");
+            Assert(File.Exists(VaultDatabase.Current.DatabasePath),
+                "failed database wipe retains the vault file");
+            Assert(Directory.Exists(plainMarker) && Directory.Exists(sealedMarker) &&
+                File.Exists(Path.Combine(sealedMarker, "blob.bin")),
+                "failed database wipe must not delete browser profile roots");
+            Assert(WindowsHelloService.DisableCalls == helloAfterHealthy,
+                "failed database wipe must not disable Windows Hello while the vault remains");
+        }
+
+        File.WriteAllText(VaultDatabase.Current.DatabasePath, "fixture-db");
+        Directory.CreateDirectory(plainMarker);
+        File.WriteAllText(Path.Combine(plainMarker, "cookie.txt"), "retained");
+        Directory.CreateDirectory(sealedMarker);
+        using (var locked = new FileStream(
+            Path.Combine(plainMarker, "cookie.txt"),
+            FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            AggregateException? error = null;
+            try { VaultResetService.ResetLocalVault(wipeProfiles: true); }
+            catch (AggregateException ex) { error = ex; }
+            Assert(error is not null, "plaintext profile wipe failure is reported instead of silent success");
+            Assert(!File.Exists(VaultDatabase.Current.DatabasePath),
+                "partial reset still removed the vault database when requested");
+            Assert(Directory.Exists(plainMarker) && File.Exists(Path.Combine(plainMarker, "cookie.txt")),
+                "failed plaintext wipe retains the locked marker");
+        }
+
+        File.WriteAllText(VaultDatabase.Current.DatabasePath, "fixture-db");
+        Directory.CreateDirectory(plainMarker);
+        Directory.CreateDirectory(sealedMarker);
+        File.WriteAllText(Path.Combine(sealedMarker, "blob.bin"), "retained-sealed");
+        using (var locked = new FileStream(
+            Path.Combine(sealedMarker, "blob.bin"),
+            FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            AggregateException? error = null;
+            try { VaultResetService.ResetLocalVault(wipeProfiles: true); }
+            catch (AggregateException ex) { error = ex; }
+            Assert(error is not null, "sealed profile wipe failure is reported instead of silent success");
+            Assert(Directory.Exists(sealedMarker) && File.Exists(Path.Combine(sealedMarker, "blob.bin")),
+                "failed sealed wipe retains the locked marker");
+        }
+
+        File.WriteAllText(VaultDatabase.Current.DatabasePath, "fixture-db");
+        Directory.CreateDirectory(plainMarker);
+        Directory.CreateDirectory(sealedMarker);
+        var preserved = VaultResetService.ResetLocalVault(wipeProfiles: false);
+        Assert(preserved.Succeeded && !File.Exists(VaultDatabase.Current.DatabasePath),
+            "wipeProfiles=false still resets the database");
+        Assert(Directory.Exists(plainMarker) && Directory.Exists(sealedMarker),
+            "wipeProfiles=false preserves both profile roots");
+
+        // Retry remaining cleanup after a partial failure.
+        Directory.CreateDirectory(plainMarker);
+        File.WriteAllText(Path.Combine(plainMarker, "cookie.txt"), "retry");
+        var retry = VaultResetService.ResetLocalVault(wipeProfiles: true);
+        Assert(retry.Succeeded && !Directory.Exists(ProfileVaultService.ProfilesRoot),
+            "retry after partial reset finishes remaining profile cleanup");
+    }
+    finally
+    {
+        VaultDatabase.Current.DataDirectory = previous;
+        if (Directory.Exists(resetRoot))
+        {
+            try { Directory.Delete(resetRoot, true); }
+            catch { /* locked markers may need a delayed cleanup */ }
+        }
+    }
 }
 
 static byte[] EncryptLegacy(byte[] zip, byte[] key)

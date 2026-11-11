@@ -8,6 +8,8 @@ public partial class UnlockWindow : Window
 {
     public string? Password { get; private set; }
     public bool ResetRequested { get; private set; }
+    /// <summary>True when Password came from Windows Hello recovery, not typed entry.</summary>
+    public bool UsedWindowsHello { get; private set; }
 
     public UnlockWindow()
     {
@@ -30,9 +32,9 @@ public partial class UnlockWindow : Window
             StatusText.Text = "Enter your master password.";
             return;
         }
+        // Collect only. Freshness is published by callers after real verification.
         Password = PasswordBox.Password;
-        if (WindowsHelloService.IsEnabled)
-            WindowsHelloService.MarkPasswordVerified();
+        UsedWindowsHello = false;
         PasswordBox.Clear();
         DialogResult = true;
     }
@@ -57,6 +59,7 @@ public partial class UnlockWindow : Window
                 return;
             }
             Password = secret;
+            UsedWindowsHello = true;
             DialogResult = true;
         }
         finally
@@ -90,6 +93,16 @@ public partial class UnlockWindow : Window
                 "Vault reset", MessageBoxButton.OK, MessageBoxImage.Information);
             DialogResult = false;
         }
+        catch (AggregateException ex)
+        {
+            var detail = ex.InnerExceptions.Count > 0
+                ? string.Join("\n", ex.InnerExceptions.Select(inner => inner.Message).Distinct().Take(4))
+                : ex.Message;
+            MessageBox.Show(this,
+                ex.Message + "\n\n" + detail +
+                "\n\nRetry reset after closing apps that may still hold profile folders.",
+                "Reset incomplete", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
         catch (Exception ex)
         {
             MessageBox.Show(this, ex.Message, "Reset failed", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -100,6 +113,7 @@ public partial class UnlockWindow : Window
     {
         PasswordBox.Clear();
         Password = null;
+        UsedWindowsHello = false;
         DialogResult = false;
     }
 }

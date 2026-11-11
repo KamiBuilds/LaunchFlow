@@ -87,11 +87,9 @@ public sealed partial class AutomationEngine
                 part.Equals("mfa", StringComparison.OrdinalIgnoreCase) ||
                 part.Equals("challenge", StringComparison.OrdinalIgnoreCase)))
                 return false;
-            // Do not use unrelated dashboard text to infer a failure. Explicit
-            // human confirmation is still rejected if authentication inputs
-            // are visible or a one-time-code challenge remains on screen.
-            if (await page.Locator("input[type='password']:visible").CountAsync().ConfigureAwait(false) > 0 ||
-                await page.Locator("input[autocomplete='one-time-code']:visible").CountAsync().ConfigureAwait(false) > 0)
+            // Share LoginHealth structural challenge evidence; do not veto on
+            // unrelated dashboard MFA/verification wording alone.
+            if (await LoginHealth.HasStructuralSecurityChallengeAsync(page, ct).ConfigureAwait(false))
                 return false;
             return await page.Locator("body").CountAsync().ConfigureAwait(false) > 0;
         }

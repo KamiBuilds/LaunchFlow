@@ -1,5 +1,7 @@
 using LaunchFlow.Services;
 
+await UpdateCheckerTests.RunAsync();
+
 var root = Path.Combine(Path.GetTempPath(), "launchflow-diag-test-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
 try
@@ -32,5 +34,6 @@ namespace LaunchFlow.Services
     public static class CrashLog
     {
         public static string LogPath { get; set; } = "";
+        public static void Write(string label, Exception ex) { }
     }
 }

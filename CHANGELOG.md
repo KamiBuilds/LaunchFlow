@@ -1,3 +1,13 @@
+# v0.7.75 — Six boundary fixes: post-fill, reset honesty, Hello freshness, KeePass ownership, OTP ack, update URL
+
+- Guard the post-FillAsync credential model sync with renewed cancellation/policy/destination/document/form checks; stop putting secrets in InputEvent.data.
+- Make requested vault/profile reset report partial wipe failures instead of claiming success when profile roots remain.
+- Collect typed unlock input only in the dialog; refresh Windows Hello freshness only after successful typed verification (not Hello-derived unlock).
+- KeePass entry selection captures configuration/workflow/session/database/key ownership and refuses stale publication after awaits.
+- Manual sign-in acknowledgment shares LoginHealth structural OTP/challenge detection so visible name=otp and labelled codes block follow-up.
+- Validate update release URLs as absolute HTTPS pages before shell open; reject file/custom/user-info targets from feed metadata.
+- **Candidate only:** native WPF/installer/account acceptance still required. No release authorization.
+
 # v0.7.74 — Candidate: bounded diagnostics, consent orchestration and focused regressions
 
 - One known-code diagnostics mapping for login failures, safe fallback for untrusted error text in tray notifications, and allowlisted phase updates. Unknown failures stay unknown.

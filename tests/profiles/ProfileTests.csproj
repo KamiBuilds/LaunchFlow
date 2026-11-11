@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../LaunchFlow/Services/Vault/ProfileVaultService.cs" Link="ProfileVaultService.cs" />
+    <Compile Include="../../LaunchFlow/Services/Vault/VaultResetService.cs" Link="VaultResetService.cs" />
   </ItemGroup>
 </Project>

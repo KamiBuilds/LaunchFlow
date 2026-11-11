@@ -43,6 +43,11 @@ internal static class DocumentBoundCredentialTests
         tests.Add(("pending-origin-consent-stop-fresh-retry", PendingConsentStopAndFreshRetryAsync));
         tests.Add(("approved-sso", ApprovedSsoAsync));
         tests.Add(("aborted-workflow", AbortedWorkflowAsync));
+        tests.Add(("post-fill-healthy-vue-shaped", browser => PostFillBoundaryAsync(browser, "healthy")));
+        tests.Add(("post-fill-form-reassociation", browser => PostFillBoundaryAsync(browser, "form-reassociation")));
+        tests.Add(("post-fill-policy-revocation", browser => PostFillBoundaryAsync(browser, "policy")));
+        tests.Add(("post-fill-mapping-invalidation", browser => PostFillBoundaryAsync(browser, "mapping")));
+        tests.Add(("post-fill-cancellation", browser => PostFillBoundaryAsync(browser, "cancel")));
         var filter = args.FirstOrDefault(a => a.StartsWith("--case=", StringComparison.Ordinal))?[7..];
         var selected = tests.Where(t => filter is null || t.Name == filter).ToArray();
         if (selected.Length == 0) throw new ArgumentException("Unknown document-bound test case");
@@ -541,6 +546,122 @@ internal static class DocumentBoundCredentialTests
         Check(await f.Page.InputValueAsync("#password") == f.Vault.Credential.Password &&
             f.Insertions.Contains("password"),
             "fresh authorized retry still fills its own bound field");
+    }
+
+    // Post-FillAsync sync is a second credential write. Adversarial first-input
+    // handlers invalidate ownership before that sync; observe capture-phase events.
+    private static async Task PostFillBoundaryAsync(IBrowser browser, string scenario)
+    {
+        const string destination = "https://post-fill.test";
+        const string synthetic = "synthetic-post-fill-boundary-value";
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(4000);
+        await context.RouteAsync(destination + "/**", route => route.FulfillAsync(new()
+        {
+            ContentType = "text/html",
+            Body = """
+                <form id='login'></form><form id='other'></form>
+                <input id='password' type='password' form='login' autocomplete='current-password'>
+                <script>
+                  window.__events = [];
+                  document.addEventListener('input', event => {
+                    if (event.target.id !== 'password') return;
+                    window.__events.push({
+                      formId: event.target.form && event.target.form.id,
+                      nonempty: !!event.target.value,
+                      inputType: event.inputType || '',
+                      hasData: typeof event.data === 'string' && event.data.length > 0,
+                      valueLength: (event.target.value || '').length
+                    });
+                  }, true);
+                </script>
+                """
+        }));
+        var page = await context.NewPageAsync();
+        await page.GotoAsync(destination + "/password");
+        var values = new Dictionary<string, object?>();
+        using var policy = EnterprisePolicy.UseProviderForTesting(() => values);
+        using var cancellation = new CancellationTokenSource();
+        var workflow = new WebsiteWorkflow
+        {
+            // Foreign start URL so password mapping (not same-site) is what authorizes fill.
+            StartUrl = "https://trusted.test/start",
+            PasswordSelector = "#password",
+            PasswordCredentialOrigin = destination
+        };
+        workflow.ApprovedLoginOrigins.Add(destination);
+        await page.ExposeFunctionAsync("__lfInvalidate", () =>
+        {
+            if (scenario == "policy") values["DisableCredentialFill"] = 1;
+            if (scenario == "mapping") workflow.PasswordCredentialOrigin = "https://changed.test";
+            if (scenario == "cancel") cancellation.Cancel();
+            return scenario;
+        });
+        if (scenario != "healthy")
+        {
+            await page.EvaluateAsync("""
+                (mode) => {
+                  const field = document.querySelector('#password');
+                  field.addEventListener('input', () => {
+                    if (window.__mutated) return;
+                    window.__mutated = true;
+                    document.body.dataset.mutated = '1';
+                    if (mode === 'form-reassociation') {
+                      field.value = '';
+                      field.setAttribute('form', 'other');
+                    }
+                    void window.__lfInvalidate();
+                  }, true);
+                }
+                """, scenario);
+        }
+        await using var engine = new AutomationEngine(new CredentialVault());
+        engine.ApproveLoginOriginAsync = (_, _) => Task.FromResult(true);
+        await using var field = await page.QuerySelectorAsync("#password")
+            ?? throw new TestFailure("Fixture password field was missing");
+        await using var form = await page.EvaluateHandleAsync("() => document.querySelector('#login')");
+        await using var document = await page.EvaluateHandleAsync("() => document");
+        var protectedFill = typeof(AutomationEngine).GetMethod("FillCredentialAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var task = (Task<string?>)protectedFill.Invoke(engine, new object?[] {
+            workflow, page, "#password", synthetic, cancellation.Token,
+            null, field, form, true, document
+        })!;
+        var refused = false;
+        try { await task; }
+        catch (InvalidOperationException) { refused = true; }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { refused = true; }
+        var events = await page.EvaluateAsync<System.Text.Json.JsonElement>("() => window.__events");
+        var eventCount = events.GetArrayLength();
+        var mutated = await page.GetAttributeAsync("body", "data-mutated") == "1";
+        var otherFormInputs = 0;
+        var syncWithSecretData = 0;
+        for (var i = 0; i < eventCount; i++)
+        {
+            var ev = events[i];
+            if (ev.GetProperty("formId").GetString() == "other" && ev.GetProperty("nonempty").GetBoolean())
+                otherFormInputs++;
+            // Compatibility sync uses insertFromPaste; it must not also carry secret data.
+            if (ev.GetProperty("inputType").GetString() == "insertFromPaste" &&
+                ev.GetProperty("hasData").GetBoolean())
+                syncWithSecretData++;
+        }
+        var value = await page.InputValueAsync("#password");
+        if (scenario == "healthy")
+        {
+            Check(!refused && value == synthetic && eventCount >= 1,
+                "healthy Vue-shaped post-fill keeps the authorized value and emits model input");
+            Check(syncWithSecretData == 0,
+                "post-fill insertFromPaste sync does not put the secret in InputEvent.data");
+        }
+        else
+        {
+            Check(mutated, scenario + ": adversarial first-input mutation actually ran");
+            Check(refused, scenario + ": post-fill sync refuses after ownership invalidation");
+            Check(otherFormInputs == 0,
+                scenario + ": no nonempty credential input lands on the reassociated form");
+            Check(syncWithSecretData == 0,
+                scenario + ": refused path emits no secret-bearing insertFromPaste sync");
+        }
     }
 
     private static async Task AbortedWorkflowAsync(IBrowser browser)

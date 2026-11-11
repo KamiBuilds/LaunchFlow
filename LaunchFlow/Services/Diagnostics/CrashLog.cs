@@ -33,6 +33,7 @@ public static class CrashLog
         "ProfileDelete" => "ProfileDelete",
         "UpdateCheck" => "UpdateCheck",
         "VaultReset" => "VaultReset",
+        "VaultResetPartial" => "VaultResetPartial",
         "VaultResetDelete" => "VaultResetDelete",
         _ => "General"
     };

@@ -121,6 +121,62 @@ internal static class ManualConfirmationRaceTests
             Check(result.FinishedCount == 1 && await page.GetAttributeAsync("body", "data-followed") == "yes",
                 "unchanged authorized acknowledgment still permits actual follow-up dispatch");
         }
+
+        foreach (var (name, body, expectAccept) in new (string, string, bool)[]
+        {
+            ("healthy-dashboard-mfa-text",
+                "<h1>Dashboard</h1><p>Account security and MFA settings</p><button id='next' onclick=\"document.body.dataset.followed='yes'\">Continue</button>",
+                true),
+            ("visible-password",
+                "<h1>Dashboard</h1><input type='password'><button id='next' onclick=\"document.body.dataset.followed='yes'\">Continue</button>",
+                false),
+            ("autocomplete-otp",
+                "<h1>Verify</h1><input autocomplete='one-time-code'><button id='next' onclick=\"document.body.dataset.followed='yes'\">Continue</button>",
+                false),
+            ("name-otp-without-autocomplete",
+                "<h1>Verify</h1><input name='otp'><button id='next' onclick=\"document.body.dataset.followed='yes'\">Continue</button>",
+                false),
+            ("labelled-verification-code",
+                "<h1>Enter verification code</h1><label for='code'>Verification code</label><input id='code' inputmode='numeric' maxlength='6'><button id='next' onclick=\"document.body.dataset.followed='yes'\">Continue</button>",
+                false),
+        })
+        {
+            await using var context = await browser.NewContextAsync();
+            context.SetDefaultTimeout(5_000);
+            await context.RouteAsync("https://otp-confirm.test/**", route => route.FulfillAsync(new()
+            {
+                ContentType = "text/html",
+                Body = body
+            }));
+            var page = await context.NewPageAsync();
+            await page.GotoAsync("https://otp-confirm.test/app", new() { Timeout = 30_000 });
+            var workflow = new WebsiteWorkflow
+            {
+                StartUrl = page.Url,
+                AutoLogin = true,
+                LoginMode = "SSO",
+                LoginSuccessSelector = "#missing-success"
+            };
+            workflow.Steps.Add(new() { Type = "Click", Target = "#next" });
+            await using var engine = new AutomationEngine(new CredentialVault());
+            Track(engine, workflow, context, page);
+            var accepted = await engine.ConfirmSignedInAsync(workflow);
+            Check(accepted == expectAccept, name + ": confirmation acceptance matches structural challenge contract");
+            if (!expectAccept)
+            {
+                var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+                Check(result.FinishedCount == 0 &&
+                    await page.GetAttributeAsync("body", "data-followed") is null,
+                    name + ": rejected confirmation never dispatches follow-up click");
+            }
+            else
+            {
+                var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+                Check(result.FinishedCount == 1 &&
+                    await page.GetAttributeAsync("body", "data-followed") == "yes",
+                    name + ": harmless MFA wording still allows follow-up");
+            }
+        }
         if (failures.Count > 0)
             throw new InvalidOperationException("Manual confirmation regressions: " + string.Join("; ", failures));
     }

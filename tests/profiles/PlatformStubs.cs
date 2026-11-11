@@ -6,11 +6,21 @@ namespace LaunchFlow.Services
     {
         public static VaultDatabase Current { get; } = new();
         public string DataDirectory { get; set; } = "";
+        public string DatabasePath => Path.Combine(DataDirectory, "launchflow.db");
+        public void Lock() { }
     }
+
     public static class CrashLog
     {
         public static List<string> Failures { get; } = new();
         public static void Write(string label, Exception error) => Failures.Add(label + ": " + error.GetType().Name);
+        public static void Write(string label, string message) => Failures.Add(label + ": " + message);
+    }
+
+    public static class WindowsHelloService
+    {
+        public static int DisableCalls;
+        public static void Disable() => DisableCalls++;
     }
 }
 

@@ -4,7 +4,7 @@
 
 LaunchFlow is a small Windows app for people who open the same sites every day (work dashboards, shops, tools). It keeps your website passwords in an encrypted vault on *your* PC, opens each site on the screen you choose, and can replay safe clicks you recorded earlier.
 
-> Current build: **v0.7.74** (test build — not a signed public release yet).
+> Current build: **v0.7.75** (test build — not a signed public release yet).
 
 ---
 

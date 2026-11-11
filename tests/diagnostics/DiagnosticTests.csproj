@@ -8,5 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../LaunchFlow/Services/Diagnostics/DiagnosticReportService.cs" Link="DiagnosticReportService.cs"/>
+    <Compile Include="../../LaunchFlow/Services/Platform/UpdateChecker.cs" Link="UpdateChecker.cs"/>
+    <Compile Include="../../LaunchFlow/Services/Platform/AppInfo.cs" Link="AppInfo.cs"/>
   </ItemGroup>
 </Project>

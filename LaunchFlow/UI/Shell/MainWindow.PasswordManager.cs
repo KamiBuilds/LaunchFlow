@@ -96,6 +96,9 @@ public partial class MainWindow
         {
             if (_master.Verify(prompt.Password))
             {
+                // Hello-derived secrets must not refresh the typed-password timer.
+                if (!prompt.UsedWindowsHello)
+                    WindowsHelloService.MarkPasswordVerified();
                 try { ProfileVaultService.UnsealAll(); }
                 catch (Exception ex)
                 {
