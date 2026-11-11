@@ -1,10 +1,10 @@
-#define AppVersion "0.7.8"
+#define AppVersion "0.7.74"
 #define AppName "LaunchFlow"
 [Setup]
 AppId={{9B1A7C15-093B-4DBA-BDA7-BF43A2E67320}
 AppName={#AppName}
 AppVersion={#AppVersion}
-VersionInfoVersion=0.7.8.0
+VersionInfoVersion={#AppVersion}.0
 AppPublisher=LaunchFlow
 AppCopyright=LaunchFlow
 AppSupportURL=https://github.com
@@ -39,11 +39,13 @@ SignedUninstaller=yes
 
 [Messages]
 WelcomeLabel1=Welcome to LaunchFlow Setup
-WelcomeLabel2=This installs LaunchFlow on your PC.%n%nLaunchFlow keeps your website workflows and passwords in a local encrypted database. No Microsoft account is required.%n%nClick Next to continue.
+WelcomeLabel2=This installs LaunchFlow on your PC.%n%nLaunchFlow keeps your website workflows and passwords in a local encrypted database. No Microsoft account is required.%n%nThe .NET runtime, Playwright driver, and Firefox automation build are included; no SDK is needed. Edge/Chrome use browsers already on this PC. Extra browser downloads never run silently.%n%nClick Next to continue.
 FinishedLabel=LaunchFlow is installed.%n%nClick Finish to open it and create your master password. Your data stays on this computer.
 
 [Files]
-Source: "..\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Keep Playwright's private driver tree, including bundled Node and its licenses.
+Source: "..\publish\*"; DestDir: "{app}"; Excludes: ".playwright\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\publish\.playwright\*"; DestDir: "{app}\.playwright"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\LaunchFlow"; Filename: "{app}\LaunchFlow.exe"; Comment: "Website workspace automation"
@@ -60,7 +62,7 @@ Root: HKCU; Subkey: "Software\Classes\LaunchFlow.Backup\DefaultIcon"; ValueType:
 Root: HKCU; Subkey: "Software\Classes\LaunchFlow.Backup\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\LaunchFlow.exe"" ""%1"""
 
 [Run]
-Filename: "{app}\LaunchFlow.exe"; Description: "Open LaunchFlow"; Flags: nowait postinstall skipifsilent unchecked
+Filename: "{app}\LaunchFlow.exe"; Description: "Open LaunchFlow"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 ; Vault wipe is optional — see InitializeUninstall / CurUninstallStepChanged.
@@ -70,6 +72,66 @@ var
   InstalledVersion: String;
   UpgradeInfoPage: TOutputMsgWizardPage;
   WipeUserData: Boolean;
+
+procedure ReportSetupFailure(const Detail: String);
+begin
+  Log('LaunchFlow Setup: ' + Detail);
+  if not WizardSilent then
+    MsgBox(Detail, mbError, MB_OK);
+end;
+
+function InitializeSetup(): Boolean;
+var
+  InstallDir: String;
+  Executable: String;
+  ResultCode: Integer;
+  Attempt: Integer;
+begin
+  Result := True;
+  // Inno calls this before its AppMutex warning. Ask the installed version
+  // to seal its browser profiles and exit; never terminate it forcefully.
+  if not CheckForMutexes('LaunchFlow.Windows.SingleInstance') then Exit;
+
+  InstallDir := '';
+  RegQueryStringValue(HKCU,
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\{9B1A7C15-093B-4DBA-BDA7-BF43A2E67320}_is1',
+    'InstallLocation', InstallDir);
+  if InstallDir = '' then
+    InstallDir := ExpandConstant('{localappdata}\Programs\LaunchFlow');
+  Executable := AddBackslash(InstallDir) + 'LaunchFlow.exe';
+
+  if not FileExists(Executable) then
+  begin
+    ReportSetupFailure('LaunchFlow is running, but Setup cannot find its installed executable. ' +
+      'Exit LaunchFlow from the tray and start Setup again.');
+    Result := False;
+    Exit;
+  end;
+
+  if not Exec(Executable, '--exit-for-install', '', SW_HIDE, ewNoWait, ResultCode) then
+  begin
+    ReportSetupFailure('LaunchFlow could not receive the installer shutdown request. ' +
+      'Exit it manually, then run Setup again.');
+    Result := False;
+    Exit;
+  end;
+
+  // Wait for the original process to fully release the mutex, including
+  // browser-close (20s + 20s retry), cancel/Teach drain (~12s each),
+  // encrypted-profile sealing (60s), and final dispose (~15s). Owned exit
+  // budgets can exceed 2 minutes; 960 × 250ms = 240s covers that with margin.
+  // No force-kill fallback.
+  for Attempt := 1 to 960 do
+  begin
+    if not CheckForMutexes('LaunchFlow.Windows.SingleInstance') then Exit;
+    Sleep(250);
+  end;
+
+  ReportSetupFailure('LaunchFlow did not finish a safe shutdown. Your encrypted data is ' +
+    'untouched by Setup. Check LaunchFlow for a cleanup or save warning, ' +
+    'then exit it and retry the installation.');
+  Result := False;
+end;
 
 procedure InitializeWizard;
 var
@@ -94,7 +156,8 @@ begin
       'Your data is kept',
       Explanation + #13#10 + #13#10 +
       'Workflows and encrypted passwords stay in your local vault.' + #13#10 +
-      'If LaunchFlow is open (or in the tray), exit it when Setup asks.');
+      'Setup requests a safe LaunchFlow shutdown automatically. If the old ' +
+      'installed version does not support it, exit it from the tray and retry.');
   end;
 end;
 
@@ -105,6 +168,22 @@ var
 begin
   Result := True;
   WipeUserData := False;
+  // Do not uninstall live program files or profiles; packaging can retry after a clean exit.
+  if CheckForMutexes('LaunchFlow.Windows.SingleInstance') then
+  begin
+    Log('LaunchFlow is running. Exit the app normally before uninstalling.');
+    if not UninstallSilent then
+      MsgBox('Exit LaunchFlow from the tray before uninstalling. Your encrypted data is untouched.',
+        mbError, MB_OK);
+    Result := False;
+    Exit;
+  end;
+  // No unattended job may consent to vault or backup deletion.
+  if UninstallSilent then
+  begin
+    Log('Silent uninstall preserves the LaunchFlow vault, workflows and backups.');
+    Exit;
+  end;
   DataDir := ExpandConstant('{localappdata}\LaunchFlow');
   if not DirExists(DataDir) then
     Exit;
