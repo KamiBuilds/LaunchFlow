@@ -33,7 +33,7 @@ public static class RunOutcomeSummary
         if (failedCount == 1 && attentionCount == 0 && stepRepairCount == 0 &&
             !string.IsNullOrWhiteSpace(singleFailureReason))
             return RunIssueNotice.SafeReportedReason(singleFailureReason);
-        return "Some websites need a look — check the run results and try again when ready.";
+        return "Couldn't finish some websites this time — check the run results and try again when ready.";
     }
 
     public static string FinishedTray(int runCount, string? singleName) =>
