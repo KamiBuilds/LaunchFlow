@@ -218,14 +218,18 @@ dto.Apply(txLive);
 Check(txLive.UiLanguage == "nl" && txLive.AdditionalSettings.ContainsKey("future_config"),
     "immutable draft applies known fields without dropping unknown configuration data");
 
-var traySingle = RunOutcomeSummary.TrayDetail(0, 1, 0, "MFA required");
-Check(traySingle == "MFA required", "single sign-in attention keeps the specific reason");
-var trayFirefox = RunOutcomeSummary.TrayDetail(1, 0, 0, null,
-    "Firefox Auto sign-in needs LaunchFlow's automation Firefox.");
-Check(trayFirefox.Contains("Firefox", StringComparison.Ordinal),
-    "single Firefox automation failure keeps the concrete reason");
-Check(RunOutcomeSummary.IsFirefoxAutomationFailure(trayFirefox),
-    "Firefox automation failure is classified for Browser readiness help");
+var reportedMfa = RunIssueNotice.Message(RunIssueCode.ExtraAuthenticationObserved);
+var traySingle = RunOutcomeSummary.TrayDetail(0, 1, 0, reportedMfa);
+Check(traySingle == reportedMfa, "known single sign-in attention keeps the specific safe reason");
+var firefoxSource = "Firefox Auto sign-in needs LaunchFlow's automation Firefox.";
+var trayFirefox = RunOutcomeSummary.TrayDetail(1, 0, 0, null, firefoxSource);
+Check(trayFirefox == RunIssueNotice.Message(RunIssueCode.BrowserUnavailable),
+    "Firefox browser failure shows a bounded and actionable notice");
+Check(RunOutcomeSummary.IsFirefoxAutomationFailure(firefoxSource),
+    "source Firefox automation failure remains classified for Browser readiness help");
+const string sentinel = "SENTINEL-private-token-9821";
+Check(!RunOutcomeSummary.TrayDetail(1, 0, 0, null, "driver secret " + sentinel).Contains(sentinel, StringComparison.Ordinal),
+    "untrusted exception data does not enter the tray");
 var trayMixed = RunOutcomeSummary.TrayDetail(1, 1, 1, "MFA required");
 Check(trayMixed.Contains("Something didn’t finish", StringComparison.Ordinal) ||
       trayMixed.Contains("try again", StringComparison.OrdinalIgnoreCase),
