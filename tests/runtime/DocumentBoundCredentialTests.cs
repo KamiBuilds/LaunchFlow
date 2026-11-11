@@ -35,6 +35,11 @@ internal static class DocumentBoundCredentialTests
             tests.Add(($"frame-origin-{target}", browser => FrameOriginAsync(browser, target)));
             tests.Add(($"frame-approval-navigation-{target}", browser => FrameApprovalNavigationAsync(browser, target)));
         }
+        foreach (var mode in new[] { "same-site", "mapped", "first-approval", "initial-form-change", "late-mapping-change", "denied" })
+        {
+            var scenario = mode;
+            tests.Add(($"password-destination-{scenario}", browser => PasswordDestinationBoundaryAsync(browser, scenario)));
+        }
         tests.Add(("approved-sso", ApprovedSsoAsync));
         tests.Add(("aborted-workflow", AbortedWorkflowAsync));
         var filter = args.FirstOrDefault(a => a.StartsWith("--case=", StringComparison.Ordinal))?[7..];
@@ -423,6 +428,80 @@ internal static class DocumentBoundCredentialTests
         Check(f.Prompts.SequenceEqual(new[] { "https://sso.test" }), "positive SSO approves the new password document separately");
         Check(await f.Page.InputValueAsync("#password") == f.Vault.Credential.Password, "approved SSO password fills its bound document");
         Check(await f.Page.GetAttributeAsync("body", "data-submitted") == "yes", "approved SSO can submit normally");
+    }
+
+    // Actual protected production fill and browser-computed HTML input.form
+    // ownership; detects transient insertion via the input event, not just value.
+    private static async Task PasswordDestinationBoundaryAsync(IBrowser browser, string scenario)
+    {
+        const string destination = "https://sso-boundary.test";
+        const string synthetic = "synthetic-destination-boundary-value";
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(3500);
+        await context.RouteAsync(destination + "/**", route => route.FulfillAsync(new()
+        {
+            ContentType = "text/html",
+            Body = """
+                <form id='login'></form><form id='other'></form>
+                <input id='password' type='password' form='login'
+                  oninput="document.body.dataset.inputCount = String(Number(document.body.dataset.inputCount || 0) + 1)">
+                """
+        }));
+        var page = await context.NewPageAsync();
+        await page.GotoAsync(destination + "/password");
+        var workflow = new WebsiteWorkflow
+        {
+            StartUrl = scenario == "same-site" ? destination + "/password" : "https://trusted.test/start",
+            PasswordSelector = "#password"
+        };
+        if (scenario is "mapped" or "late-mapping-change")
+            workflow.PasswordCredentialOrigin = destination;
+        if (scenario == "mapped") workflow.ApprovedLoginOrigins.Add(destination);
+        await using var engine = new AutomationEngine(new CredentialVault());
+        var prompts = 0;
+        engine.ApproveLoginOriginAsync = async (_, origin) =>
+        {
+            prompts++;
+            Check(origin == destination, "approval request stays on the exact synthetic destination");
+            if (scenario == "denied") return false;
+            if (scenario == "late-mapping-change")
+            {
+                if (prompts == 1) workflow.PasswordCredentialOrigin = "https://changed.test";
+                else await page.EvaluateAsync("() => document.querySelector('#password').setAttribute('form', 'other')");
+            }
+            if (scenario == "initial-form-change")
+                await page.EvaluateAsync("() => document.querySelector('#password').setAttribute('form', 'other')");
+            return true;
+        };
+        await using var field = await page.QuerySelectorAsync("#password")
+            ?? throw new TestFailure("Fixture password field was missing");
+        await using var form = await page.EvaluateHandleAsync("() => document.querySelector('#login')");
+        await using var document = await page.EvaluateHandleAsync("() => document");
+        var protectedFill = typeof(AutomationEngine).GetMethod("FillCredentialAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var task = (Task<string?>)protectedFill.Invoke(engine, new object?[] {
+            workflow, page, "#password", synthetic, CancellationToken.None,
+            null, field, form, true, document
+        })!;
+        var refused = false;
+        try { await task; }
+        catch (InvalidOperationException) { refused = true; }
+        var inputs = int.Parse(await page.GetAttributeAsync("body", "data-input-count") ?? "0");
+        var value = await page.InputValueAsync("#password");
+        var shouldFill = scenario is "same-site" or "mapped" or "first-approval";
+        if (shouldFill)
+        {
+            Check(!refused && value == synthetic && inputs > 0,
+                "valid exact field and HTML form association permits credential insertion");
+            Check(prompts == (scenario == "first-approval" ? 1 : 0),
+                "legitimate explicit first approval is not repeated");
+        }
+        else
+        {
+            Check(refused && value == "" && inputs == 0,
+                "invalidated destination or form is rejected before any input event");
+            Check(prompts <= 1,
+                "final password checkpoint cannot reopen an interactive dialog");
+        }
     }
 
     private static async Task AbortedWorkflowAsync(IBrowser browser)

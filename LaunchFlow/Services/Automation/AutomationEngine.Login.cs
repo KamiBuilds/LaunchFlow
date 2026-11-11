@@ -499,8 +499,11 @@ public sealed partial class AutomationEngine
             ct.ThrowIfCancellationRequested();
             RequireCredentialAccess();
             RequireAutomationUrl(origin);
+            // A second interactive approval here would invalidate the preceding
+            // document/form checks while its modal dialog processes browser events.
+            // At dispatch, require the existing mapping without awaiting or remapping.
             if (isPassword)
-                await EnsurePasswordDestinationAsync(workflow, origin).WaitAsync(ct).ConfigureAwait(false);
+                RequireCurrentPasswordDestination(workflow, origin);
             await element.FillAsync(value).ConfigureAwait(false);
             // Vue 3 (ThousandEyes #ssoForm / #login) binds through InputEvent.
             // Plain Event('input') alone can leave the model empty so Log In
@@ -535,6 +538,19 @@ public sealed partial class AutomationEngine
             page.FrameNavigated -= Invalidate;
             page.FrameDetached -= Invalidate;
         }
+    }
+
+    // Final password authorization must be synchronous and side-effect-free:
+    // it must never reopen a modal, save, or grant a new destination. The
+    // ordinary IsOriginAllowedAsync check remains an independent requirement.
+    private static void RequireCurrentPasswordDestination(WebsiteWorkflow workflow, string fieldOrigin)
+    {
+        if (OriginsMatch(fieldOrigin, GetOrigin(workflow.StartUrl))) return;
+        if (!string.IsNullOrWhiteSpace(workflow.PasswordCredentialOrigin) &&
+            OriginsMatch(fieldOrigin, GetOrigin(workflow.PasswordCredentialOrigin))) return;
+
+        throw new InvalidOperationException(
+            "The approved password destination changed during sign-in. Retry sign-in manually.");
     }
 
     /// <summary>

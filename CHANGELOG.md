@@ -1,3 +1,10 @@
+# v0.7.73 — Password destination authorization boundary and installer fixture repair
+
+- Keep first-time HTTPS IdP approval but require the exact mapped password destination synchronously immediately before password dispatch; never reopen approval after final document/form validation.
+- Add maintained production-linked Chromium regressions for same-site, mapped and first approval, initial form changes, late mapping invalidation and explicit denial, observing input events as well as the final field value.
+- Repair the synthetic Windows builder fixture at its own v0.7.19 version (AppInfo, README, CHANGELOG and real representative Inno mutex wait loop). Test malformed preflights without changing prior installer artifacts.
+- Preserve installer AppId, encrypted vault format, profile layout and workflow IDs. This is an unsigned development candidate; CI and native Windows/real-account acceptance are required.
+
 # v0.7.72 — Restore source gate and portable backup round-trip contract
 
 - Update the source-validation gate for the v0.7.69 beginner UI; ensure the simple sign-in and recorder controls remain wired while the legacy advanced button remains hidden.
