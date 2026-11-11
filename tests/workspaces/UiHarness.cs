@@ -877,6 +877,7 @@ partial class UiFixture
     public long _workspaceRevision;
     public readonly Control RetryVaultLockButton = new();
     public bool _windowsLocked = false, _vaultLockInProgress = false, _exiting = false;
+    public bool _loadingEditor = false;
     public VisualRecorderWindow? _activeRecorder;
     public Task _vaultLockTask = Task.CompletedTask;
     public Task? _profileSealTask;
