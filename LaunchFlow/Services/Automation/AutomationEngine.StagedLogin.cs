@@ -16,7 +16,7 @@ public sealed partial class AutomationEngine
 
     private static Task<bool> PasswordStageReadyAsync(
         WebsiteWorkflow workflow, IPage page, CancellationToken ct) =>
-        LoginFieldReadyAsync(page, workflow.PasswordSelector, ct);
+        LoginFieldReadyAsync(page, PasswordCandidateSelector(workflow), ct);
 
     private static async Task<bool> LoginFieldReadyAsync(
         IPage page, string selector, CancellationToken ct)
@@ -44,7 +44,7 @@ public sealed partial class AutomationEngine
     {
         ct.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(workflow.PasswordSelector)) return false;
-        return await page.Locator(workflow.PasswordSelector).CountAsync().ConfigureAwait(false) > 0;
+        return await page.Locator(PasswordCandidateSelector(workflow)).CountAsync().ConfigureAwait(false) > 0;
     }
 
     private async Task<IElementHandle?> AdvanceToPasswordStageAsync(
@@ -61,7 +61,7 @@ public sealed partial class AutomationEngine
         var previouslyReadyPasswords = new List<IElementHandle>();
         try
         {
-            var passwordCandidates = page.Locator(workflow.PasswordSelector);
+            var passwordCandidates = page.Locator(PasswordCandidateSelector(workflow));
             var passwordCount = await passwordCandidates.CountAsync().ConfigureAwait(false);
             if (passwordCount > 32) return null;
             for (var i = 0; i < passwordCount; i++)
@@ -248,7 +248,7 @@ public sealed partial class AutomationEngine
     private static async Task<IElementHandle?> ResolvePasswordAfterOwnedContinuationAsync(
         WebsiteWorkflow workflow, IPage page, string identifierOrigin, CancellationToken ct)
     {
-        var matches = page.Locator(workflow.PasswordSelector);
+        var matches = page.Locator(PasswordCandidateSelector(workflow));
         var count = await matches.CountAsync().ConfigureAwait(false);
         if (count == 0 || count > 16) return null;
         IElementHandle? selected = null;

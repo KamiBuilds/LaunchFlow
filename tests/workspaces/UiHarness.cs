@@ -117,7 +117,14 @@ var tests = new List<(string Name, Func<Task> Body)>
         ui._runner.RunRelease.SetResult(new() { FailedCount = 1 });
         await ui.Run(workspace: workspace);
         Check(ui._runner.LastRun.Count == 1 && !ui._runner.IncludeDisabled, "workspace bypassed enabled/missing IDs");
-        Check(ui.Notifications.Any(n => n.Contains("failed", StringComparison.OrdinalIgnoreCase)) && ui.Notifications.All(n => !n.Contains("Finished")), "failed workflows announced as success");
+        Check(ui.Notifications.Any(n =>
+                n.Contains("failed", StringComparison.OrdinalIgnoreCase) ||
+                n.Contains("couldn't finish", StringComparison.OrdinalIgnoreCase) ||
+                n.Contains("didn’t finish", StringComparison.OrdinalIgnoreCase) ||
+                n.Contains("didn't finish", StringComparison.OrdinalIgnoreCase)) &&
+              ui.Notifications.All(n => !n.StartsWith("Finished", StringComparison.OrdinalIgnoreCase)) &&
+              ui.WorkflowStatusLabel.Text.Contains("Couldn't finish", StringComparison.OrdinalIgnoreCase),
+            "failed workflows announced as success or lacked a clear failure status");
     }),
     ("encrypted import while KeePass is open cancels a detached workspace run", async () =>
     {

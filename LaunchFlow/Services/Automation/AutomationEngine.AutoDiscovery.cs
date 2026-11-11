@@ -8,6 +8,14 @@ public sealed partial class AutomationEngine
 {
     private const string StandardUsernameSelector = LoginFieldDiscovery.StandardUsernameSelector;
     private const string StandardSubmitSelector = LoginFieldDefaults.SubmitSelector;
+    // Built-in password discovery is limited to actual password inputs. A
+    // legacy CSS default also matches #secret/#password on non-input elements,
+    // such as <form id="secret">, and must never make a password stage ambiguous.
+    // Deliberate custom selectors retain their exact user-specified semantics.
+    private static string PasswordCandidateSelector(WebsiteWorkflow workflow) =>
+        LoginFieldDiscovery.UsesAutomaticPasswordDiscovery(workflow)
+            ? "input[type='password']"
+            : workflow.PasswordSelector;
     private const string AutomaticUsernameCandidates =
         "input[autocomplete~='username' i], input[name='login' i], input[name='identity' i], #login_field, " +
         "input[type='email'], input[name*='user' i], input[name*='email' i], input[name*='identity' i], " +
@@ -143,7 +151,7 @@ public sealed partial class AutomationEngine
     {
         // A password-only resumed stage is allowed only when it has the
         // semantics of a current-password login, not a reset/new-password form.
-        var fields = page.Locator(workflow.PasswordSelector);
+        var fields = page.Locator(PasswordCandidateSelector(workflow));
         var count = Math.Min(await fields.CountAsync().ConfigureAwait(false), 16);
         IElementHandle? selected = null;
         for (var i = 0; i < count; i++)
@@ -226,7 +234,7 @@ public sealed partial class AutomationEngine
         if (status == 0) return (false, null);
         if (discoverPassword && status != 1) return (true, null);
 
-        var matches = page.Locator(workflow.PasswordSelector);
+        var matches = page.Locator(PasswordCandidateSelector(workflow));
         var count = await matches.CountAsync().ConfigureAwait(false);
         if (count > 32) return (true, null);
         var owned = new List<IElementHandle>();
