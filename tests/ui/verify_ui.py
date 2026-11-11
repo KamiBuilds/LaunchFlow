@@ -105,13 +105,19 @@ check('EnabledCheck.Checked += (_, _) => WebsiteEnabledChanged()' in source and
 approval = ET.parse(root / "LaunchFlow/UI/Dialogs/PasswordOriginApprovalWindow.xaml").getroot()
 approval_markup = ET.tostring(approval, encoding="unicode")
 approval_code = (root / "LaunchFlow/UI/Dialogs/PasswordOriginApprovalWindow.xaml.cs").read_text(encoding="utf-8")
+approval_coordinator = (root / "LaunchFlow/Services/Persistence/PasswordOriginApprovalCoordinator.cs").read_text(encoding="utf-8")
 check(approval.get("Topmost") == "True" and
       approval.get("ShowActivated") == "True" and
       approval.get("WindowStartupLocation") == "CenterScreen" and
       'IsDefault="True"' in approval_markup and
       'IsCancel="True"' in approval_markup and
       'new PasswordOriginApprovalWindow(workflow.Name, newOrigin)' in source and
-      'if (!accepted || !Authorized()) return false;' in source and
+      'new PasswordOriginApprovalCoordinator(_saveTransaction).Request(' in source and
+      'return dialog.ShowDialog() == true;' in source and
+      'if (!stillOwns()) return new(Outcome.Invalidated);' in approval_coordinator and
+      'if (!showNativeConsent()) return new(Outcome.Declined);' in approval_coordinator and
+      'saveTransaction.Commit(' in approval_coordinator and
+      'requestedOrigin.TrimEnd(' in approval_coordinator and
       'DialogResult = true;' in approval_code and
       'Activate();' in approval_code,
       "password-origin approval is foreground, opt-in and revalidated after modal consent")
