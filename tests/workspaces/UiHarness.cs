@@ -459,6 +459,89 @@ var tests = new List<(string Name, Func<Task> Body)>
               ui._store.Saves == 1 && workflow.PasswordCredentialOrigin == "https://idp.example",
               "explicitly approved origin was not saved or linked to this workflow");
     }),
+    ("diagnostics redact secrets, preserve mixed outcomes and distinguish cancellation", async () =>
+    {
+        const string sentinel = "SENTINEL-secret-user-987";
+        var dangerous = "Firefox automation error https://site.invalid/?token=" + sentinel +
+            "\nAuthorization: Bearer " + sentinel;
+        var tray = RunOutcomeSummary.TrayDetail(1, 0, 0, null, dangerous);
+        Check(!tray.Contains(sentinel, StringComparison.Ordinal) &&
+            !tray.Contains("token=", StringComparison.Ordinal) &&
+            tray.Contains("browser", StringComparison.OrdinalIgnoreCase),
+            "single failure remains useful without leaking driver text");
+        var unknown = RunIssueNotice.FromLoginCodeMessage("unknown:" + sentinel);
+        Check(!unknown.Contains(sentinel, StringComparison.Ordinal) &&
+            unknown.Contains("check the browser", StringComparison.OrdinalIgnoreCase),
+            "unknown-code fallback cannot expose source text");
+        var mixed = RunOutcomeSummary.TrayDetail(1, 1, 1, dangerous, dangerous);
+        Check(!mixed.Contains(sentinel, StringComparison.Ordinal) &&
+            !mixed.Contains("saved sites and passwords are fine", StringComparison.OrdinalIgnoreCase),
+            "mixed failure outcomes cannot assert storage integrity");
+        Check(RunIssueNotice.SafeProgress(dangerous) == "Working…" &&
+            RunIssueNotice.Message(RunIssueCode.Cancelled).Contains("Stopped"),
+            "non-engine phases and cancel statuses are distinct");
+        await Task.CompletedTask;
+    }),
+    ("SSO consent denies selection ABA, same-ID import, revised editor and storage rejection", async () =>
+    {
+        foreach (var mode in new[] { "selection-aba", "replacement", "editor-change", "storage-rejection" })
+        {
+            var ui = new UiFixture();
+            var workflow = ui._configuration.Workflows[0];
+            workflow.StartUrl = "https://site.example";
+            ui._editorSession.Select(workflow);
+            Check(ui._runUi.TryBeginRun(out var lease), "test run admission");
+            Check(ui._runUi.AttachCancellation(lease, new CancellationTokenSource()), "test token attached");
+            PasswordOriginApprovalWindow.Result = true;
+            if (mode == "storage-rejection") ui._store.FailNextSave = true;
+            PasswordOriginApprovalWindow.Hook = () =>
+            {
+                if (mode == "selection-aba")
+                {
+                    ui._editorSession.Select(new WebsiteWorkflow());
+                    ui._editorSession.Select(workflow);
+                }
+                if (mode == "replacement")
+                    ui._configuration.Workflows[0] = new WebsiteWorkflow { Id = workflow.Id };
+                if (mode == "editor-change") ui._editorSession.MarkEdited();
+            };
+            Check(!await ui.Approve(workflow, "https://idp.example"),
+                "stale consent or storage failure cannot approve");
+            Check(workflow.PasswordCredentialOrigin == "" &&
+                !workflow.ApprovedLoginOrigins.Contains("https://idp.example") &&
+                ui._store.Saves == 0,
+                "stale consent or rejected store cannot publish a grant");
+        }
+    }),
+    ("SSO consent preserves unrelated dirty edits and revokes lock/unlock authority", async () =>
+    {
+        var ui = new UiFixture();
+        var workflow = ui._configuration.Workflows[0];
+        workflow.StartUrl = "https://site.example";
+        ui._editorSession.Select(workflow);
+        ui._editorSession.MarkEdited();
+        Check(ui._runUi.TryBeginRun(out var lease), "test run admission");
+        Check(ui._runUi.AttachCancellation(lease, new CancellationTokenSource()), "test token attached");
+        PasswordOriginApprovalWindow.Result = true;
+        PasswordOriginApprovalWindow.Hook = null;
+        Check(await ui.Approve(workflow, "https://idp.example") &&
+            ui._editorSession.IsDirty && ui._store.DurableSaves == 1,
+            "durable approval cannot acknowledge pending edits");
+        var ui2 = new UiFixture();
+        var flow2 = ui2._configuration.Workflows[0];
+        flow2.StartUrl = "https://site.example";
+        Check(ui2._runUi.TryBeginRun(out var lease2), "second test run admission");
+        Check(ui2._runUi.AttachCancellation(lease2, new CancellationTokenSource()), "second token attached");
+        PasswordOriginApprovalWindow.Result = true;
+        PasswordOriginApprovalWindow.Hook = () =>
+        {
+            VaultDatabase.Current.Lock();
+            VaultDatabase.Current.IsUnlocked = true;
+        };
+        Check(!await ui2.Approve(flow2, "https://idp.example") &&
+            ui2._store.Saves == 0 && flow2.PasswordCredentialOrigin == "",
+            "lock/unlock invalidates old vault generation");
+    }),
     ("mixed login attention and failed steps retain failure counts and select duplicate names by ID without rerun", async () =>
     {
         var ui = new UiFixture();
@@ -809,6 +892,10 @@ partial class UiFixture
     public UiFixture() { VaultDatabase.Current.IsUnlocked = true; VaultDatabase.Current.Credentials.Clear(); ProfileVaultService.Seals = 0; ProfileVaultService.FailSeal = false; KeePassXcService.Reset(); MessageBox.Hook = null; MessageBox.Result = MessageBoxResult.Yes; MessageBox.Messages.Clear(); PasswordOriginApprovalWindow.Hook = null; PasswordOriginApprovalWindow.Result = false; }
     public readonly MasterPasswordService _master = new();
     public readonly ConfigStore _store = new();
+    // The actual coordinator + transaction are linked into this portable fixture.
+    // The owned store is inert; native encrypted SQLite is verified elsewhere.
+    public ConfigurationSaveTransaction _saveTransaction =>
+        new(_store.SaveDurable, _ => { });
     public bool _passwordsUnlocked = true;
     public DateTimeOffset _passwordSessionExpiresUtc = DateTimeOffset.MaxValue;
     public static readonly TimeSpan PasswordSessionDuration = TimeSpan.FromHours(1);

@@ -99,9 +99,9 @@ public sealed partial class AutomationEngine
             if (!loginCompleted)
             {
                 var status = await LoginHealth.InspectAsync(page, ct).ConfigureAwait(false);
-                var reason = status.NeedsAttention
-                    ? status.Reason
-                    : LoginRecipe.FailureMessage(autoFailure);
+                var reason = RunIssueNotice.PreserveLoginFailure(autoFailure)
+                    ? LoginRecipe.FailureMessage(autoFailure)
+                    : status.NeedsAttention ? status.Reason : LoginRecipe.FailureMessage(autoFailure);
                 return new LoginAttention(workflow.Id, workflow.Name, reason);
             }
             var health = manualConfirmation

@@ -237,7 +237,7 @@ public partial class MainWindow : Window
         {
             if (!_runUi.IsStatusCurrent(statusLease) ||
                 _vaultLockInProgress || _windowsLocked || _exiting || !_runUi.IsRunning) return;
-            WorkflowStatusLabel.Text = $"{workflowName} · {message}";
+            WorkflowStatusLabel.Text = $"{workflowName} · {RunIssueNotice.SafeProgress(message)}";
         }));
     }
 
@@ -501,45 +501,73 @@ public partial class MainWindow : Window
 
     private async Task<bool> ConfirmLoginOriginAsync(WebsiteWorkflow workflow, string newOrigin)
     {
-        var cancellation = _runUi.Cancellation;
-        bool Authorized()
-        {
-            var policy = EnterprisePolicy.Current;
-            return cancellation is { IsCancellationRequested: false } && ReferenceEquals(_runUi.Cancellation, cancellation) &&
-                !_vaultLockInProgress && !_windowsLocked && !_exiting && VaultDatabase.Current.IsUnlocked &&
-                !policy.DisableAutomation && !policy.DisableCredentialFill && !policy.DisableCredentialStorage &&
-                policy.IsUrlAllowed(workflow.StartUrl) && policy.IsUrlAllowed(newOrigin) &&
-                (!policy.RequireHttpsForCredentials || newOrigin.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) &&
-                _configuration.Workflows.Any(w => ReferenceEquals(w, workflow));
-        }
         return await Dispatcher.InvokeAsync(() =>
         {
-            if (!Authorized()) return false;
-            // The browser is a different foreground process. A normal
-            // MessageBox owned by LaunchFlow can hide behind it.
-            // Topmost applies only while this explicit approval dialog is open.
-            var dialog = new PasswordOriginApprovalWindow(workflow.Name, newOrigin);
-            if (IsVisible && WindowState != WindowState.Minimized)
-                dialog.Owner = this;
-            var accepted = dialog.ShowDialog() == true;
-            // ShowDialog pumps the dispatcher: lock, Stop and policy may change.
-            if (!accepted || !Authorized()) return false;
-            bool added = !workflow.ApprovedLoginOrigins.Contains(newOrigin);
-            var previousPasswordOrigin = workflow.PasswordCredentialOrigin;
-            if (added) workflow.ApprovedLoginOrigins.Add(newOrigin);
-            // Remember IdP host so the next Run does not ask again.
-            workflow.PasswordCredentialOrigin = newOrigin;
-            try { _store.Save(_configuration); }
-            catch (Exception ex)
+            // The consent window pumps dispatcher events. Capture the actual
+            // run/editor/configuration/vault authority on the UI thread.
+            var cancellation = _runUi.Cancellation;
+            var lease = _runUi.CaptureLeaseForCallback();
+            var editorOwner = _editorSession.CaptureOwnership();
+            var config = _configuration;
+            var generation = VaultDatabase.Current.SessionGeneration;
+            var sourceUrl = workflow.StartUrl;
+            var initialDestination = workflow.PasswordCredentialOrigin;
+            var initialApprovals = workflow.ApprovedLoginOrigins.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var visibleEditorDestination = PasswordOriginBox?.Text;
+            bool Authorized()
             {
-                if (added) workflow.ApprovedLoginOrigins.Remove(newOrigin);
-                workflow.PasswordCredentialOrigin = previousPasswordOrigin;
-                AppendLog("Sign-in approval was not saved: " + ex.GetType().Name);
+                var policy = EnterprisePolicy.Current;
+                return lease != 0 && _runUi.Owns(lease) &&
+                    cancellation is { IsCancellationRequested: false } &&
+                    ReferenceEquals(_runUi.Cancellation, cancellation) &&
+                    _editorSession.IsCurrent(editorOwner) &&
+                    ReferenceEquals(_configuration, config) &&
+                    config.Workflows.Any(w => ReferenceEquals(w, workflow)) &&
+                    string.Equals(workflow.StartUrl, sourceUrl, StringComparison.Ordinal) &&
+                    string.Equals(workflow.PasswordCredentialOrigin, initialDestination, StringComparison.Ordinal) &&
+                    workflow.ApprovedLoginOrigins.SetEquals(initialApprovals) &&
+                    !_vaultLockInProgress && !_windowsLocked && !_exiting &&
+                    VaultDatabase.Current.IsUnlocked &&
+                    VaultDatabase.Current.SessionGeneration == generation &&
+                    !policy.DisableAutomation && !policy.DisableCredentialFill &&
+                    !policy.DisableCredentialStorage && policy.IsUrlAllowed(sourceUrl) &&
+                    policy.IsUrlAllowed(newOrigin) &&
+                    newOrigin.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+            }
+
+            bool ShowNativeConsent()
+            {
+                var dialog = new PasswordOriginApprovalWindow(workflow.Name, newOrigin);
+                if (IsVisible && WindowState != WindowState.Minimized)
+                    dialog.Owner = this;
+                return dialog.ShowDialog() == true;
+            }
+
+            var decision = new PasswordOriginApprovalCoordinator(_saveTransaction).Request(
+                config, workflow, newOrigin, Authorized, ShowNativeConsent, generation);
+            if (!decision.ApprovedAndPublished)
+            {
+                if (decision.State == PasswordOriginApprovalCoordinator.Outcome.StorageRejected)
+                    AppendLog("Password page approval was not saved.");
+                else if (decision.State is PasswordOriginApprovalCoordinator.Outcome.CommittedButSuperseded
+                    or PasswordOriginApprovalCoordinator.Outcome.CommittedButPublicationFailed)
+                    AppendLog("Password page approval was committed but the editor changed; review it before rerunning.");
                 return false;
             }
-            if (PasswordOriginBox is not null && ReferenceEquals(_editorSession.Selection, workflow))
-                PasswordOriginBox.Text = newOrigin;
-            AppendLog($"Approved password website for '{workflow.Name}': {newOrigin}");
+
+            // Publishing the grant does not clear unrelated dirty editor work.
+            // Never replace an intervening field edit or stale A/B/A selection.
+            if (PasswordOriginBox is not null &&
+                ReferenceEquals(_editorSession.Selection, workflow) &&
+                _editorSession.IsCurrent(editorOwner) &&
+                string.Equals(PasswordOriginBox.Text, visibleEditorDestination, StringComparison.Ordinal))
+            {
+                var loading = _loadingEditor;
+                _loadingEditor = true;
+                try { PasswordOriginBox.Text = newOrigin; }
+                finally { _loadingEditor = loading; }
+            }
+            AppendLog("Approved and saved the password destination.");
             return true;
         });
     }

@@ -20,6 +20,7 @@
     <Compile Include="../profiles/PlatformStubs.cs" Link="ProfilePlatformStubs.cs" />
     <Compile Include="../../LaunchFlow/Services/Login/LoginHealth.cs" Link="LoginHealth.cs" />
     <Compile Include="../../LaunchFlow/Services/Login/LoginRecipe.cs" Link="LoginRecipe.cs" Condition="'$(AutomationEngineSource)' == '../../LaunchFlow/Services/Automation/AutomationEngine.cs'" />
+    <Compile Include="../../LaunchFlow/Services/Workspaces/RunIssueNotice.cs" Link="RunIssueNotice.cs" />
     <Compile Include="../../LaunchFlow/Services/Login/LoginFieldDiscovery.cs" Link="LoginFieldDiscovery.cs" Condition="'$(AutomationEngineSource)' == '../../LaunchFlow/Services/Automation/AutomationEngine.cs'" />
     <Compile Include="../../LaunchFlow/Services/Login/LoginCompletionObserver.cs" Link="Services/LoginCompletionObserver.cs" Condition="'$(AutomationEngineSource)' == '../../LaunchFlow/Services/Automation/AutomationEngine.cs'" />
     <Compile Include="../../LaunchFlow/Services/Login/LoginFlowCoordinator.cs" Link="Services/LoginFlowCoordinator.cs" Condition="'$(AutomationEngineSource)' == '../../LaunchFlow/Services/Automation/AutomationEngine.cs'" />

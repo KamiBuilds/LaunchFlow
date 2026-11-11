@@ -1,3 +1,25 @@
+# Current source and ownership map — v0.7.74 incremental candidate
+
+**Reviewed parent:** `897825ff5f10a9181c9979465c4a5920aec2ecce` (v0.7.73). The new commit's exact identity is recorded in GitHub.
+
+## Current operation path and owners
+
+- **UI admission:** `UI/Shell/MainWindow.Execution.cs` starts an operation through `UI/Controllers/RunUiOperationController.cs`. That controller owns run leases and cancellation, rejecting queued stale status.
+- **Login:** `Services/Automation/AutomationEngine.*.cs` owns the actual Playwright page, selected input, frame, document, HTML `input.form`, protected credential fill and completion checks. `Services/Login/LoginFlowCoordinator.cs` only sequences an attempt and reports bounded failure codes.
+- **Approval:** `MainWindow.ConfirmLoginOriginAsync` marshals to WPF and displays the existing modal. `Services/Persistence/PasswordOriginApprovalCoordinator.cs` rechecks run, editor, configuration, vault and policy ownership and uses `ConfigurationSaveTransaction` to durably save a detached candidate before publishing an exact HTTPS password destination. The WPF adapter does not own browser sessions or keys.
+- **Final password dispatch:** `AutomationEngine.Login.cs` retains separate initial interactive consent, ordinary origin permission, and *synchronous* `RequireCurrentPasswordDestination` directly before `ElementHandle.FillAsync`. The final check must not open windows, save or remap.
+- **Editor/save:** `WorkflowEditorSession` owns reference selection, selection epoch, revision and dirty state; `ConfigurationSaveTransaction` distinguishes durable-but-superseded from published success. `VaultDatabase.Current.SessionGeneration` is the ambient vault authorization authority.
+- **Diagnostics:** `RunIssueNotice.cs` centralizes safe codes, bounded fallback and progress copy; `RunOutcomeSummary.cs` handles mixed outcomes. No raw driver exceptions, full URLs or credential data are exported.
+- **Exit:** Browser, profile ownership, seal/cleanup and sticky errors remain in engine and existing exit-safety services.
+
+## Regression evidence and limitations
+
+Native approval adapter body: `tests/workspaces/extract-ui-methods.py` and `UiTests.csproj`; coordinator and save transaction are compiled from production files. Real protected Chromium fill: `tests/runtime/DocumentBoundCredentialTests.cs`. Prior AUTO-03, SQLite autosave/reopen, backup-integrity, installation and exit gates must all remain green on the same candidate commit. These automated tests cannot establish actual vendor sign-in or interactive WPF acceptance on a user's device.
+
+---
+
+## Historical maps retained below
+
 # Current source and state ownership map
 
 **Structural implementation branch:** `refactor/core-structure-20261106` from approved baseline `93b49482b6ea197c810e27def9fe6d9b080ec0aa` (LaunchFlow v0.7.46). This overlay describes the implemented source at `a1fe9967c9b9dd9163870b680180e72f6689ece8` before final verification. Subsequent documentation/verification commits must be treated as distinct source bytes. The earlier baseline map is preserved below for historical context.

@@ -15,6 +15,7 @@
     <Compile Include="../../LaunchFlow/Services/Browser/PlaywrightFirefoxSupport.cs" Link="Services/PlaywrightFirefoxSupport.cs" />
     <Compile Include="../../LaunchFlow/Services/Login/LoginHealth.cs" Link="Services/LoginHealth.cs" />
     <Compile Include="../../LaunchFlow/Services/Login/LoginRecipe.cs" Link="Services/LoginRecipe.cs" />
+    <Compile Include="../../LaunchFlow/Services/Workspaces/RunIssueNotice.cs" Link="Services/RunIssueNotice.cs" />
     <Compile Include="../../LaunchFlow/Services/Login/LoginFieldDiscovery.cs" Link="Services/LoginFieldDiscovery.cs" />
     <Compile Include="../../LaunchFlow/Services/Login/LoginCompletionObserver.cs" Link="Services/LoginCompletionObserver.cs" />
     <Compile Include="../../LaunchFlow/Services/Login/LoginFlowCoordinator.cs" Link="Services/LoginFlowCoordinator.cs" />

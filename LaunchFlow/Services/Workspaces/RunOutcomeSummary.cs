@@ -28,12 +28,12 @@ public static class RunOutcomeSummary
         // One clear sign-in reason alone; mixed outcomes keep the count summary.
         if (attentionCount == 1 && failedCount == 0 && stepRepairCount == 0 &&
             !string.IsNullOrWhiteSpace(singleAttentionReason))
-            return Soften(singleAttentionReason);
+            return RunIssueNotice.SafeReportedReason(singleAttentionReason);
         // One workflow failure with a concrete reason (e.g. Firefox automation).
         if (failedCount == 1 && attentionCount == 0 && stepRepairCount == 0 &&
             !string.IsNullOrWhiteSpace(singleFailureReason))
-            return Soften(singleFailureReason);
-        return "Something didn’t finish this time. Your saved sites and passwords are fine — try again when you’re ready.";
+            return RunIssueNotice.SafeReportedReason(singleFailureReason);
+        return "Some websites need a look — check the run results and try again when ready.";
     }
 
     public static string FinishedTray(int runCount, string? singleName) =>
@@ -49,9 +49,4 @@ public static class RunOutcomeSummary
          reason.Contains("Check browsers", StringComparison.OrdinalIgnoreCase) ||
          reason.Contains("special Firefox", StringComparison.OrdinalIgnoreCase));
 
-    private static string Soften(string reason)
-    {
-        // Keep the useful tip, drop harsh framing if present.
-        return reason.Trim();
-    }
 }

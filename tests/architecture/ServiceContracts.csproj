@@ -17,6 +17,8 @@
     <Compile Include="../../LaunchFlow/Services/Persistence/ConfigurationSaveTransaction.cs" Link="Services/ConfigurationSaveTransaction.cs" />
     <Compile Include="../../LaunchFlow/Services/Login/WebsiteLoginMode.cs" Link="Services/WebsiteLoginMode.cs" />
     <Compile Include="../../LaunchFlow/Services/Workspaces/RunOutcomeSummary.cs" Link="Services/RunOutcomeSummary.cs" />
+    <Compile Include="../../LaunchFlow/Services/Workspaces/RunIssueNotice.cs" Link="Services/RunIssueNotice.cs" />
+    <Compile Include="../../LaunchFlow/Services/Persistence/PasswordOriginApprovalCoordinator.cs" Link="Services/PasswordOriginApprovalCoordinator.cs" />
     <Compile Include="../../LaunchFlow/Services/Vault/PasswordSessionPolicy.cs" Link="Services/PasswordSessionPolicy.cs" />
   </ItemGroup>
 </Project>

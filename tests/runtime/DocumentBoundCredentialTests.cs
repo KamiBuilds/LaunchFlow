@@ -40,6 +40,7 @@ internal static class DocumentBoundCredentialTests
             var scenario = mode;
             tests.Add(($"password-destination-{scenario}", browser => PasswordDestinationBoundaryAsync(browser, scenario)));
         }
+        tests.Add(("pending-origin-consent-stop-fresh-retry", PendingConsentStopAndFreshRetryAsync));
         tests.Add(("approved-sso", ApprovedSsoAsync));
         tests.Add(("aborted-workflow", AbortedWorkflowAsync));
         var filter = args.FirstOrDefault(a => a.StartsWith("--case=", StringComparison.Ordinal))?[7..];
@@ -502,6 +503,44 @@ internal static class DocumentBoundCredentialTests
             Check(prompts <= 1,
                 "final password checkpoint cannot reopen an interactive dialog");
         }
+    }
+
+    private static async Task PendingConsentStopAndFreshRetryAsync(IBrowser browser)
+    {
+        await using var f = await Fixture.CreateAsync(browser, "password",
+            "<form id='login'><input id='password' type='password' autocomplete='current-password'></form>",
+            url: "https://pending-consent.test/");
+        f.Workflow.StartUrl = "https://trusted.test/";
+        f.Workflow.PasswordCredentialOrigin = "";
+        f.Workflow.ApprovedLoginOrigins.Clear();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var cancellation = new CancellationTokenSource();
+        f.Engine.ApproveLoginOriginAsync = async (_, origin) =>
+        {
+            Check(origin == "https://pending-consent.test", "pending consent binds exact origin");
+            entered.TrySetResult();
+            await release.Task;
+            return !cancellation.IsCancellationRequested;
+        };
+        var stopped = f.LoginAsync(cancellation.Token);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        cancellation.Cancel();
+        release.TrySetResult();
+        var aborted = false;
+        try { await stopped; }
+        catch (OperationCanceledException) { aborted = true; }
+        Check(aborted, "Stop during pending consent aborts protected fill");
+        await f.EmptyAsync("password", "cancellation prevented input events");
+        Check(string.IsNullOrEmpty(f.Workflow.PasswordCredentialOrigin),
+            "revoked consent cannot create password mapping");
+
+        f.Engine.ApproveLoginOriginAsync = (_, origin) =>
+            Task.FromResult(origin == "https://pending-consent.test");
+        await f.LoginAsync();
+        Check(await f.Page.InputValueAsync("#password") == f.Vault.Credential.Password &&
+            f.Insertions.Contains("password"),
+            "fresh authorized retry still fills its own bound field");
     }
 
     private static async Task AbortedWorkflowAsync(IBrowser browser)

@@ -1,3 +1,11 @@
+# v0.7.74 — Candidate: bounded diagnostics, consent orchestration and focused regressions
+
+- One known-code diagnostics mapping for login failures, safe fallback for untrusted error text in tray notifications, and allowlisted phase updates. Unknown failures stay unknown.
+- Extract native password-origin approval decision into a narrow, WPF-independent coordinator. The WPF adapter preserves modal consent, captures run/editor/vault/policy ownership, and uses the existing detached durable save transaction before publishing a grant.
+- Source-linked approval regression cases cover stale selections/import, late editor changes, durable rejection, pending edits and lock/unlock; a Chromium protected-fill case covers Stop during pending consent and a fresh retry.
+- Refresh the current ownership/source map while retaining the historical mapping. Final synchronous password destination check and installer identity remain unchanged.
+- **Candidate only:** native WPF/installer/account acceptance still required. No release authorization.
+
 # v0.7.73 — Password destination authorization boundary and installer fixture repair
 
 - Keep first-time HTTPS IdP approval but require the exact mapped password destination synchronously immediately before password dispatch; never reopen approval after final document/form validation.
