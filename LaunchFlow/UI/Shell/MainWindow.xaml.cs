@@ -63,6 +63,8 @@ public partial class MainWindow : Window
     private bool _loadingEditor;
     private bool _exiting;
     private string? _keepassMasterPassword;
+    private long _keepassChooserGeneration;
+    private long _keepassCacheRevision;
     private CancellationTokenSource? _unlockCancellation;
     private readonly Forms.NotifyIcon _tray;
     private HwndSource? _windowSource;
@@ -616,153 +618,6 @@ public partial class MainWindow : Window
         return "No password saved";
     }
 
-    private async void ChooseKeePassEntry_Click(object sender, RoutedEventArgs e)
-    {
-        if (_editorSession.Selection is null) return;
-        var ownedConfig = _configuration;
-        var ownedWorkflow = _editorSession.Selection;
-        var editorOwner = _editorSession.CaptureOwnership();
-        var ownedVaultSession = VaultDatabase.Current.SessionGeneration;
-        var keepassEntryVisible = KeepassEntryBox.Text;
-
-        bool StillOwns() =>
-            ReferenceEquals(_configuration, ownedConfig) &&
-            ownedConfig.Workflows.Any(w => ReferenceEquals(w, ownedWorkflow)) &&
-            _editorSession.IsCurrent(editorOwner) &&
-            ReferenceEquals(_editorSession.Selection, ownedWorkflow) &&
-            !_vaultLockInProgress && !_windowsLocked && !_exiting &&
-            VaultDatabase.Current.IsUnlocked &&
-            VaultDatabase.Current.SessionGeneration == ownedVaultSession &&
-            PasswordSessionIsValid() &&
-            CredentialReadAllowed();
-
-        bool Authorized()
-        {
-            if (StillOwns()) return true;
-            // Only clear this operation's cached secret when ownership still
-            // matches; never wipe a newer operation's published secret.
-            if (ReferenceEquals(_configuration, ownedConfig) &&
-                VaultDatabase.Current.SessionGeneration == ownedVaultSession)
-                _keepassMasterPassword = null;
-            CredentialStatus.Text = "Credential access is unavailable; unlock the vault and check your organization policy.";
-            return false;
-        }
-        if (!Authorized()) return;
-        if (!KeePassXcService.IsCliAvailable())
-        {
-            MessageBox.Show(this, "KeePassXC could not be found. Install it and try again.",
-                "KeePassXC unavailable", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        var database = KeePassDbBox.Text.Trim();
-        if (!File.Exists(database))
-        {
-            var found = KeePassXcService.FindDatabases();
-            if (found.Count == 1)
-            {
-                if (!Authorized()) return;
-                SetKeePassDatabase(found[0].Path);
-                database = found[0].Path;
-            }
-            else
-            {
-                SettingsTabs.SelectedIndex = 3;
-                MainTabs.SelectedIndex = 1;
-                MessageBox.Show(this,
-                    "First choose your KeePassXC database in Settings → Security. Then open Settings → Passwords and click Choose KeePassXC login.",
-                    "Connect KeePassXC", MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
-        }
-        if (!Authorized()) return;
-        // Freeze database/key inputs for this operation; do not re-read after awaits.
-        var keyFile = KeePassKeyBox.Text.Trim();
-        var ownedDatabase = database;
-        var ownedKeyFile = keyFile;
-
-        var secret = _keepassMasterPassword;
-        if (secret is null)
-        {
-            var prompt = new SecretPromptWindow("Unlock KeePassXC",
-                "Enter the KeePassXC master password to list your login names. Your saved passwords will not be displayed or copied into LaunchFlow.")
-            { Owner = this };
-            if (prompt.ShowDialog() != true) return;
-            if (!Authorized()) return;
-            secret = prompt.Secret ?? "";
-        }
-
-        try
-        {
-            if (!Authorized()) return;
-            var entries = await KeePassXcService.ListEntriesAsync(
-                ownedDatabase, ownedKeyFile, secret);
-            if (!Authorized()) return;
-            if (entries.Count == 0)
-            {
-                MessageBox.Show(this, "No login entries were found in this KeePassXC database.",
-                    "No logins found", MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
-
-            var picker = new KeePassEntryPickerWindow(entries) { Owner = this };
-            if (picker.ShowDialog() != true || string.IsNullOrEmpty(picker.SelectedPath) || !Authorized()) return;
-            var selectedPath = picker.SelectedPath;
-            bool hasLocalCredential = _vault.Has(ownedWorkflow.Id);
-            var result = _saveTransaction.Commit(
-                ownedConfig,
-                draft =>
-                {
-                    var target = draft.Workflows.FirstOrDefault(w => w.Id == ownedWorkflow.Id);
-                    if (target is null)
-                        throw new InvalidOperationException("KeePass target workflow missing from draft.");
-                    target.KeepassEntryPath = selectedPath;
-                    draft.KeePassDatabasePath = ownedDatabase;
-                    draft.KeePassKeyFilePath = ownedKeyFile;
-                },
-                StillOwns,
-                ownedVaultSession,
-                published =>
-                {
-                    var live = ownedConfig.Workflows.FirstOrDefault(w => ReferenceEquals(w, ownedWorkflow))
-                        ?? ownedConfig.Workflows.FirstOrDefault(w => w.Id == ownedWorkflow.Id);
-                    if (live is null) return;
-                    live.KeepassEntryPath = selectedPath;
-                    ownedConfig.KeePassDatabasePath = ownedDatabase;
-                    ownedConfig.KeePassKeyFilePath = ownedKeyFile;
-                    if (ReferenceEquals(_editorSession.Selection, ownedWorkflow) &&
-                        _editorSession.IsCurrent(editorOwner) &&
-                        string.Equals(KeepassEntryBox.Text, keepassEntryVisible, StringComparison.Ordinal))
-                        KeepassEntryBox.Text = selectedPath;
-                    if (StillOwns())
-                    {
-                        _keepassMasterPassword = secret;
-                        CredentialStatus.Text = DescribeCredentialStatus(live);
-                    }
-                });
-            if (!result.Published)
-            {
-                if (StillOwns() && result.State is SaveTransactionState.StorageRejected
-                    or SaveTransactionState.ValidationRejected)
-                    _keepassMasterPassword = null;
-                AppendLog("KeePass selection was not published (" + result.State + ").");
-                return;
-            }
-            if (hasLocalCredential && StillOwns())
-                MessageBox.Show(this,
-                    "Login selected. This website already has a password saved in LaunchFlow, which takes priority. To use KeePassXC, click Remove saved credentials in Settings → Passwords.",
-                    "KeePassXC login selected", MessageBoxButton.OK, MessageBoxImage.Information);
-        }
-        catch (Exception ex)
-        {
-            if (StillOwns())
-                _keepassMasterPassword = null;
-            AppendLog("KeePass selection failed: " + ex.GetType().Name);
-            MessageBox.Show(this, "The KeePassXC login could not be selected. Check vault authorization, organization policy and the database connection.", "Couldn't read KeePassXC",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
-    }
-
     /// <summary>
     /// Request KeePassXC authorization only for workflows that need it, then
     /// revalidate vault, policy and run admission after the modal prompt.
@@ -771,7 +626,7 @@ public partial class MainWindow : Window
     {
         if (!CredentialReadAllowed())
         {
-            _keepassMasterPassword = null;
+            PublishKeePassCache(null);
             return true; // Engine may open/manual sign-in; never fetch a fallback secret.
         }
         var needsKeePass = workflows.Any(NeedsKeePassForRun);
@@ -799,10 +654,10 @@ public partial class MainWindow : Window
         if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked ||
             !CredentialReadAllowed() || workflows.Any(workflow => !AutomationAllowed(workflow)))
         {
-            _keepassMasterPassword = null;
+            PublishKeePassCache(null);
             return false;
         }
-        _keepassMasterPassword = prompt.Secret ?? "";
+        PublishKeePassCache(prompt.Secret ?? "");
         return true;
     }
 

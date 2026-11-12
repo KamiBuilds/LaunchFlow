@@ -80,11 +80,20 @@ public static class ProfileVaultService
     /// Deletes plaintext and sealed profile roots. When <paramref name="bestEffort"/>
     /// is false, every deletion failure is returned for the caller to surface.
     /// </summary>
-    public static IReadOnlyList<Exception> WipeAllProfilesStrict(bool bestEffort = false)
+    public static IReadOnlyList<Exception> WipeAllProfilesStrict(bool bestEffort = false) =>
+        WipeRoots(bestEffort, path => Directory.Delete(path, recursive: true));
+
+    // Only portable tests link this internal delegate seam. No configuration,
+    // environment variable, or externally callable bypass can change cleanup.
+    internal static IReadOnlyList<Exception> WipeAllProfilesStrict(Action<string> deleteRoot) =>
+        WipeRoots(false, deleteRoot);
+
+    private static IReadOnlyList<Exception> WipeRoots(bool bestEffort, Action<string> deleteRoot)
     {
+        ArgumentNullException.ThrowIfNull(deleteRoot);
         var failures = new List<Exception>();
-        TryDeleteDir(ProfilesRoot, failures, bestEffort);
-        TryDeleteDir(SealedRoot, failures, bestEffort);
+        TryDeleteDir(ProfilesRoot, failures, bestEffort, deleteRoot);
+        TryDeleteDir(SealedRoot, failures, bestEffort, deleteRoot);
         return failures;
     }
 
@@ -379,12 +388,16 @@ public static class ProfileVaultService
         }
     }
 
-    private static void TryDeleteDir(string path, List<Exception>? failures = null, bool bestEffort = true)
+    private static void TryDeleteDir(string path, List<Exception>? failures = null,
+        bool bestEffort = true, Action<string>? deleteRoot = null)
     {
         try
         {
             if (Directory.Exists(path))
-                Directory.Delete(path, recursive: true);
+            {
+                if (deleteRoot is null) Directory.Delete(path, recursive: true);
+                else deleteRoot(path);
+            }
         }
         catch (Exception ex)
         {

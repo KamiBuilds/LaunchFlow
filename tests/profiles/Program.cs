@@ -126,70 +126,118 @@ static void RunVaultResetHonestyTests()
         Assert(WindowsHelloService.DisableCalls >= 1, "reset disables Windows Hello unlock material");
         var helloAfterHealthy = WindowsHelloService.DisableCalls;
 
+        // Use deterministic owned fault injection on every platform. An open
+        // FileShare.None handle is not a deletion-denial guarantee on Unix.
+        var unrelated = Path.Combine(resetRoot, "unrelated-backup.txt");
+        File.WriteAllText(unrelated, "unchanged");
         File.WriteAllText(VaultDatabase.Current.DatabasePath, "fixture-db");
         Directory.CreateDirectory(plainMarker);
         File.WriteAllText(Path.Combine(plainMarker, "cookie.txt"), "retained");
-        Directory.CreateDirectory(sealedMarker);
-        File.WriteAllText(Path.Combine(sealedMarker, "blob.bin"), "must-keep-if-db-locked");
-        using (var lockedDb = new FileStream(
-            VaultDatabase.Current.DatabasePath,
-            FileMode.Open, FileAccess.Read, FileShare.None))
-        {
-            AggregateException? error = null;
-            try { VaultResetService.ResetLocalVault(wipeProfiles: true); }
-            catch (AggregateException ex) { error = ex; }
-            Assert(error is not null, "database wipe failure is reported instead of silent success");
-            Assert(File.Exists(VaultDatabase.Current.DatabasePath),
-                "failed database wipe retains the vault file");
-            Assert(Directory.Exists(plainMarker) && Directory.Exists(sealedMarker) &&
-                File.Exists(Path.Combine(sealedMarker, "blob.bin")),
-                "failed database wipe must not delete browser profile roots");
-            Assert(WindowsHelloService.DisableCalls == helloAfterHealthy,
-                "failed database wipe must not disable Windows Hello while the vault remains");
-        }
-
-        File.WriteAllText(VaultDatabase.Current.DatabasePath, "fixture-db");
-        Directory.CreateDirectory(plainMarker);
-        File.WriteAllText(Path.Combine(plainMarker, "cookie.txt"), "retained");
-        Directory.CreateDirectory(sealedMarker);
-        using (var locked = new FileStream(
-            Path.Combine(plainMarker, "cookie.txt"),
-            FileMode.Open, FileAccess.Read, FileShare.None))
-        {
-            AggregateException? error = null;
-            try { VaultResetService.ResetLocalVault(wipeProfiles: true); }
-            catch (AggregateException ex) { error = ex; }
-            Assert(error is not null, "plaintext profile wipe failure is reported instead of silent success");
-            Assert(!File.Exists(VaultDatabase.Current.DatabasePath),
-                "partial reset still removed the vault database when requested");
-            Assert(Directory.Exists(plainMarker) && File.Exists(Path.Combine(plainMarker, "cookie.txt")),
-                "failed plaintext wipe retains the locked marker");
-        }
-
-        File.WriteAllText(VaultDatabase.Current.DatabasePath, "fixture-db");
-        Directory.CreateDirectory(plainMarker);
         Directory.CreateDirectory(sealedMarker);
         File.WriteAllText(Path.Combine(sealedMarker, "blob.bin"), "retained-sealed");
-        using (var locked = new FileStream(
-            Path.Combine(sealedMarker, "blob.bin"),
-            FileMode.Open, FileAccess.Read, FileShare.None))
+        AggregateException? dbDenied = null;
+        var profileWipeCalled = false;
+        try
         {
-            AggregateException? error = null;
-            try { VaultResetService.ResetLocalVault(wipeProfiles: true); }
-            catch (AggregateException ex) { error = ex; }
-            Assert(error is not null, "sealed profile wipe failure is reported instead of silent success");
-            Assert(Directory.Exists(sealedMarker) && File.Exists(Path.Combine(sealedMarker, "blob.bin")),
-                "failed sealed wipe retains the locked marker");
+            VaultResetService.ResetLocalVault(true,
+                path =>
+                {
+                    if (path == VaultDatabase.Current.DatabasePath)
+                        throw new UnauthorizedAccessException("Synthetic database denial");
+                    File.Delete(path);
+                },
+                () => { profileWipeCalled = true; return ProfileVaultService.WipeAllProfilesStrict(); });
         }
+        catch (AggregateException ex) { dbDenied = ex; }
+        Assert(dbDenied is { InnerExceptions.Count: 1 } &&
+            dbDenied.InnerExceptions[0] is IOException { InnerException: UnauthorizedAccessException },
+            "portable database denial reports structured original filesystem fault");
+        Assert(!profileWipeCalled && File.Exists(VaultDatabase.Current.DatabasePath) &&
+            Directory.Exists(plainMarker) && Directory.Exists(sealedMarker) &&
+            WindowsHelloService.DisableCalls == helloAfterHealthy,
+            "database denial preserves existing profiles and Hello authorization material");
+
+        // Real native Windows FileShare.None remains a separate physical check.
+        if (OperatingSystem.IsWindows())
+        {
+            using var held = new FileStream(VaultDatabase.Current.DatabasePath,
+                FileMode.Open, FileAccess.Read, FileShare.None);
+            AggregateException? nativeDenied = null;
+            try { VaultResetService.ResetLocalVault(true); }
+            catch (AggregateException ex) { nativeDenied = ex; }
+            Assert(nativeDenied is not null && File.Exists(VaultDatabase.Current.DatabasePath) &&
+                Directory.Exists(plainMarker) && Directory.Exists(sealedMarker),
+                "native Windows database sharing denial retains originals");
+        }
+
+        // These failure collaborators route through production cleanup. A
+        // denied root is never deleted; other roots are still attempted.
+        AggregateException? plainDenied = null;
+        try
+        {
+            VaultResetService.ResetLocalVault(true, File.Delete,
+                () => ProfileVaultService.WipeAllProfilesStrict(path =>
+                {
+                    if (path == ProfileVaultService.ProfilesRoot)
+                        throw new IOException("Synthetic plaintext profile denial");
+                    Directory.Delete(path, true);
+                }));
+        }
+        catch (AggregateException ex) { plainDenied = ex; }
+        Assert(plainDenied is { InnerExceptions.Count: 1 } &&
+            plainDenied.InnerExceptions[0] is IOException { InnerException: IOException },
+            "plaintext profile denial is reported with original nested cause");
+        Assert(!File.Exists(VaultDatabase.Current.DatabasePath) &&
+            Directory.Exists(plainMarker) && !Directory.Exists(ProfileVaultService.SealedRoot),
+            "partial plaintext cleanup leaves only the denied root");
+
+        File.WriteAllText(VaultDatabase.Current.DatabasePath, "fixture-db");
+        Directory.CreateDirectory(sealedMarker);
+        File.WriteAllText(Path.Combine(sealedMarker, "blob.bin"), "retained-sealed");
+        AggregateException? sealedDenied = null;
+        try
+        {
+            VaultResetService.ResetLocalVault(true, File.Delete,
+                () => ProfileVaultService.WipeAllProfilesStrict(path =>
+                {
+                    if (path == ProfileVaultService.SealedRoot)
+                        throw new IOException("Synthetic sealed profile denial");
+                    Directory.Delete(path, true);
+                }));
+        }
+        catch (AggregateException ex) { sealedDenied = ex; }
+        Assert(sealedDenied is { InnerExceptions.Count: 1 } &&
+            sealedDenied.InnerExceptions[0] is IOException { InnerException: IOException },
+            "sealed profile denial is reported with the nested cause");
+        Assert(!File.Exists(VaultDatabase.Current.DatabasePath) &&
+            !Directory.Exists(ProfileVaultService.ProfilesRoot) && Directory.Exists(sealedMarker),
+            "partial sealed cleanup retains encrypted profile data");
 
         File.WriteAllText(VaultDatabase.Current.DatabasePath, "fixture-db");
         Directory.CreateDirectory(plainMarker);
-        Directory.CreateDirectory(sealedMarker);
+        File.WriteAllText(Path.Combine(plainMarker, "cookie.txt"), "fixture");
+        AggregateException? bothDenied = null;
+        try
+        {
+            VaultResetService.ResetLocalVault(true, File.Delete,
+                () => ProfileVaultService.WipeAllProfilesStrict(_ =>
+                    throw new IOException("Synthetic combined roots denial")));
+        }
+        catch (AggregateException ex) { bothDenied = ex; }
+        Assert(bothDenied is { InnerExceptions.Count: 2 } &&
+            bothDenied.InnerExceptions.All(ex => ex is IOException { InnerException: IOException }),
+            "independent plaintext and sealed failures remain in the result graph");
+        Assert(Directory.Exists(plainMarker) && Directory.Exists(sealedMarker),
+            "combined denial retains both failed profile roots");
+
+        File.WriteAllText(VaultDatabase.Current.DatabasePath, "fixture-db");
         var preserved = VaultResetService.ResetLocalVault(wipeProfiles: false);
         Assert(preserved.Succeeded && !File.Exists(VaultDatabase.Current.DatabasePath),
-            "wipeProfiles=false still resets the database");
+            "wipeProfiles=false resets only the database");
         Assert(Directory.Exists(plainMarker) && Directory.Exists(sealedMarker),
-            "wipeProfiles=false preserves both profile roots");
+            "wipeProfiles=false preserves plaintext and sealed browser profiles");
+        Assert(File.ReadAllText(unrelated) == "unchanged",
+            "vault reset never modifies unrelated files/backups");
 
         // Retry remaining cleanup after a partial failure.
         Directory.CreateDirectory(plainMarker);
@@ -197,6 +245,11 @@ static void RunVaultResetHonestyTests()
         var retry = VaultResetService.ResetLocalVault(wipeProfiles: true);
         Assert(retry.Succeeded && !Directory.Exists(ProfileVaultService.ProfilesRoot),
             "retry after partial reset finishes remaining profile cleanup");
+        var repeat = VaultResetService.ResetLocalVault(wipeProfiles: true);
+        Assert(repeat.Succeeded && repeat.DatabaseRemoved && repeat.ProfilesRemoved,
+            "missing vault and profile roots can be reset repeatedly");
+        Assert(File.ReadAllText(unrelated) == "unchanged",
+            "repeat reset leaves unrelated backup intact");
     }
     finally
     {

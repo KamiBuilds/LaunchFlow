@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Linq.Expressions;
 using LaunchFlow.Models;
 using LaunchFlow.Services;
 using Microsoft.Playwright;
@@ -48,6 +49,12 @@ internal static class DocumentBoundCredentialTests
         tests.Add(("post-fill-policy-revocation", browser => PostFillBoundaryAsync(browser, "policy")));
         tests.Add(("post-fill-mapping-invalidation", browser => PostFillBoundaryAsync(browser, "mapping")));
         tests.Add(("post-fill-cancellation", browser => PostFillBoundaryAsync(browser, "cancel")));
+        foreach (var mode in new[] { "healthy-form", "healthy-no-form", "late-form", "late-cancel",
+                                    "late-policy", "late-mapping", "late-disconnect", "late-navigation" })
+        {
+            var scenario = mode;
+            tests.Add(($"late-post-fill-{scenario}", browser => LatePostFillDispatchAsync(browser, scenario)));
+        }
         var filter = args.FirstOrDefault(a => a.StartsWith("--case=", StringComparison.Ordinal))?[7..];
         var selected = tests.Where(t => filter is null || t.Name == filter).ToArray();
         if (selected.Length == 0) throw new ArgumentException("Unknown document-bound test case");
@@ -661,6 +668,179 @@ internal static class DocumentBoundCredentialTests
                 scenario + ": no nonempty credential input lands on the reassociated form");
             Check(syncWithSecretData == 0,
                 scenario + ": refused path emits no secret-bearing insertFromPaste sync");
+        }
+    }
+
+    // Source-linked R1 regression: the real post-fill form inspection returns
+    // from Chromium, then its Task completion is intentionally held. This is
+    // NOT an input-handler mutation (the older tests already cover that case).
+    // Every observation is a boolean/form identity, not a secret-bearing log.
+    private static async Task LatePostFillDispatchAsync(IBrowser browser, string scenario)
+    {
+        const string origin = "https://late-post-fill.test";
+        const string synthetic = "synthetic-late-post-fill-only";
+        var noForm = scenario == "healthy-no-form";
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(4000);
+        await context.RouteAsync(origin + "/**", route => route.FulfillAsync(new()
+        {
+            ContentType = "text/html",
+            Body = noForm
+                ? """
+                    <input id="password" type="password" autocomplete="current-password">
+                    <script>
+                    window.__model = ''; window.__events = [];
+                    document.addEventListener('input', e => {
+                      if (e.target.id !== 'password') return;
+                      window.__events.push({form: e.target.form?.id || '',
+                        nonempty: !!e.target.value, type: e.inputType || '',
+                        data: !!e.data});
+                      if (e.inputType === 'insertFromPaste') window.__model = e.target.value;
+                    }, true);
+                    </script>
+                    """
+                : """
+                    <form id="login"></form><form id="other"></form>
+                    <input id="password" type="password" form="login" autocomplete="current-password">
+                    <script>
+                    window.__model = ''; window.__events = [];
+                    document.addEventListener('input', e => {
+                      if (e.target.id !== 'password') return;
+                      window.__events.push({form: e.target.form?.id || '',
+                        nonempty: !!e.target.value, type: e.inputType || '',
+                        data: !!e.data});
+                      if (e.inputType === 'insertFromPaste') window.__model = e.target.value;
+                    }, true);
+                    </script>
+                    """
+        }));
+        var page = await context.NewPageAsync();
+        await page.GotoAsync(origin + "/password");
+        var policyValues = new Dictionary<string, object?>();
+        using var policy = EnterprisePolicy.UseProviderForTesting(() => policyValues);
+        using var cancellation = new CancellationTokenSource();
+        var workflow = new WebsiteWorkflow
+        {
+            StartUrl = "https://trusted-late.test/start",
+            PasswordSelector = "#password",
+            PasswordCredentialOrigin = origin
+        };
+        workflow.ApprovedLoginOrigins.Add(origin);
+        await using var actualField = await page.QuerySelectorAsync("#password")
+            ?? throw new TestFailure("Late boundary fixture field missing");
+        await using var originalForm = await page.EvaluateHandleAsync(
+            "() => document.querySelector('#login')");
+        await using var originalDocument = await page.EvaluateHandleAsync("() => document");
+        var paused = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var intercepted = 0;
+        async Task<bool> HoldFormCompletionAsync(string expression, object? arg)
+        {
+            // Execute the real Playwright/DOM check, but pause delivery of its
+            // successful Task result before the production continuation resumes.
+            var valid = await actualField.EvaluateAsync<bool>(expression, arg);
+            Interlocked.Increment(ref intercepted);
+            paused.TrySetResult();
+            await release.Task;
+            return valid;
+        }
+        var field = ForwardProxy<IElementHandle>.Create(actualField, (method, parameters) =>
+            method.Name == "EvaluateAsync" && method.IsGenericMethod &&
+            method.GetGenericArguments()[0] == typeof(bool) &&
+            parameters is { Length: > 0 } &&
+            parameters[0] is string expression && expression.Contains("form == null", StringComparison.Ordinal)
+                ? (true, HoldFormCompletionAsync(expression,
+                    parameters.Length > 1 ? parameters[1] : null))
+                : (false, null));
+        await using var engine = new AutomationEngine(new CredentialVault());
+        var unexpectedApprovals = 0;
+        engine.ApproveLoginOriginAsync = (_, _) =>
+        {
+            unexpectedApprovals++;
+            return Task.FromResult(false);
+        };
+        var afterFillCalls = 0;
+        var protectedFill = typeof(AutomationEngine).GetMethod(
+            "FillCredentialAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        // The production binding record is intentionally private. Construct a
+        // strongly typed callback for its actual runtime delegate type rather
+        // than copying its implementation into this test fixture.
+        var callbackType = protectedFill.GetParameters()[5].ParameterType;
+        var binding = Expression.Parameter(callbackType.GenericTypeArguments[0], "binding");
+        Action count = () => afterFillCalls++;
+        var callback = Expression.Lambda(callbackType,
+            Expression.Block(Expression.Invoke(Expression.Constant(count)),
+                Expression.Constant(Task.CompletedTask)), binding).Compile();
+        var task = (Task<string?>)protectedFill.Invoke(engine, new object?[]
+        {
+            workflow, page, "#password", synthetic, cancellation.Token,
+            callback, field,
+            noForm ? null : originalForm, true,
+            noForm ? null : originalDocument
+        })!;
+        await paused.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var initialEvents = await page.EvaluateAsync<System.Text.Json.JsonElement>(
+            "() => window.__events");
+        var initialCount = initialEvents.GetArrayLength();
+        Check(initialCount >= 1 && intercepted == 1,
+            "late form inspection must actually run after the first authorized input");
+        var mutated = false;
+        if (scenario == "late-form")
+        {
+            await page.EvaluateAsync("""
+                () => { const field = document.querySelector('#password');
+                        field.value = ''; field.setAttribute('form', 'other'); }
+                """);
+            mutated = await page.GetAttributeAsync("#password", "form") == "other";
+        }
+        if (scenario == "late-cancel") { cancellation.Cancel(); mutated = cancellation.IsCancellationRequested; }
+        if (scenario == "late-policy") { policyValues["DisableCredentialFill"] = 1; mutated = true; }
+        if (scenario == "late-mapping")
+        {
+            workflow.PasswordCredentialOrigin = "https://other-late.test";
+            mutated = true;
+        }
+        if (scenario == "late-disconnect")
+        {
+            await page.EvaluateAsync("() => document.querySelector('#password').remove()");
+            mutated = await page.QuerySelectorAsync("#password") is null;
+        }
+        if (scenario == "late-navigation")
+        {
+            await page.GotoAsync(origin + "/changed");
+            mutated = page.Url.EndsWith("/changed", StringComparison.Ordinal);
+        }
+        release.TrySetResult();
+        var refused = false;
+        try { await task; }
+        catch (InvalidOperationException) { refused = true; }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { refused = true; }
+        Check(unexpectedApprovals == 0, "late model sync must not ask for fresh permission");
+        if (scenario.StartsWith("healthy-", StringComparison.Ordinal))
+        {
+            var model = await page.EvaluateAsync<string>("() => window.__model");
+            var events = await page.EvaluateAsync<System.Text.Json.JsonElement>(
+                "() => window.__events");
+            Check(!refused && afterFillCalls == 1 && model == synthetic &&
+                events.EnumerateArray().Any(e => e.GetProperty("type").GetString() == "insertFromPaste"),
+                "healthy form/SPA must actually update its model through compatibility input");
+            Check(events.EnumerateArray().All(e => !e.GetProperty("data").GetBoolean()),
+                "no browser input event carries credential data");
+        }
+        else
+        {
+            Check(mutated && refused && afterFillCalls == 0,
+                "adversary must run after last inspection and stop later dispatch: " + scenario);
+            if (scenario != "late-navigation")
+            {
+                var events = await page.EvaluateAsync<System.Text.Json.JsonElement>(
+                    "() => window.__events");
+                Check(events.GetArrayLength() == initialCount &&
+                    events.EnumerateArray().All(e =>
+                        e.GetProperty("form").GetString() != "other" ||
+                        !e.GetProperty("nonempty").GetBoolean()),
+                    "no additional unsafe credential event after late invalidation: " + scenario);
+            }
         }
     }
 

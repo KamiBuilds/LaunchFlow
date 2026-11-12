@@ -44,7 +44,7 @@ public partial class MainWindow
         _vaultLockInProgress = true;
         _vaultCleanupFailed = false;
         _profileSealFailed = false;
-        _keepassMasterPassword = null;
+        PublishKeePassCache(null);
         bool cleanupComplete = false;
         var pendingRun = _runUi.ActiveTask;
         var pendingTeach = _teachUi.ActiveTask;

@@ -478,7 +478,10 @@ public sealed partial class AutomationEngine
             ct.ThrowIfCancellationRequested();
             // Capture the browser-computed HTML form owner before input events can
             // reparent the field. form= associations work even outside form ancestry.
-            await using var ownerForm = afterFill is null ? null :
+            // Capture the original computed form owner for the first fill AND the
+            // later compatibility sync, even when no afterFill callback exists.
+            // A JavaScript-null handle represents a genuine no-form SPA.
+            await using var ownerForm =
                 await element.EvaluateHandleAsync("field => field.form").ConfigureAwait(false);
             // No awaited owner capture may bridge an authorization change
             // into a newly dispatched secret fill.
@@ -527,24 +530,55 @@ public sealed partial class AutomationEngine
                     "(field, form) => field.isConnected && (form == null ? field.form == null : (form.isConnected && field.form === form))",
                     syncForm).ConfigureAwait(false))
                 throw new InvalidOperationException("Credential form changed. Retry sign-in manually.");
-            // Vue 3 (ThousandEyes #ssoForm / #login) binds through InputEvent.
-            // Do not put the secret in InputEvent.data.
+            // The last form/document inspections above are asynchronous. They
+            // are not the final authority for this SECOND secret-bearing write:
+            // policy, cancellation and the exact password map may change while
+            // an inspection result is in flight. Leave no await between this
+            // checkpoint and the browser writer dispatch.
+            ct.ThrowIfCancellationRequested();
+            RequireCredentialAccess();
+            RequireAutomationUrl(origin);
+            if (Volatile.Read(ref navigated) != 0 || frame.IsDetached)
+                throw new InvalidOperationException("Credential document changed. Retry sign-in manually.");
+            if (isPassword)
+                RequireCurrentPasswordDestination(workflow, origin);
+            // Vue-like models may require an additional input notification. The
+            // same browser evaluation validates captured document/form/origin
+            // BEFORE setting the value and AGAIN between notifications. A
+            // synchronous input handler can reparent the field during dispatch.
+            // Do not include the secret in InputEvent.data.
             await element.EvaluateAsync("""
-                (el, next) => {
-                  if (!el.isConnected) throw new Error('detached');
+                (el, binding) => {
+                  const doc = binding.document;
+                  const form = binding.form;
+                  const assertBound = () => {
+                    if (!el.isConnected || el.ownerDocument !== doc ||
+                        doc.defaultView?.document !== doc ||
+                        doc.location.origin !== binding.origin ||
+                        (form == null ? el.form != null :
+                            (!form.isConnected || form.ownerDocument !== doc || el.form !== form)))
+                      throw new Error('Credential binding changed');
+                  };
+                  assertBound();
                   const setter = Object.getOwnPropertyDescriptor(
-                    window.HTMLInputElement.prototype, 'value')?.set;
-                  if (setter) setter.call(el, next);
-                  else el.value = next;
+                    doc.defaultView.HTMLInputElement.prototype, 'value')?.set;
+                  if (setter) setter.call(el, binding.value);
+                  else el.value = binding.value;
+                  assertBound();
+                  let inputEvent;
                   try {
-                    el.dispatchEvent(new InputEvent('input', {
+                    inputEvent = new doc.defaultView.InputEvent('input', {
                       bubbles: true, cancelable: true, inputType: 'insertFromPaste'
-                    }));
-                  } catch (_) { /* older engines without InputEvent */ }
-                  el.dispatchEvent(new Event('input', { bubbles: true }));
-                  el.dispatchEvent(new Event('change', { bubbles: true }));
+                    });
+                  } catch (_) { /* Older engines may lack InputEvent. */ }
+                  if (inputEvent) el.dispatchEvent(inputEvent);
+                  assertBound();
+                  el.dispatchEvent(new doc.defaultView.Event('input', { bubbles: true }));
+                  assertBound();
+                  el.dispatchEvent(new doc.defaultView.Event('change', { bubbles: true }));
+                  assertBound();
                 }
-                """, value).ConfigureAwait(false);
+                """, new { value, document, form = syncForm, origin }).ConfigureAwait(false);
             if (afterFill is not null && ownerForm is not null)
                 await afterFill(new CredentialFieldBinding(
                     origin, element, document, ownerForm, frame)).ConfigureAwait(false);

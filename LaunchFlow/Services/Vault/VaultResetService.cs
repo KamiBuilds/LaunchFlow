@@ -14,17 +14,26 @@ public static class VaultResetService
         public bool Partial => !Succeeded && (DatabaseRemoved || ProfilesRemoved);
     }
 
-    public static ResetResult ResetLocalVault(bool wipeProfiles)
+    public static ResetResult ResetLocalVault(bool wipeProfiles) => ResetLocalVault(
+        wipeProfiles, File.Delete, () => ProfileVaultService.WipeAllProfilesStrict());
+
+    // Scoped fault injection for portable tests. The application's public path
+    // always uses actual file/profile deletion and has no runtime test flag.
+    internal static ResetResult ResetLocalVault(
+        bool wipeProfiles, Action<string> deleteFile,
+        Func<IReadOnlyList<Exception>> deleteProfiles)
     {
+        ArgumentNullException.ThrowIfNull(deleteFile);
+        ArgumentNullException.ThrowIfNull(deleteProfiles);
         try { VaultDatabase.Current.Lock(); } catch { /* ignore */ }
 
         var failures = new List<Exception>();
         var databaseRemoved = false;
         try
         {
-            TryDelete(VaultDatabase.Current.DatabasePath);
-            TryDelete(VaultDatabase.Current.DatabasePath + "-wal");
-            TryDelete(VaultDatabase.Current.DatabasePath + "-shm");
+            TryDelete(VaultDatabase.Current.DatabasePath, deleteFile);
+            TryDelete(VaultDatabase.Current.DatabasePath + "-wal", deleteFile);
+            TryDelete(VaultDatabase.Current.DatabasePath + "-shm", deleteFile);
             databaseRemoved = !File.Exists(VaultDatabase.Current.DatabasePath);
         }
         catch (Exception ex)
@@ -48,7 +57,7 @@ public static class VaultResetService
             WindowsHelloService.Disable();
             if (wipeProfiles)
             {
-                var profileOutcome = ProfileVaultService.WipeAllProfilesStrict();
+                var profileOutcome = deleteProfiles();
                 profilesRemoved = profileOutcome.Count == 0;
                 failures.AddRange(profileOutcome);
             }
@@ -69,11 +78,11 @@ public static class VaultResetService
             failures);
     }
 
-    private static void TryDelete(string path)
+    private static void TryDelete(string path, Action<string> deleteFile)
     {
         try
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path)) deleteFile(path);
         }
         catch (Exception ex)
         {

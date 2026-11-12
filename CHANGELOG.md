@@ -1,3 +1,22 @@
+# v0.7.76 — Remaining v0.7.75 boundary repairs (candidate)
+
+- Recheck current authorization after the final awaited post-fill DOM inspection, and
+  perform the compatibility model write in a single browser evaluation that
+  verifies the original document, origin and form owner before each notification.
+- Keep the verified synchronous final password-destination gate and secret-free
+  InputEvent.data. Add real Chromium late-inspection/healthy-model regressions.
+- Scope KeePass picker, cache and status to the initiating operation. Preserve
+  owned automatic database discovery and autosave, suppress only self-generated
+  editor TextChanged notifications, and publish the validated model before UI.
+- Relocate KeePass chooser UI logic to its existing partial and exercise the
+  production dirty-marking handler through event-aware portable UI fixtures.
+- Add internal, narrowly scoped test-only file/root deletion collaborators so
+  portable profile reset failures are meaningful on Linux. Retain Windows
+  sharing-denial checks and actual production filesystem deletion.
+- Extend the encrypted SQLite cold-reopen test for KeePass entry/database/key.
+- **Candidate only:** real .NET, browser, WPF/native Windows, and hosted gates
+  must pass on the exact final commit before release readiness can be asserted.
+
 # v0.7.75 — Six boundary fixes: post-fill, reset honesty, Hello freshness, KeePass ownership, OTP ack, update URL
 
 - Guard the post-FillAsync credential model sync with renewed cancellation/policy/destination/document/form checks; stop putting secrets in InputEvent.data.

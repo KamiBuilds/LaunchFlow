@@ -101,6 +101,29 @@ try
         recovered.AdditionalSettings!.ContainsKey("future_setting") &&
         recovered.Workflows[0].Steps[0].AdditionalSettings!.ContainsKey("future_action"),
         "cold encrypted reopen matches committed values and preserves unknown fields");
+    // KeePass entry/database/key references are configuration only; the master
+    // password is never serialized. Verify a real encrypted cold reopen.
+    generation = vault.SessionGeneration;
+    var keepass = tx.Commit(recovered, c =>
+    {
+        c.Workflows[0].KeepassEntryPath = "synthetic-folder/entry";
+        c.KeePassDatabasePath = "synthetic-kdbx-path";
+        c.KeePassKeyFilePath = "synthetic-key-file-path";
+    }, () => true, generation, c =>
+    {
+        recovered.Workflows[0].KeepassEntryPath = c.Workflows[0].KeepassEntryPath;
+        recovered.KeePassDatabasePath = c.KeePassDatabasePath;
+        recovered.KeePassKeyFilePath = c.KeePassKeyFilePath;
+    });
+    Check(keepass.Published && recovered.Workflows[0].KeepassEntryPath == "synthetic-folder/entry",
+        "owned KeePass configuration transaction publishes the selected entry");
+    vault.Lock();
+    Check(vault.Unlock(password), "KeePass configuration is accessible after cold vault reopen");
+    var reopenedKeePass = store.Load();
+    Check(reopenedKeePass.Workflows[0].KeepassEntryPath == "synthetic-folder/entry" &&
+        reopenedKeePass.KeePassDatabasePath == "synthetic-kdbx-path" &&
+        reopenedKeePass.KeePassKeyFilePath == "synthetic-key-file-path",
+        "KeePass selection/database/key survive actual encrypted SQLite cold reopen");
     var oldGeneration = generation;
     var denied = tx.Commit(live, c => c.UiLanguage = "de",
         () => true, oldGeneration, _ => throw new Exception("stale authorization published"));

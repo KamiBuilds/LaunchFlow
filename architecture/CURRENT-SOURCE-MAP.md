@@ -1,3 +1,39 @@
+# Current source and ownership map — v0.7.76 candidate
+
+**Starting source:** `abcd04c86b0f5e76bd9a8326f0606cc9949d8db6`
+(v0.7.75); final commit must be verified separately.
+
+- `AutomationEngine.Login.cs`: initial protected password fill retains explicit
+  origin consent, current policy, and a final synchronous password destination
+  guard. The separate model-compatibility write uses the original document and
+  HTML `form` binding in the same browser evaluation, with final host checks
+  immediately after all pre-dispatch awaits. Every event notification verifies
+  the captured binding; no credential is passed in InputEvent.data.
+- `MainWindow.KeePassSettings.cs`: KeePass chooser and database setup belong
+  together. The chooser owns a generation separate from editor selection/revision,
+  and transient secret cache publications have a distinct revision. Stale
+  callbacks cannot clean up newer cache or status. Normal TextChanged remains
+  effective for user edits; short owned UI presentation suppresses self-invalidating
+  notifications without changing the durable configuration transaction.
+- `MainWindow.Persistence.cs` / `WorkflowEditorSession`: real dirty tracking and
+  editor revision/selection epoch remain authoritative, including after discovery.
+- `VaultResetService.cs` / `ProfileVaultService.cs`: public reset keeps real
+  filesystem semantics. Package-internal scoped deletion delegates support
+  portable error-path tests without an exposed runtime flag or global override.
+- `tests/runtime/DocumentBoundCredentialTests.cs`: synthetic Chromium fixture
+  pauses the last browser-computed form inspection and injects late invalidation.
+- `tests/workspaces/UiHarness.cs`: source-linked chooser, cache, settings and
+  `MarkUnsavedChanges` methods plus synchronous TextChanged notifications.
+- `tests/profiles/Program.cs`: portable injected faults and native Windows
+  sharing denial; `tests/save/Program.cs`: real encrypted cold-reopen check.
+
+**Limitations:** source/static gate results are not equivalent to .NET compilation,
+real browser events, installed WPF tests, or actual provider-account acceptance.
+
+---
+
+## Previous maps (retained for history)
+
 # Current source and ownership map — v0.7.74 incremental candidate
 
 **Reviewed parent:** `897825ff5f10a9181c9979465c4a5920aec2ecce` (v0.7.73). The new commit's exact identity is recorded in GitHub.

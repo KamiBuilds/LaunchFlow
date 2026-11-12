@@ -274,7 +274,7 @@ public partial class MainWindow
             if (_windowsLocked || _vaultLockInProgress || _exiting) return;
             if (launchRevision != _workspaceRevision)
             {
-                _keepassMasterPassword = null;
+                PublishKeePassCache(null);
                 AppendLog("Configuration was replaced while authorizing the run. Run again using the current settings.");
                 return;
             }
@@ -292,7 +292,7 @@ public partial class MainWindow
                 (workspace is not null && (!ReferenceEquals(WorkspaceCombo.SelectedItem, workspace) ||
                     !WorkspaceCatalog.IsCurrentSelection(_configuration, workspace, WorkspaceNameBox.Text))))
             {
-                _keepassMasterPassword = null;
+                PublishKeePassCache(null);
                 AppendLog("Workflow selection changed before launch. Run again using the current configuration.");
                 return;
             }
@@ -306,7 +306,7 @@ public partial class MainWindow
                     !WorkspaceCatalog.IsCurrentSelection(_configuration, workspace, WorkspaceNameBox.Text))) ||
                 toRun.Any(workflow => !AutomationAllowed(workflow)))
             {
-                _keepassMasterPassword = null;
+                PublishKeePassCache(null);
                 return;
             }
             var monitors = MonitorService.GetMonitors();

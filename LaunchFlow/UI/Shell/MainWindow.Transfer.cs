@@ -129,7 +129,7 @@ public partial class MainWindow
             VaultDatabase.Current.ReplaceSnapshot(projected, imported.Credentials, capturedSession);
 
             _workspaceRevision++;
-            _keepassMasterPassword = null;
+            PublishKeePassCache(null);
             _configuration = projected;
             _loadingEditor = true;
             try

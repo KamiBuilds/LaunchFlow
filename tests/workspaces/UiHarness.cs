@@ -683,6 +683,174 @@ var tests = new List<(string Name, Func<Task> Body)>
         }
         finally { File.Delete(database); }
     }),
+    ("75-R2 healthy KeePass selection with real change notifications keeps cache, status and revision", async () =>
+    {
+        var ui = new UiFixture();
+        var workflow = ui._configuration.Workflows[0];
+        ui._editorSession.Select(workflow);
+        var database = Path.GetTempFileName();
+        try
+        {
+            ui.KeePassDbBox.Text = database;
+            var revision = ui._editorSession.Revision;
+            var pending = AsyncVoidTracker.Run(ui.ChooseEntry);
+            await KeePassXcService.ListEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            KeePassXcService.ListRelease.SetResult(new() { "synthetic-entry" });
+            await pending.WaitAsync(TimeSpan.FromSeconds(3));
+            Check(ui._store.DurableSaves == 1 && workflow.KeepassEntryPath == "synthetic-entry",
+                "native-equivalent TextChanged still permits exactly one durable selection");
+            Check(ui._keepassMasterPassword is not null &&
+                ui.CredentialStatus.Text.Contains("KeePassXC", StringComparison.Ordinal) &&
+                ui.KeepassEntryBox.Text == "synthetic-entry",
+                "approved selection presents its own cache and current credential status");
+            Check(ui._editorSession.Revision == revision && !ui._loadingEditor,
+                "owned entry presentation did not create a competing dirty revision");
+        }
+        finally { File.Delete(database); }
+    }),
+    ("75-R2 automatic KeePass database discovery continues to picker and autosaves on cancel", async () =>
+    {
+        var ui = new UiFixture();
+        ui._editorSession.Select(ui._configuration.Workflows[0]);
+        var database = Path.GetTempFileName();
+        try
+        {
+            KeePassXcService.Databases.Add(new(database));
+            KeePassEntryPickerWindow.Result = false;
+            var pending = AsyncVoidTracker.Run(ui.ChooseEntry);
+            await KeePassXcService.ListEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            Check(ui.KeePassDbBox.Text == database && ui._editorSession.IsDirty &&
+                ui._autoSaveTimer.Running && ui._autoSaveSchedule.Changes >= 1,
+                "discovering a database is an owned, normally autosaved setting change");
+            KeePassXcService.ListRelease.SetResult(new() { "synthetic-entry" });
+            await pending.WaitAsync(TimeSpan.FromSeconds(3));
+            Check(ui._store.DurableSaves == 0 &&
+                string.IsNullOrEmpty(ui._configuration.Workflows[0].KeepassEntryPath),
+                "cancel after discovery does not silently commit a picker choice");
+        }
+        finally { File.Delete(database); }
+    }),
+    ("75-R2 selected local credential retains precedence warning after owned entry presentation", async () =>
+    {
+        var ui = new UiFixture();
+        var workflow = ui._configuration.Workflows[0];
+        ui._editorSession.Select(workflow);
+        VaultDatabase.Current.Credentials[workflow.Id] = new SiteCredential("synthetic-user", "synthetic-password");
+        var database = Path.GetTempFileName();
+        try
+        {
+            ui.KeePassDbBox.Text = database;
+            var pending = AsyncVoidTracker.Run(ui.ChooseEntry);
+            await KeePassXcService.ListEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            KeePassXcService.ListRelease.SetResult(new() { "synthetic-entry" });
+            await pending.WaitAsync(TimeSpan.FromSeconds(3));
+            Check(ui._store.DurableSaves == 1 &&
+                ui.CredentialStatus.Text.Contains("used first", StringComparison.Ordinal) &&
+                MessageBox.Messages.Any(x => x.Contains("takes priority", StringComparison.Ordinal)),
+                "local password precedence remains visible after published entry");
+        }
+        finally { File.Delete(database); }
+    }),
+    ("75-R3 old KeePass listing cannot erase newer selection cache or status", async () =>
+    {
+        var ui = new UiFixture();
+        var original = ui._configuration.Workflows[0];
+        ui._editorSession.Select(original);
+        var database = Path.GetTempFileName();
+        try
+        {
+            ui.KeePassDbBox.Text = database;
+            ui.PublishCache("synthetic-old-cache");
+            var pending = AsyncVoidTracker.Run(ui.ChooseEntry);
+            await KeePassXcService.ListEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            ui._editorSession.Select(new WebsiteWorkflow());
+            ui.PublishCache("synthetic-new-owner-cache");
+            ui.CredentialStatus.Text = "newer-owner-status";
+            KeePassXcService.ListRelease.SetResult(new() { "synthetic-entry" });
+            await pending.WaitAsync(TimeSpan.FromSeconds(3));
+            Check(ui._store.DurableSaves == 0 &&
+                ui._keepassMasterPassword == "synthetic-new-owner-cache" &&
+                ui.CredentialStatus.Text == "newer-owner-status",
+                "rejected stale continuation makes zero writes to newer cache/status");
+        }
+        finally { File.Delete(database); }
+    }),
+    ("75-R3 overlapping same-workflow KeePass picker cannot overwrite newer completed picker", async () =>
+    {
+        var ui = new UiFixture();
+        var workflow = ui._configuration.Workflows[0];
+        ui._editorSession.Select(workflow);
+        var database = Path.GetTempFileName();
+        try
+        {
+            ui.KeePassDbBox.Text = database;
+            ui.PublishCache("synthetic-reused-value");
+            var oldRelease = KeePassXcService.ListRelease;
+            var old = AsyncVoidTracker.Run(ui.ChooseEntry);
+            await KeePassXcService.ListEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            KeePassXcService.ListRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            KeePassXcService.ListEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            var newer = AsyncVoidTracker.Run(ui.ChooseEntry);
+            await KeePassXcService.ListEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            KeePassXcService.ListRelease.SetResult(new() { "newer-entry" });
+            await newer.WaitAsync(TimeSpan.FromSeconds(3));
+            var current = ui._keepassMasterPassword;
+            var currentStatus = ui.CredentialStatus.Text;
+            oldRelease.SetResult(new() { "older-entry" });
+            await old.WaitAsync(TimeSpan.FromSeconds(3));
+            Check(ui._store.DurableSaves == 1 && workflow.KeepassEntryPath == "newer-entry" &&
+                ui._keepassMasterPassword == current && ui.CredentialStatus.Text == currentStatus,
+                "older same-selection completion cannot overwrite newer entry/cache/status");
+        }
+        finally { File.Delete(database); }
+    }),
+    ("75-R2 changed KeePass database or key while listing cancels the old selection", async () =>
+    {
+        foreach (var control in new[] { "database", "key" })
+        {
+            var ui = new UiFixture();
+            ui._editorSession.Select(ui._configuration.Workflows[0]);
+            var database = Path.GetTempFileName();
+            try
+            {
+                ui.KeePassDbBox.Text = database;
+                var pending = AsyncVoidTracker.Run(ui.ChooseEntry);
+                await KeePassXcService.ListEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+                if (control == "database") ui.KeePassDbBox.Text = database + "-new";
+                else ui.KeePassKeyBox.Text = "changed-key";
+                ui.PublishCache("synthetic-new-owner-value");
+                ui.CredentialStatus.Text = "changed-settings-status";
+                KeePassXcService.ListRelease.SetResult(new() { "older-entry" });
+                await pending.WaitAsync(TimeSpan.FromSeconds(3));
+                Check(ui._store.DurableSaves == 0 &&
+                    ui._configuration.Workflows[0].KeepassEntryPath == "" &&
+                    ui._keepassMasterPassword == "synthetic-new-owner-value" &&
+                    ui.CredentialStatus.Text == "changed-settings-status",
+                    "real " + control + " TextChanged blocks stale chooser, keeps newer state");
+            }
+            finally { File.Delete(database); }
+        }
+    }),
+    ("75-R2 storage rejection never publishes KeePass entry to the live workflow", async () =>
+    {
+        var ui = new UiFixture();
+        var workflow = ui._configuration.Workflows[0];
+        ui._editorSession.Select(workflow);
+        var database = Path.GetTempFileName();
+        try
+        {
+            ui.KeePassDbBox.Text = database;
+            ui._store.FailNextSave = true;
+            var pending = AsyncVoidTracker.Run(ui.ChooseEntry);
+            await KeePassXcService.ListEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            KeePassXcService.ListRelease.SetResult(new() { "would-have-been-entry" });
+            await pending.WaitAsync(TimeSpan.FromSeconds(3));
+            Check(ui._store.DurableSaves == 0 && string.IsNullOrEmpty(workflow.KeepassEntryPath) &&
+                string.IsNullOrEmpty(ui.KeepassEntryBox.Text),
+                "storage rejection leaves both live model and editor unchanged");
+        }
+        finally { File.Delete(database); }
+    }),
     ("typed master unlock refreshes Hello freshness; Hello-derived unlock does not", () =>
     {
         var typed = new UiFixture();
@@ -946,6 +1114,11 @@ partial class UiFixture
     public readonly Control RetryVaultLockButton = new();
     public bool _windowsLocked = false, _vaultLockInProgress = false, _exiting = false;
     public bool _loadingEditor = false;
+    public long _keepassChooserGeneration;
+    public long _keepassCacheRevision;
+    public readonly FakeAutoSaveSchedule _autoSaveSchedule = new();
+    public readonly FakeTimer _autoSaveTimer = new();
+    public readonly Control SaveStatusLabel = new(), SaveChangesButton = new();
     public VisualRecorderWindow? _activeRecorder;
     public Task _vaultLockTask = Task.CompletedTask;
     public Task? _profileSealTask;
@@ -958,7 +1131,28 @@ partial class UiFixture
     public int Prompts;
     public bool Cleared;
     public readonly List<string> Notifications = new();
-    public UiFixture() { VaultDatabase.Current.IsUnlocked = true; VaultDatabase.Current.Credentials.Clear(); ProfileVaultService.Seals = 0; ProfileVaultService.FailSeal = false; KeePassXcService.Reset(); WindowsHelloService.Reset(); NextUnlockUsesHello = false; UnlockDialogResult = true; MessageBox.Hook = null; MessageBox.Result = MessageBoxResult.Yes; MessageBox.Messages.Clear(); PasswordOriginApprovalWindow.Hook = null; PasswordOriginApprovalWindow.Result = false; }
+    public UiFixture()
+    {
+        VaultDatabase.Current.IsUnlocked = true;
+        VaultDatabase.Current.Credentials.Clear();
+        ProfileVaultService.Seals = 0;
+        ProfileVaultService.FailSeal = false;
+        KeePassXcService.Reset();
+        WindowsHelloService.Reset();
+        NextUnlockUsesHello = false;
+        UnlockDialogResult = true;
+        MessageBox.Hook = null;
+        MessageBox.Result = MessageBoxResult.Yes;
+        MessageBox.Messages.Clear();
+        PasswordOriginApprovalWindow.Hook = null;
+        PasswordOriginApprovalWindow.Result = false;
+        KeePassEntryPickerWindow.Result = true;
+        // The three real constructor subscriptions relevant to KeePass
+        // ownership. These controls fire synchronously on programmatic writes.
+        KeepassEntryBox.TextChanged += MarkUnsavedChanges;
+        KeePassDbBox.TextChanged += MarkUnsavedChanges;
+        KeePassKeyBox.TextChanged += MarkUnsavedChanges;
+    }
     public readonly MasterPasswordService _master = new();
     public readonly ConfigStore _store = new();
     // The actual coordinator + transaction are linked into this portable fixture.
@@ -1008,7 +1202,6 @@ partial class UiFixture
     public void MarkSaved() { }
     public void MarkSaved(long? committedRevision) { }
     public void RefreshLoginRecipeLabel(WebsiteWorkflow? workflow = null) { }
-    public void MarkUnsavedChanges() => _editorSession.MarkEdited();
     public void PersistRecipes(AutomationEngine.RunResult result) => PersistLearnedLoginRecipes(result);
     public bool IsLoaded => true;
     public static void AppendLog(string _) { }
@@ -1021,7 +1214,8 @@ partial class UiFixture
     public Guid? _loadedCredentialWorkflowId;
     public readonly Control CredentialStatus = new(), UsernameBox = new(), PasswordInput = new(), PasswordOriginBox = new(), AutoLoginCheck = new(), KeepassEntryBox = new(), WorkflowList = new(), PasswordWebsiteCombo = new();
     public readonly Control KeePassDbBox = new(), KeePassKeyBox = new(), SettingsTabs = new();
-    public void SetKeePassDatabase(string path) => KeePassDbBox.Text = path;
+    public void PublishCache(string? secret) => PublishKeePassCache(secret);
+    public readonly Control KeePassStatusLabel = new();
     public readonly FakeDispatcher Dispatcher = new();
     public bool IsVisible { get; set; } = true;
     public WindowState WindowState { get; set; } = WindowState.Normal;
@@ -1126,9 +1320,10 @@ sealed class SecretPromptWindow(string title, string explanation)
 }
 sealed class KeePassEntryPickerWindow(List<string> entries)
 {
+    public static bool? Result = true;
     public object? Owner { get; init; }
     public string SelectedPath => entries[0];
-    public bool? ShowDialog() { MessageBox.Hook?.Invoke(); return true; }
+    public bool? ShowDialog() { MessageBox.Hook?.Invoke(); return Result; }
 }
 sealed class AsyncVoidTracker : SynchronizationContext
 {
@@ -1178,12 +1373,55 @@ sealed class Control
 {
     public Visibility Visibility { get; set; } = Visibility.Collapsed;
     public bool IsEnabled { get; set; } = true;
-    public string Text { get; set; } = "";
+    private string _text = "";
+    public event Action? TextChanged;
+    public string Text
+    {
+        get => _text;
+        set
+        {
+            if (string.Equals(_text, value, StringComparison.Ordinal)) return;
+            _text = value;
+            TextChanged?.Invoke();
+        }
+    }
     public string Password { get; set; } = "";
     public bool? IsChecked { get; set; }
     public int SelectedIndex { get; set; }
     public object? SelectedItem { get; set; }
+    public object? Foreground { get; set; }
+    public object? FontWeight { get; set; }
+    public object? Content { get; set; }
+    public object? ToolTip { get; set; }
     public void Clear() { Text = ""; Password = ""; }
+}
+sealed class FakeAutoSaveSchedule
+{
+    public int Changes;
+    public void Changed(DateTimeOffset _) => Changes++;
+    public void Saved() { }
+}
+sealed class FakeTimer
+{
+    public bool Running;
+    public void Start() => Running = true;
+    public void Stop() => Running = false;
+}
+static class FontWeights
+{
+    public static object Bold { get; } = "Bold";
+    public static object Normal { get; } = "Normal";
+}
+namespace System.Windows.Media
+{
+    public sealed class SolidColorBrush(Color color)
+    {
+        public Color Color { get; } = color;
+    }
+    public readonly record struct Color(byte R, byte G, byte B)
+    {
+        public static Color FromRgb(byte r, byte g, byte b) => new(r, g, b);
+    }
 }
 
 namespace System.Windows.Forms { public enum ToolTipIcon { None, Info, Error, Warning } }
@@ -1298,11 +1536,17 @@ namespace LaunchFlow.Services
     {
         public static SiteCredential? ReadEntry(string database, string entry, string? keyFile, string? password) => null;
         public sealed record DatabaseChoice(string Path);
-        public static List<DatabaseChoice> FindDatabases() => new();
+        public static readonly List<DatabaseChoice> Databases = new();
+        public static List<DatabaseChoice> FindDatabases() => new(Databases);
         public static bool IsCliAvailable() => true;
         public static TaskCompletionSource ListEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public static TaskCompletionSource<List<string>> ListRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public static void Reset() { ListEntered = new(TaskCreationOptions.RunContinuationsAsynchronously); ListRelease = new(TaskCreationOptions.RunContinuationsAsynchronously); }
+        public static void Reset()
+        {
+            Databases.Clear();
+            ListEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            ListRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
         public static Task<List<string>> ListEntriesAsync(string database, string key, string secret) { ListEntered.TrySetResult(); return ListRelease.Task; }
     }
     static class LoginHealth { public sealed record Health(bool NeedsAttention, string Reason); public static Task<Health> InspectAsync(Microsoft.Playwright.IPage page) => Task.FromResult(new Health(false, "")); }
