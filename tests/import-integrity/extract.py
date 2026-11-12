@@ -25,7 +25,7 @@ if cache_end < 0:
 cache_method = cache_source[cache_match.start():cache_end + len("\n    }")]
 target = Path(__file__).resolve().parent / "GeneratedImportHandler.g.cs"
 target.write_text(
-    "using LaunchFlow.Models;\nusing LaunchFlow.Services;\nusing System.Windows;\n"
+    "#nullable enable\nusing LaunchFlow.Models;\nusing LaunchFlow.Services;\nusing System.Windows;\n"
     "namespace LaunchFlow;\npublic sealed partial class MainWindow\n{\n" + method + "\n" + cache_method + "\n}\n",
     encoding="utf-8")
 print("Linked production import handler:", target.name)

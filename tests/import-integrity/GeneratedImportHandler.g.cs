@@ -1,3 +1,4 @@
+#nullable enable
 using LaunchFlow.Models;
 using LaunchFlow.Services;
 using System.Windows;
