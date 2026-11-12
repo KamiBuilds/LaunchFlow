@@ -823,7 +823,7 @@ var tests = new List<(string Name, Func<Task> Body)>
                 KeePassXcService.ListRelease.SetResult(new() { "older-entry" });
                 await pending.WaitAsync(TimeSpan.FromSeconds(3));
                 Check(ui._store.DurableSaves == 0 &&
-                    ui._configuration.Workflows[0].KeepassEntryPath == "" &&
+                    string.IsNullOrEmpty(ui._configuration.Workflows[0].KeepassEntryPath) &&
                     ui._keepassMasterPassword == "synthetic-new-owner-value" &&
                     ui.CredentialStatus.Text == "changed-settings-status",
                     "real " + control + " TextChanged blocks stale chooser, keeps newer state");

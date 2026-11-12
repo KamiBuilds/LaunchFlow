@@ -115,8 +115,15 @@ Case("IMPORT_REMAINS_LOCKED_REJECTED", ui =>
     ui.Import(encryptedImport);
 }, expectOriginal: true);
 
-Case("IMPORT_CONFIRMED_CONTINUOUS_SESSION", ui => ui.Import(encryptedImport),
-    expectOriginal: false);
+Case("IMPORT_CONFIRMED_CONTINUOUS_SESSION", ui =>
+{
+    ui._keepassMasterPassword = "synthetic-cache-before-import";
+    var previousCacheRevision = ui._keepassCacheRevision;
+    ui.Import(encryptedImport);
+    Require(ui._keepassMasterPassword is null &&
+            ui._keepassCacheRevision == previousCacheRevision + 1,
+        "Accepted import must revoke the prior KeePass cache ownership");
+}, expectOriginal: false);
 
 vault.Lock();
 SqliteConnection.ClearAllPools();

@@ -23,6 +23,7 @@ namespace LaunchFlow
         public ShortcutState _shortcuts = new() { ActiveShortcut = "Ctrl+M" };
         public sealed class ShortcutState { public string ActiveShortcut { get; set; } = ""; }
         public string? _keepassMasterPassword;
+        public long _keepassCacheRevision;
         public readonly FakeRunner _runner = new();
         public readonly FixtureControl SettingsTabs = new(), MainTabs = new();
         public readonly FixtureControl WorkflowList = new(), WorkspaceCombo = new(), WorkspaceNameBox = new();

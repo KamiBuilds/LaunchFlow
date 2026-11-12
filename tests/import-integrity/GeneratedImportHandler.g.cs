@@ -61,7 +61,7 @@ public sealed partial class MainWindow
             VaultDatabase.Current.ReplaceSnapshot(projected, imported.Credentials, capturedSession);
 
             _workspaceRevision++;
-            _keepassMasterPassword = null;
+            PublishKeePassCache(null);
             _configuration = projected;
             _loadingEditor = true;
             try
@@ -99,5 +99,10 @@ public sealed partial class MainWindow
         {
             MessageBox.Show(this, ex.Message, "Import failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+    private void PublishKeePassCache(string? secret)
+    {
+        _keepassMasterPassword = secret;
+        checked { _keepassCacheRevision++; }
     }
 }
