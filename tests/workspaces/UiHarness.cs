@@ -575,7 +575,8 @@ var tests = new List<(string Name, Func<Task> Body)>
         ui.Dispatcher.DelayInvocations = true;
         var old = ui.ApproveWithToken(flow, "https://other.test", ct1.Token);
         Check(ui.Dispatcher.Pending.Count == 1, "real adapter was queued");
-        Check(ui._runUi.Complete(lease1) && ui._runUi.TryBeginRun(out var lease2),
+        Check(ui._runUi.Complete(lease1), "old run lease released");
+        Check(ui._runUi.TryBeginRun(out var lease2),
             "newer run takes a distinct lease");
         using var ct2 = new CancellationTokenSource();
         Check(ui._runUi.AttachCancellation(lease2, ct2), "second token attached");
