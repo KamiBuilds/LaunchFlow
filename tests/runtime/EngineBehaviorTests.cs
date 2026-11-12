@@ -76,11 +76,15 @@ internal static class EngineBehaviorTests
             return true;
         };
         refused = false;
+        // FillCredentialAsync takes ownership of a selected handle. Query a fresh
+        // handle for this separate attempt instead of reusing the disposed one.
+        await using var retryPasswordField = await page.QuerySelectorAsync("#password")
+            ?? throw new Exception("Retry password input missing");
         try
         {
             await (Task<string?>)fill.Invoke(engine, new object?[] {
                 workflow, page, "#password", "synthetic-password", CancellationToken.None,
-                null, passwordField, null, true, null })!;
+                null, retryPasswordField, null, true, null })!;
         }
         catch (InvalidOperationException) { refused = true; }
         Check(refused && workflow.PasswordCredentialOrigin == "https://changed.test" &&
