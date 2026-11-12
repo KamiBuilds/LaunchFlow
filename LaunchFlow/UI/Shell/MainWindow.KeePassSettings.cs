@@ -197,6 +197,8 @@ public partial class MainWindow
             // An older operation may fail after a newer operation published
             // its cache/status. Never mutate or warn in that newer owner.
             if (!StillOwns()) return;
+            PublishKeePassCache(null);
+            cacheRevision = _keepassCacheRevision;
             AppendLog("KeePass selection failed: " + ex.GetType().Name);
             MessageBox.Show(this, "The KeePassXC login could not be selected. Check vault authorization, organization policy and the database connection.", "Couldn't read KeePassXC",
                 MessageBoxButton.OK, MessageBoxImage.Warning);

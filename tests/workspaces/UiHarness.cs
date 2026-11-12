@@ -851,6 +851,93 @@ var tests = new List<(string Name, Func<Task> Body)>
         }
         finally { File.Delete(database); }
     }),
+    ("current failed KeePass cache permits a fresh-password retry", async () =>
+    {
+        var ui = new UiFixture();
+        var workflow = ui._configuration.Workflows[0];
+        ui._editorSession.Select(workflow);
+        var database = Path.GetTempFileName();
+        try
+        {
+            ui.KeePassDbBox.Text = database;
+            const string rejected = "synthetic-rejected-cache";
+            ui.PublishCache(rejected);
+            var cacheRevision = ui._keepassCacheRevision;
+            var prompts = 0;
+            ui.KeePassHook = () => prompts++;
+            var first = AsyncVoidTracker.Run(ui.ChooseEntry);
+            await KeePassXcService.ListEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            KeePassXcService.ListRelease.SetException(
+                new InvalidOperationException("Synthetic current unlock denial"));
+            await first.WaitAsync(TimeSpan.FromSeconds(3));
+            var clearedAfterFailure = ui._keepassMasterPassword is null;
+            var revokedCacheRevision = ui._keepassCacheRevision;
+
+            KeePassXcService.ListEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            KeePassXcService.ListRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            var retry = AsyncVoidTracker.Run(ui.ChooseEntry);
+            await KeePassXcService.ListEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            KeePassXcService.ListRelease.SetResult(new() { "recovered-entry" });
+            await retry.WaitAsync(TimeSpan.FromSeconds(3));
+
+            Check(clearedAfterFailure && revokedCacheRevision == cacheRevision + 1 && prompts == 1,
+                "current failed cache is revoked and normal retry requests fresh input");
+            Check(ui._store.DurableSaves == 1 && workflow.KeepassEntryPath == "recovered-entry" &&
+                ui._keepassMasterPassword is not null && ui._keepassMasterPassword != rejected,
+                "fresh-password retry publishes the recovered entry and replacement cache");
+        }
+        finally { File.Delete(database); }
+    }),
+    ("stale failed KeePass listing preserves newer cache status and warnings", async () =>
+    {
+        var ui = new UiFixture();
+        ui._editorSession.Select(ui._configuration.Workflows[0]);
+        var database = Path.GetTempFileName();
+        try
+        {
+            ui.KeePassDbBox.Text = database;
+            ui.PublishCache("synthetic-old-cache");
+            var pending = AsyncVoidTracker.Run(ui.ChooseEntry);
+            await KeePassXcService.ListEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            ui.PublishCache("synthetic-newer-cache");
+            var newerRevision = ui._keepassCacheRevision;
+            ui.CredentialStatus.Text = "newer-owner-status";
+            var warnings = MessageBox.Messages.Count;
+            KeePassXcService.ListRelease.SetException(
+                new InvalidOperationException("Synthetic stale unlock denial"));
+            await pending.WaitAsync(TimeSpan.FromSeconds(3));
+            Check(ui._store.DurableSaves == 0 && ui._keepassMasterPassword == "synthetic-newer-cache" &&
+                ui._keepassCacheRevision == newerRevision &&
+                ui.CredentialStatus.Text == "newer-owner-status" && MessageBox.Messages.Count == warnings,
+                "failed older chooser cannot evict or warn into a newer cache owner");
+        }
+        finally { File.Delete(database); }
+    }),
+    ("healthy cached KeePass selection avoids an unnecessary password prompt", async () =>
+    {
+        var ui = new UiFixture();
+        var workflow = ui._configuration.Workflows[0];
+        ui._editorSession.Select(workflow);
+        var database = Path.GetTempFileName();
+        try
+        {
+            ui.KeePassDbBox.Text = database;
+            ui.PublishCache("synthetic-healthy-cache");
+            var prompts = 0;
+            ui.KeePassHook = () => prompts++;
+            var pending = AsyncVoidTracker.Run(ui.ChooseEntry);
+            await KeePassXcService.ListEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            KeePassXcService.ListRelease.SetResult(new() { "healthy-cached-entry" });
+            await pending.WaitAsync(TimeSpan.FromSeconds(3));
+            Check(prompts == 0 && ui._store.DurableSaves == 1 &&
+                workflow.KeepassEntryPath == "healthy-cached-entry" &&
+                ui._keepassMasterPassword == "synthetic-healthy-cache" &&
+                ui.KeepassEntryBox.Text == "healthy-cached-entry" &&
+                ui.CredentialStatus.Text.Contains("KeePassXC", StringComparison.Ordinal),
+                "healthy cache hit keeps owned event-aware selection behavior");
+        }
+        finally { File.Delete(database); }
+    }),
     ("typed master unlock refreshes Hello freshness; Hello-derived unlock does not", () =>
     {
         var typed = new UiFixture();

@@ -1,3 +1,14 @@
+# v0.7.77 — Owned KeePass failed-cache retry (candidate)
+
+- Clear a failed KeePass cached master password only while the failing chooser
+  still owns its cache/editor/session, so normal retry asks for fresh input.
+- Preserve newer cache/status on stale failures and healthy cached selections
+  without unnecessary prompts. Add event-aware source-linked UI regressions
+  for all three paths, including a successful fresh-password retry.
+- Keep the v0.7.76 credential-boundary and portable reset repairs unchanged.
+- **Candidate only:** native Windows/KeePassXC and account acceptance remain
+  separate gates. No release authorization.
+
 # v0.7.76 — Remaining v0.7.75 boundary repairs (candidate)
 
 - Recheck current authorization after the final awaited post-fill DOM inspection, and
