@@ -8,6 +8,7 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../LaunchFlow/Services/Workspaces/RunIssueNotice.cs" Link="Services/RunIssueNotice.cs" />
     <Compile Include="AutoSaveHarness.cs" />
     <Compile Include="PlatformStubs.cs" />
     <Compile Include="obj/ProductionAutosave.g.cs" />
