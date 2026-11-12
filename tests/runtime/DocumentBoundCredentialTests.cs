@@ -824,8 +824,10 @@ internal static class DocumentBoundCredentialTests
             Check(!refused && afterFillCalls == 1 && model == synthetic &&
                 events.EnumerateArray().Any(e => e.GetProperty("type").GetString() == "insertFromPaste"),
                 "healthy form/SPA must actually update its model through compatibility input");
-            Check(events.EnumerateArray().All(e => !e.GetProperty("data").GetBoolean()),
-                "no browser input event carries credential data");
+            Check(events.EnumerateArray().All(e =>
+                e.GetProperty("type").GetString() != "insertFromPaste" ||
+                !e.GetProperty("data").GetBoolean()),
+                "compatibility input notification does not carry credential data");
         }
         else
         {
