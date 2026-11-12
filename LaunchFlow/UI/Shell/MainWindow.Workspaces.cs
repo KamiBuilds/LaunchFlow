@@ -77,7 +77,7 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "Workspace not saved",
+            MessageBox.Show(this, RunIssueNotice.SafeExceptionReason(ex), "Workspace not saved",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }

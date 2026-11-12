@@ -1,3 +1,12 @@
+# v0.7.77 — Approval ownership, browser switching, and privacy fixes
+
+- Explicitly distinguish username-origin approval from a password-destination grant. The native consent dialog says what is authorized, and the engine no longer overwrites a durable approved destination after returning from a modal.
+- Bind approval callbacks to the originating UI run lease and cancellation token before dispatcher scheduling; reject superseded runs and late edits.
+- Close and release a previous browser context when a workflow changes its selected browser, rather than silently returning the old window.
+- Bound user-facing exception explanations to fixed safe messages, including browser readiness, no leaked URL/selector/exception payload.
+- Cancellation and failed-run notifications no longer claim browser actions were reverted or stored data independently verified.
+- Source-linked and behavioral regression tests cover these boundaries. Native account acceptance remains separate.
+
 # v0.7.76 — Remaining v0.7.75 boundary repairs (candidate)
 
 - Recheck current authorization after the final awaited post-fill DOM inspection, and

@@ -35,6 +35,8 @@ partial class UiFixture
     public void Load(WebsiteWorkflow w) => LoadCredentialEditor(w);
     public void SaveCredential() => SaveCredentials_Click(this, new RoutedEventArgs());
     public Task<bool> Approve(WebsiteWorkflow w, string origin) => ConfirmLoginOriginAsync(w, origin);
+    public Task<bool> ApproveUsername(WebsiteWorkflow w, string origin) => ConfirmLoginOriginAsync(w, origin, false);
+    public Task<bool> ApproveWithToken(WebsiteWorkflow w, string origin, CancellationToken token) => ConfirmLoginOriginAsync(w, origin, true, token);
     public Task Repair() => RepairLoginCoreAsync();
 METHODS
 }

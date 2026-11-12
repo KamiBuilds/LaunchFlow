@@ -83,7 +83,7 @@ public static class UpdateChecker
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or UriFormatException)
         {
             CrashLog.Write("UpdateCheck", ex);
-            return new UpdateInfo(false, currentText, null, "Could not check for updates: " + ex.Message);
+            return new UpdateInfo(false, currentText, null, "Could not check for updates. Check your connection and retry.");
         }
     }
 

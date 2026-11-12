@@ -15,6 +15,103 @@ internal static class EngineBehaviorTests
         await NpmDashboardAfterStaleSelectorAsync(playwright);
         await MfaRedirectNeverVerifiesAsync(playwright);
         await CredentialContinuationCancellationAsync(playwright);
+        await ApprovalPurposeAndStaleDestinationAsync(playwright);
+        await BrowserSelectionSessionSwitchAsync(playwright);
+    }
+
+    private static async Task ApprovalPurposeAndStaleDestinationAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        await context.RouteAsync("https://typed-consent.test/**", route => route.FulfillAsync(new()
+        {
+            ContentType = "text/html", Body = "<input id='user'><input id='password' type='password'>"
+        }));
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://typed-consent.test/login");
+        var workflow = new WebsiteWorkflow
+        {
+            StartUrl = "https://different.test", AutoLogin = true,
+            UsernameSelector = "#user", PasswordSelector = "#password"
+        };
+        await using var engine = new AutomationEngine(new CredentialVault());
+        Track(engine, workflow, context, page);
+        var seen = new List<bool>();
+        engine.ApproveCredentialOriginAsync = (_, origin, password, ct) =>
+        {
+            seen.Add(password);
+            // Accept a username-only grant, but never grant the password.
+            if (!password) workflow.ApprovedLoginOrigins.Add(origin);
+            return Task.FromResult(!password);
+        };
+        var fill = typeof(AutomationEngine).GetMethod("FillCredentialAsync",
+            BindingFlags.NonPublic | BindingFlags.Instance)!;
+        await using var username = await page.QuerySelectorAsync("#user")
+            ?? throw new Exception("Username test input missing");
+        await using var passwordField = await page.QuerySelectorAsync("#password")
+            ?? throw new Exception("Password test input missing");
+        await (Task<string?>)fill.Invoke(engine, new object?[] {
+            workflow, page, "#user", "synthetic-username", CancellationToken.None,
+            null, username, null, false, null })!;
+        var refused = false;
+        try
+        {
+            await (Task<string?>)fill.Invoke(engine, new object?[] {
+                workflow, page, "#password", "synthetic-password", CancellationToken.None,
+                null, passwordField, null, true, null })!;
+        }
+        catch (InvalidOperationException) { refused = true; }
+        Check(seen.Contains(false) && seen.Contains(true) && refused &&
+            string.IsNullOrEmpty(workflow.PasswordCredentialOrigin) &&
+            await page.InputValueAsync("#password") == "",
+            "username-only origin grant cannot authorize password fill");
+
+        // An old approval returns after an unrelated password destination edit.
+        // The engine must not overwrite the new mapping after awaiting a modal.
+        workflow.PasswordCredentialOrigin = "";
+        engine.ApproveCredentialOriginAsync = async (_, _, password, _) =>
+        {
+            if (password) workflow.PasswordCredentialOrigin = "https://changed.test";
+            await Task.Yield();
+            return true;
+        };
+        refused = false;
+        try
+        {
+            await (Task<string?>)fill.Invoke(engine, new object?[] {
+                workflow, page, "#password", "synthetic-password", CancellationToken.None,
+                null, passwordField, null, true, null })!;
+        }
+        catch (InvalidOperationException) { refused = true; }
+        Check(refused && workflow.PasswordCredentialOrigin == "https://changed.test" &&
+            await page.InputValueAsync("#password") == "",
+            "late approval cannot overwrite competing password destination");
+    }
+
+    private static async Task BrowserSelectionSessionSwitchAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        var context = await browser.NewContextAsync();
+        await context.RouteAsync("https://browser-choice.test/**", route => route.FulfillAsync(new()
+        {
+            ContentType = "text/html", Body = "<h1>Dashboard</h1>"
+        }));
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://browser-choice.test/");
+        var wf = new WebsiteWorkflow { StartUrl = page.Url, Browser = "Edge", AutoLogin = false };
+        await using var engine = new AutomationEngine(new CredentialVault());
+        Track(engine, wf, context, page, "Edge");
+        wf.Browser = "Firefox";
+        var method = typeof(AutomationEngine).GetMethod("GetOrCreatePageCoreAsync",
+            BindingFlags.NonPublic | BindingFlags.Instance)!;
+        try
+        {
+            var pending = (Task<IPage>)method.Invoke(engine, new object[] { wf, CancellationToken.None })!;
+            await pending;
+        }
+        catch (Exception) { /* Firefox is not installed in this synthetic environment. */ }
+        Check(page.IsClosed && context.Pages.All(p => p.IsClosed),
+            "changing browser closes the prior Edge session instead of reusing its window");
     }
 
     private static async Task ExplicitSignInConfirmationAsync(IPlaywright playwright)
@@ -205,6 +302,15 @@ internal static class EngineBehaviorTests
         var page = await context.NewPageAsync();
         await page.GotoAsync("https://privacy.test/");
         await using var engine = new AutomationEngine(new CredentialVault());
+        var privateError = "SENTINEL-private-secret-in-invalid-operation";
+        Check(AutomationEngine.PublicWorkflowFailureReason(
+            new InvalidOperationException(privateError)).IndexOf(privateError,
+                StringComparison.Ordinal) < 0,
+            "untrusted InvalidOperationException text is not shown in run summaries");
+        Check(AutomationEngine.PublicWorkflowFailureReason(
+            new InvalidOperationException("Credential document changed. Retry sign-in manually."))
+            == RunIssueNotice.Message(RunIssueCode.DocumentChanged),
+            "known safe failure remains actionable");
         var logs = new List<string>();
         engine.OnLog += logs.Add;
         var workflow = new WebsiteWorkflow { StartUrl = "private-invalid-url", AutoLogin = false };
@@ -232,13 +338,16 @@ internal static class EngineBehaviorTests
         if (failures.Count > 0) throw new Exception(string.Join("; ", failures));
     }
 
-    internal static void Track(AutomationEngine engine, WebsiteWorkflow workflow, IBrowserContext context, IPage page)
+    internal static void Track(AutomationEngine engine, WebsiteWorkflow workflow, IBrowserContext context, IPage page, string? browser = null)
     {
         // Inert ownership seam only: route real browser pages through production execution without native profile launch.
         var sessions = (System.Collections.IDictionary)typeof(AutomationEngine)
             .GetField("_sessions", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(engine)!;
         var type = typeof(AutomationEngine).GetNestedType("TrackedSession", BindingFlags.NonPublic)!;
-        sessions.Add(workflow.Id, Activator.CreateInstance(type, context, page));
+        var tracked = Activator.CreateInstance(type, context, page)!;
+        if (browser is not null)
+            type.GetProperty("Browser")!.SetValue(tracked, browser);
+        sessions.Add(workflow.Id, tracked);
     }
 
     internal static void Check(bool condition, string description)

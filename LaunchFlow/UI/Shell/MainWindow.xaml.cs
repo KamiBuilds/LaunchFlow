@@ -93,7 +93,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show("LaunchFlow cannot open its data safely. The existing files have not been overwritten.\n\n" + ex.Message,
+            MessageBox.Show("LaunchFlow cannot open its data safely. The existing files have not been overwritten.\n\n" + RunIssueNotice.SafeExceptionReason(ex),
                 "LaunchFlow startup error", MessageBoxButton.OK, MessageBoxImage.Error);
             throw;
         }
@@ -106,7 +106,8 @@ public partial class MainWindow : Window
         SuggestKeePassDatabase();
         RefreshKeePassStatus();
         _runner = new AutomationEngine(_vault);
-        _runner.ApproveLoginOriginAsync = ConfirmLoginOriginAsync;
+        _runner.ApproveCredentialOriginAsync = (workflow, origin, password, token) =>
+            ConfirmLoginOriginAsync(workflow, origin, password, token);
         _runner.OnWorkflowStatus += QueueWorkflowStatus;
         _runner.OnStatusMessage += QueueStatusMessage;
         _runner.OnLog += line => Dispatcher.BeginInvoke(new Action(() => AppendLog(line)));
@@ -351,7 +352,7 @@ public partial class MainWindow : Window
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "Open export", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(this, RunIssueNotice.SafeExceptionReason(ex), "Open export", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }));
     }
@@ -483,32 +484,34 @@ public partial class MainWindow : Window
 
     private static string MakeBrowserFriendlyMessage(Exception ex)
     {
-        var message = ex.Message ?? "The browser could not be opened.";
-        if (message.Contains("existing browser session", StringComparison.OrdinalIgnoreCase) ||
-            message.Contains("profile is already in use", StringComparison.OrdinalIgnoreCase))
-        {
-            return "LaunchFlow could not reuse that browser profile because it is still in use by an earlier browser window. " +
-                   "LaunchFlow will normally try a recovery profile automatically. If this keeps happening, close the old LaunchFlow browser window and try again.";
-        }
-        if (RunOutcomeSummary.IsFirefoxAutomationFailure(message) ||
-            message.Contains("Firefox", StringComparison.OrdinalIgnoreCase))
-        {
-            return message + "\n\nOpen Browser readiness → Install Firefox automation, or switch this website to Edge/Chrome.";
-        }
-
-        return message + "\n\nMake sure the selected browser is installed (Edge/Chrome/Firefox automation) and try again.";
+        // Never echo raw exception data from a browser driver into a modal.
+        if (ex is InvalidOperationException &&
+            ex.Message is "Browser cleanup is incomplete. Retry closing sessions before continuing."
+                or "The previous browser session could not be closed. Retry closing sessions before continuing.")
+            return "A previous browser session could not close. Close its window and retry.";
+        return RunIssueNotice.SafeExceptionReason(ex) +
+            "\n\nCheck Browser readiness and verify that your selected browser is installed.";
     }
 
     private void Exit_Click(object sender, RoutedEventArgs e) => ExitFromTray();
 
-    private async Task<bool> ConfirmLoginOriginAsync(WebsiteWorkflow workflow, string newOrigin)
+    private async Task<bool> ConfirmLoginOriginAsync(
+        WebsiteWorkflow workflow, string newOrigin, bool passwordDestination = true,
+        CancellationToken runToken = default)
     {
+        // Captured BEFORE dispatcher scheduling. A delayed old-run callback
+        // cannot borrow the lease of a run that started in the meantime.
+        var requestedLease = _runUi.CaptureLeaseForCallback();
+        if (requestedLease == 0 || runToken.IsCancellationRequested) return false;
         return await Dispatcher.InvokeAsync(() =>
         {
+            if (!_runUi.Owns(requestedLease)) return false;
             // The consent window pumps dispatcher events. Capture the actual
             // run/editor/configuration/vault authority on the UI thread.
             var cancellation = _runUi.Cancellation;
-            var lease = _runUi.CaptureLeaseForCallback();
+            var lease = requestedLease;
+            if (runToken.CanBeCanceled &&
+                (cancellation is null || cancellation.Token != runToken)) return false;
             var editorOwner = _editorSession.CaptureOwnership();
             var config = _configuration;
             var generation = VaultDatabase.Current.SessionGeneration;
@@ -520,6 +523,7 @@ public partial class MainWindow : Window
             {
                 var policy = EnterprisePolicy.Current;
                 return lease != 0 && _runUi.Owns(lease) &&
+                    !runToken.IsCancellationRequested &&
                     cancellation is { IsCancellationRequested: false } &&
                     ReferenceEquals(_runUi.Cancellation, cancellation) &&
                     _editorSession.IsCurrent(editorOwner) &&
@@ -539,14 +543,18 @@ public partial class MainWindow : Window
 
             bool ShowNativeConsent()
             {
-                var dialog = new PasswordOriginApprovalWindow(workflow.Name, newOrigin);
+                var dialog = new PasswordOriginApprovalWindow(workflow.Name, newOrigin,
+                    passwordDestination);
                 if (IsVisible && WindowState != WindowState.Minimized)
                     dialog.Owner = this;
                 return dialog.ShowDialog() == true;
             }
 
             var decision = new PasswordOriginApprovalCoordinator(_saveTransaction).Request(
-                config, workflow, newOrigin, Authorized, ShowNativeConsent, generation);
+                config, workflow, newOrigin, Authorized, ShowNativeConsent, generation,
+                passwordDestination
+                    ? PasswordOriginApprovalCoordinator.Purpose.PasswordDestination
+                    : PasswordOriginApprovalCoordinator.Purpose.UsernameOrigin);
             if (!decision.ApprovedAndPublished)
             {
                 if (decision.State == PasswordOriginApprovalCoordinator.Outcome.StorageRejected)
@@ -559,7 +567,7 @@ public partial class MainWindow : Window
 
             // Publishing the grant does not clear unrelated dirty editor work.
             // Never replace an intervening field edit or stale A/B/A selection.
-            if (PasswordOriginBox is not null &&
+            if (passwordDestination && PasswordOriginBox is not null &&
                 ReferenceEquals(_editorSession.Selection, workflow) &&
                 _editorSession.IsCurrent(editorOwner) &&
                 string.Equals(PasswordOriginBox.Text, visibleEditorDestination, StringComparison.Ordinal))
@@ -569,7 +577,9 @@ public partial class MainWindow : Window
                 try { PasswordOriginBox.Text = newOrigin; }
                 finally { _loadingEditor = loading; }
             }
-            AppendLog("Approved and saved the password destination.");
+            AppendLog(passwordDestination
+                ? "Approved and saved the password destination."
+                : "Approved and saved the username sign-in origin.");
             return true;
         });
     }

@@ -102,7 +102,7 @@ public partial class MainWindow
                 try { ProfileVaultService.UnsealAll(); }
                 catch (Exception ex)
                 {
-                    AppendLog("Could not unseal browser profiles: " + ex.Message);
+                    AppendLog("Could not unseal browser profiles: " + RunIssueNotice.SafeExceptionReason(ex));
                     MessageBox.Show(this, "Some browser sessions could not be restored. Their encrypted files were retained. " +
                         "Affected workflows are blocked; your saved vault logins are separate.",
                         "Browser sessions need attention", MessageBoxButton.OK, MessageBoxImage.Warning);

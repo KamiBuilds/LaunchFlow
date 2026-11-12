@@ -48,7 +48,7 @@ public static class SecureTransferService
         catch (InvalidDataException ex)
         {
             throw new InvalidOperationException(
-                "Cannot export a backup that LaunchFlow could not import: " + ex.Message +
+                "Cannot export a backup that LaunchFlow could not import. Review the workflow backup format. " +
                 " Fix the recorded website settings and retry. Your existing backup was not changed.", ex);
         }
         PortableExport.Write(path, exportPassword, package);

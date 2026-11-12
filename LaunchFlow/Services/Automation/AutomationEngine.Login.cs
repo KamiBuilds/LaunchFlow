@@ -467,8 +467,8 @@ public sealed partial class AutomationEngine
             // must be approved and mapped before IsOriginAllowedAsync is enough.
             // Ask first — never throw before the user can confirm the IdP.
             if (isPassword)
-                await EnsurePasswordDestinationAsync(workflow, origin).WaitAsync(ct).ConfigureAwait(false);
-            if (!await IsOriginAllowedAsync(workflow, origin).WaitAsync(ct).ConfigureAwait(false))
+                await EnsurePasswordDestinationAsync(workflow, origin, ct).WaitAsync(ct).ConfigureAwait(false);
+            if (!await IsOriginAllowedAsync(workflow, origin, ct).WaitAsync(ct).ConfigureAwait(false))
                 throw new InvalidOperationException("Credential origin was not approved. Complete sign-in manually.");
             // Approval can await a dialog while the page navigates or the bound field becomes unavailable.
             await element.WaitForElementStateAsync(ElementState.Visible).WaitAsync(ct).ConfigureAwait(false);
@@ -614,24 +614,49 @@ public sealed partial class AutomationEngine
     /// password (Webex IdBroker, Okta, Entra, etc.). Map that host only after
     /// explicit approval — never by hostname hardcoding.
     /// </summary>
-    private async Task EnsurePasswordDestinationAsync(WebsiteWorkflow workflow, string fieldOrigin)
+    private async Task EnsurePasswordDestinationAsync(
+        WebsiteWorkflow workflow, string fieldOrigin, CancellationToken ct)
     {
         if (OriginsMatch(fieldOrigin, GetOrigin(workflow.StartUrl))) return;
         if (!string.IsNullOrWhiteSpace(workflow.PasswordCredentialOrigin) &&
-            OriginsMatch(fieldOrigin, GetOrigin(workflow.PasswordCredentialOrigin)))
-            return;
+            OriginsMatch(fieldOrigin, GetOrigin(workflow.PasswordCredentialOrigin))) return;
 
-        if (ApproveLoginOriginAsync is not null &&
-            await ApproveLoginOriginAsync(workflow, fieldOrigin).ConfigureAwait(false))
+        // Production consent is a durable configuration transaction. It has
+        // already committed the exact destination before returning true: do not
+        // write a second, stale mapping after this awaited UI interaction.
+        if (ApproveCredentialOriginAsync is not null)
         {
-            // Persist the approved IdP as the trusted password page for later runs.
-            workflow.PasswordCredentialOrigin = NormalizeOrigin(fieldOrigin);
-            if (!workflow.ApprovedLoginOrigins.Contains(fieldOrigin))
-                workflow.ApprovedLoginOrigins.Add(fieldOrigin);
-            Log($"Trusted password page for '{workflow.Name}' set to {workflow.PasswordCredentialOrigin}.");
-            return;
+            var allowed = await ApproveCredentialOriginAsync(workflow, fieldOrigin, true, ct)
+                .WaitAsync(ct).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            RequireCredentialAccess();
+            RequireAutomationUrl(fieldOrigin);
+            if (allowed)
+            {
+                RequireCurrentPasswordDestination(workflow, fieldOrigin);
+                return;
+            }
         }
-
+        else if (ApproveLoginOriginAsync is not null)
+        {
+            // Compatibility for existing isolated engine fixtures. Never used
+            // by the native UI, which supplies the four-argument callback.
+            var priorDestination = workflow.PasswordCredentialOrigin;
+            var allowed = await ApproveLoginOriginAsync(workflow, fieldOrigin)
+                .WaitAsync(ct).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            RequireCredentialAccess();
+            RequireAutomationUrl(fieldOrigin);
+            if (!string.Equals(workflow.PasswordCredentialOrigin, priorDestination,
+                    StringComparison.Ordinal))
+                throw new InvalidOperationException("The password destination changed while awaiting approval.");
+            if (allowed)
+            {
+                workflow.PasswordCredentialOrigin = NormalizeOrigin(fieldOrigin);
+                workflow.ApprovedLoginOrigins.Add(fieldOrigin);
+                return;
+            }
+        }
         throw new InvalidOperationException(
             "The password page is on another website (company sign-in / SSO). " +
             "Approve that provider when asked, or set Trusted password page under the website's advanced settings.");
@@ -645,27 +670,31 @@ public sealed partial class AutomationEngine
         return origin.Trim().TrimEnd('/');
     }
 
-    private async Task<bool> IsOriginAllowedAsync(WebsiteWorkflow workflow, string origin)
+    private async Task<bool> IsOriginAllowedAsync(
+        WebsiteWorkflow workflow, string origin, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(origin)) return false;
-
         if (!string.IsNullOrWhiteSpace(workflow.CredentialOrigin) &&
-            OriginsMatch(origin, GetOrigin(workflow.CredentialOrigin)))
-            return true;
-
-        if (workflow.ApprovedLoginOrigins.Contains(origin))
-            return true;
-
-        // First visit of start URL host is implicitly trusted for the configured start site.
+            OriginsMatch(origin, GetOrigin(workflow.CredentialOrigin))) return true;
+        if (workflow.ApprovedLoginOrigins.Contains(origin)) return true;
         if (Uri.TryCreate(workflow.StartUrl, UriKind.Absolute, out var start) &&
             OriginsMatch(origin, $"{start.Scheme}://{start.Authority}"))
         {
             workflow.ApprovedLoginOrigins.Add(origin);
             return true;
         }
-
+        if (ApproveCredentialOriginAsync is not null)
+        {
+            var allowed = await ApproveCredentialOriginAsync(workflow, origin, false, ct)
+                .WaitAsync(ct).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            RequireCredentialAccess();
+            RequireAutomationUrl(origin);
+            // Only the durable owner may grant this origin in production.
+            return allowed && workflow.ApprovedLoginOrigins.Contains(origin);
+        }
         if (ApproveLoginOriginAsync is null) return false;
-        return await ApproveLoginOriginAsync(workflow, origin).ConfigureAwait(false);
+        return await ApproveLoginOriginAsync(workflow, origin).WaitAsync(ct).ConfigureAwait(false);
     }
 
 }

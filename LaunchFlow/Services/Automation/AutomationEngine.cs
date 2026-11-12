@@ -37,6 +37,9 @@ public sealed partial class AutomationEngine : IAsyncDisposable
     /// <summary>Short plain-language phase for the status strip (browser open, waiting for boxes, …).</summary>
     public event Action<string, string>? OnStatusMessage;
     public Func<WebsiteWorkflow, string, Task<bool>>? ApproveLoginOriginAsync { get; set; }
+    // Current UI uses this typed, run-token-bound approval. The two-argument
+    // callback remains for legacy synthetic test adapters only.
+    public Func<WebsiteWorkflow, string, bool, CancellationToken, Task<bool>>? ApproveCredentialOriginAsync { get; set; }
 
     public bool IsRunning
     {
@@ -361,9 +364,12 @@ public sealed partial class AutomationEngine : IAsyncDisposable
     /// never forward arbitrary exception payloads that might include secrets.
     /// </summary>
     internal static string PublicWorkflowFailureReason(Exception ex) =>
-        ex is InvalidOperationException && !string.IsNullOrWhiteSpace(ex.Message)
-            ? ex.Message.Trim()
-            : "Check or repair the workflow (technical: " + ex.GetType().Name + ").";
+        RunIssueNotice.SafeExceptionReason(ex);
 
-    private sealed record TrackedSession(IBrowserContext Context, IPage Page);
+    // Null Browser is reserved for an externally tracked test context; launched
+    // application sessions always record their exact browser choice.
+    private sealed record TrackedSession(IBrowserContext Context, IPage Page)
+    {
+        public string? Browser { get; init; }
+    }
 }

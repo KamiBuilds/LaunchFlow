@@ -6,6 +6,8 @@ namespace LaunchFlow.Services;
 /// The UI still owns presentation; engine and vault retain their own authority.</summary>
 public sealed class PasswordOriginApprovalCoordinator(ConfigurationSaveTransaction saveTransaction)
 {
+    public enum Purpose { UsernameOrigin, PasswordDestination }
+
     public enum Outcome
     {
         Approved, Declined, Invalidated, StorageRejected,
@@ -20,7 +22,8 @@ public sealed class PasswordOriginApprovalCoordinator(ConfigurationSaveTransacti
     public Decision Request(
         Configuration liveConfiguration, WebsiteWorkflow workflow,
         string requestedOrigin, Func<bool> stillOwns,
-        Func<bool> showNativeConsent, long vaultGeneration)
+        Func<bool> showNativeConsent, long vaultGeneration,
+        Purpose purpose = Purpose.PasswordDestination)
     {
         ArgumentNullException.ThrowIfNull(liveConfiguration);
         ArgumentNullException.ThrowIfNull(workflow);
@@ -48,13 +51,15 @@ public sealed class PasswordOriginApprovalCoordinator(ConfigurationSaveTransacti
                 var target = draft.Workflows[index];
                 if (target.Id != workflow.Id)
                     throw new InvalidOperationException("Approval workflow changed.");
-                target.PasswordCredentialOrigin = requestedOrigin;
+                if (purpose == Purpose.PasswordDestination)
+                    target.PasswordCredentialOrigin = requestedOrigin;
                 target.ApprovedLoginOrigins.Add(requestedOrigin);
             },
             stillOwns, vaultGeneration,
             saved =>
             {
-                workflow.PasswordCredentialOrigin = saved.Workflows[index].PasswordCredentialOrigin;
+                if (purpose == Purpose.PasswordDestination)
+                    workflow.PasswordCredentialOrigin = saved.Workflows[index].PasswordCredentialOrigin;
                 workflow.ApprovedLoginOrigins.Add(requestedOrigin);
             });
         return new(committed.State switch

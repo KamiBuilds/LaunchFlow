@@ -67,7 +67,7 @@ public partial class MainWindow
             else
             {
                 ShowFromTray();
-                MessageBox.Show(this, ex.Message, "LaunchFlow exit paused",
+                MessageBox.Show(this, RunIssueNotice.SafeExceptionReason(ex), "LaunchFlow exit paused",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }

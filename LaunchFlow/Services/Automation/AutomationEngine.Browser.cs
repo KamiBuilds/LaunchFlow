@@ -24,17 +24,29 @@ public sealed partial class AutomationEngine
         RequireAutomationUrl(workflow.StartUrl);
         if (_sessions.TryGetValue(workflow.Id, out var existing))
         {
-            if (!existing.Page.IsClosed) return existing.Page;
+            // A workflow ID identifies its profile, not its requested browser.
+            // Reusing Edge after choosing Firefox silently ignores the edit.
+            var sameBrowser = existing.Browser is null ||
+                string.Equals(existing.Browser.Trim(), workflow.Browser.Trim(),
+                    StringComparison.OrdinalIgnoreCase);
+            if (!existing.Page.IsClosed && sameBrowser) return existing.Page;
             try
             {
                 await existing.Context.CloseAsync().ConfigureAwait(false);
                 _sessions.Remove(workflow.Id);
+                lock (_gate)
+                {
+                    _confirmedLogins.Remove(workflow.Id);
+                    if (_confirmationNavigationHooks.Remove(workflow.Id, out var hook))
+                        hook.Page.FrameNavigated -= hook.Handler;
+                }
             }
             catch
             {
                 lock (_gate) _cleanupRequired = true;
                 throw new InvalidOperationException("The previous browser session could not be closed. Retry closing sessions before continuing.");
             }
+            ct.ThrowIfCancellationRequested();
         }
 
         // A saved browser may have been uninstalled since the website was added.
@@ -112,7 +124,7 @@ public sealed partial class AutomationEngine
             {
                 ct.ThrowIfCancellationRequested();
                 CheckSessionAdmission();
-                _sessions[workflow.Id] = new TrackedSession(context, page);
+                _sessions[workflow.Id] = new TrackedSession(context, page) { Browser = workflow.Browser.Trim() };
                 _unclaimedContexts.Remove(context);
             }
             return page;

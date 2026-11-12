@@ -251,7 +251,7 @@ public partial class MainWindow
             // Never conflate a failed save with an in-memory edit; retry remains possible.
             ShowAutoSaveFailed();
             if (!_autoSaving)
-                MessageBox.Show(this, ex.Message, "Cannot save LaunchFlow",
+                MessageBox.Show(this, RunIssueNotice.SafeExceptionReason(ex), "Cannot save LaunchFlow",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
             else
                 AppendLog("Automatic save failed: " + ex.GetType().Name);

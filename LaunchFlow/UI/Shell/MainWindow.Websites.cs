@@ -31,7 +31,7 @@ public partial class MainWindow
         try { ApplyCurrentEditor(); }
         catch (Exception ex)
         {
-            AppendLog("Could not save previous credential: " + ex.Message);
+            AppendLog("Could not save previous credential: " + RunIssueNotice.SafeExceptionReason(ex));
             // Keep the previous selection if applying its website fields fails.
             // Credentials have a separate explicit save path; this is not an encryption commit.
             _loadingEditor = true;
@@ -76,7 +76,7 @@ public partial class MainWindow
         try { ApplyCurrentEditor(); }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "Cannot save previous website", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, RunIssueNotice.SafeExceptionReason(ex), "Cannot save previous website", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -144,7 +144,7 @@ public partial class MainWindow
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, "The new website could not be saved: " + ex.Message,
+                MessageBox.Show(this, "The new website could not be saved: " + RunIssueNotice.SafeExceptionReason(ex),
                     "Create website", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
@@ -161,7 +161,7 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, "Could not open the new website window: " + ex.Message,
+            MessageBox.Show(this, "Could not open the new website window: " + RunIssueNotice.SafeExceptionReason(ex),
                 "Create workflow", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         finally
@@ -178,7 +178,7 @@ public partial class MainWindow
         try { ApplyCurrentEditor(); }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "Cannot duplicate", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, RunIssueNotice.SafeExceptionReason(ex), "Cannot duplicate", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -210,7 +210,7 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, "Could not save the duplicated website: " + ex.Message,
+            MessageBox.Show(this, "Could not save the duplicated website: " + RunIssueNotice.SafeExceptionReason(ex),
                 "Duplicate website", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }

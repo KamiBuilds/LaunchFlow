@@ -542,6 +542,62 @@ var tests = new List<(string Name, Func<Task> Body)>
             ui2._store.Saves == 0 && flow2.PasswordCredentialOrigin == "",
             "lock/unlock invalidates old vault generation");
     }),
+    ("77-P1 username approval never grants a password destination", async () =>
+    {
+        var ui = new UiFixture();
+        var workflow = ui._configuration.Workflows[0];
+        workflow.StartUrl = "https://initial.test";
+        ui._editorSession.Select(workflow);
+        Check(ui._runUi.TryBeginRun(out var lease), "approval test admits a run");
+        Check(ui._runUi.AttachCancellation(lease, new CancellationTokenSource()), "approval test attaches cancellation");
+        PasswordOriginApprovalWindow.Result = true;
+        Check(await ui.ApproveUsername(workflow, "https://idp.test"),
+            "username origin approval must be durable");
+        Check(ui._store.DurableSaves == 1 &&
+            workflow.ApprovedLoginOrigins.Contains("https://idp.test") &&
+            string.IsNullOrEmpty(workflow.PasswordCredentialOrigin),
+            "username approval must not change PasswordCredentialOrigin");
+        PasswordOriginApprovalWindow.Result = false;
+        Check(!await ui.Approve(workflow, "https://password.test") &&
+            string.IsNullOrEmpty(workflow.PasswordCredentialOrigin),
+            "denied password destination cannot use prior username authorization");
+    }),
+    ("77-P1 stale UI approval cannot borrow a subsequent run's lease", async () =>
+    {
+        var ui = new UiFixture();
+        var flow = ui._configuration.Workflows[0];
+        flow.StartUrl = "https://initial.test";
+        ui._editorSession.Select(flow);
+        Check(ui._runUi.TryBeginRun(out var lease1), "first run admitted");
+        using var ct1 = new CancellationTokenSource();
+        Check(ui._runUi.AttachCancellation(lease1, ct1), "first token attached");
+        PasswordOriginApprovalWindow.Result = true;
+        ui.Dispatcher.DelayInvocations = true;
+        var old = ui.ApproveWithToken(flow, "https://other.test", ct1.Token);
+        Check(ui.Dispatcher.Pending.Count == 1, "real adapter was queued");
+        Check(ui._runUi.Complete(lease1) && ui._runUi.TryBeginRun(out var lease2),
+            "newer run takes a distinct lease");
+        using var ct2 = new CancellationTokenSource();
+        Check(ui._runUi.AttachCancellation(lease2, ct2), "second token attached");
+        ui.Dispatcher.Pending.Dequeue()();
+        Check(!await old && ui._store.Saves == 0 &&
+            string.IsNullOrEmpty(flow.PasswordCredentialOrigin),
+            "queued old-run approval must refuse without a modal or write");
+    }),
+    ("77-P1 approval requires the originating cancellation token", async () =>
+    {
+        var ui = new UiFixture();
+        var flow = ui._configuration.Workflows[0];
+        flow.StartUrl = "https://initial.test";
+        ui._editorSession.Select(flow);
+        Check(ui._runUi.TryBeginRun(out var lease), "approval run admitted");
+        using var real = new CancellationTokenSource();
+        using var wrong = new CancellationTokenSource();
+        Check(ui._runUi.AttachCancellation(lease, real), "real token attached");
+        PasswordOriginApprovalWindow.Result = true;
+        Check(!await ui.ApproveWithToken(flow, "https://other.test", wrong.Token) &&
+            ui._store.Saves == 0, "another operation's token cannot authorize this run");
+    }),
     ("mixed login attention and failed steps retain failure counts and select duplicate names by ID without rerun", async () =>
     {
         var ui = new UiFixture();
@@ -1251,10 +1307,12 @@ sealed class PasswordOriginApprovalWindow
     public object? Owner { get; set; }
     public string Website { get; }
     public string Origin { get; }
-    public PasswordOriginApprovalWindow(string website, string origin)
+    public bool PasswordDestination { get; }
+    public PasswordOriginApprovalWindow(string website, string origin, bool passwordDestination = true)
     {
         Website = website;
         Origin = origin;
+        PasswordDestination = passwordDestination;
     }
     public bool? ShowDialog()
     {
@@ -1364,8 +1422,19 @@ static class MessageBox
 sealed class FakeDispatcher
 {
     public readonly Queue<Action> Pending = new();
+    public bool DelayInvocations;
     public void BeginInvoke(Action callback) => Pending.Enqueue(callback);
-    public Task<T> InvokeAsync<T>(Func<T> callback) => Task.FromResult(callback());
+    public Task<T> InvokeAsync<T>(Func<T> callback)
+    {
+        if (!DelayInvocations) return Task.FromResult(callback());
+        var result = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Pending.Enqueue(() =>
+        {
+            try { result.TrySetResult(callback()); }
+            catch (Exception ex) { result.TrySetException(ex); }
+        });
+        return result.Task;
+    }
 }
 namespace Microsoft.Playwright { public interface IPage { } public sealed class FakePage : IPage { } }
 enum Visibility { Visible, Collapsed }

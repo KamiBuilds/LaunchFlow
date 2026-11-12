@@ -5,11 +5,20 @@ namespace LaunchFlow;
 
 public partial class PasswordOriginApprovalWindow : Window
 {
-    public PasswordOriginApprovalWindow(string websiteName, string origin)
+    public PasswordOriginApprovalWindow(string websiteName, string origin,
+        bool passwordDestination = true)
     {
         InitializeComponent();
         WebsiteText.Text = websiteName;
         OriginText.Text = origin;
+        if (!passwordDestination)
+        {
+            Title = "Confirm username website";
+            ConsentTitle.Text = "Approve this username website?";
+            ConsentDescription.Text = "LaunchFlow reached another website for the username step:";
+            ConsentWarning.Text = "Only approve this sign-in address if you recognize it. This will NOT authorize password filling there.";
+            ApproveButton.Content = "Allow username on this site";
+        }
         Loaded += (_, _) =>
         {
             DarkWindowChrome.Apply(this);

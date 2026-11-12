@@ -270,7 +270,7 @@ public partial class App : Application
                 CrashLog.Write("VaultRestore", ex);
                 MessageBox.Show(
                     "Could not restore that backup. Your broken vault was left in place when possible.\n\n" +
-                    ex.Message,
+                    RunIssueNotice.SafeExceptionReason(ex),
                     "Restore failed", MessageBoxButton.OK, MessageBoxImage.Error);
                 return false;
             }
@@ -292,7 +292,7 @@ public partial class App : Application
         try { package = SecureTransferService.Read(exportDialog.FileName, exportPassword.Secret); }
         catch (Exception ex)
         {
-            MessageBox.Show("Could not read that portable backup: " + ex.Message,
+            MessageBox.Show("Could not read that portable backup: " + RunIssueNotice.SafeExceptionReason(ex),
                 "Import failed", MessageBoxButton.OK, MessageBoxImage.Warning);
             return false;
         }
@@ -332,7 +332,7 @@ public partial class App : Application
         {
             CrashLog.Write("VaultPortableRestore", ex);
             MessageBox.Show(
-                "Could not import the portable backup after quarantining the broken file.\n\n" + ex.Message,
+                "Could not import the portable backup after quarantining the broken file.\n\n" + RunIssueNotice.SafeExceptionReason(ex),
                 "Import failed", MessageBoxButton.OK, MessageBoxImage.Error);
             return false;
         }
@@ -481,7 +481,7 @@ public partial class App : Application
             try { StartupService.Apply(settings.StartWithWindows); }
             catch (Exception ex)
             {
-                Debug.WriteLine("Could not register Windows startup: " + ex.Message);
+                Debug.WriteLine("Could not register Windows startup: " + RunIssueNotice.SafeExceptionReason(ex));
             }
             return true;
         }

@@ -93,19 +93,17 @@ public partial class UnlockWindow : Window
                 "Vault reset", MessageBoxButton.OK, MessageBoxImage.Information);
             DialogResult = false;
         }
-        catch (AggregateException ex)
+        catch (AggregateException)
         {
-            var detail = ex.InnerExceptions.Count > 0
-                ? string.Join("\n", ex.InnerExceptions.Select(inner => inner.Message).Distinct().Take(4))
-                : ex.Message;
             MessageBox.Show(this,
-                ex.Message + "\n\n" + detail +
-                "\n\nRetry reset after closing apps that may still hold profile folders.",
+                "Reset is incomplete. Some browser profiles or vault files may still remain. " +
+                "Close applications using those files and retry; no complete wipe is claimed.",
                 "Reset incomplete", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            MessageBox.Show(this, ex.Message, "Reset failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(this, "Reset could not finish. Existing files may remain.",
+                "Reset failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

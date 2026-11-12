@@ -360,13 +360,13 @@ public partial class MainWindow
         catch (OperationCanceledException)
         {
             WorkflowStatusLabel.Text = LocalizationService.Text("Stopped", _configuration.UiLanguage);
-            if (!_exiting) NotifyTray("LaunchFlow", "Stopped — nothing else changed.", Forms.ToolTipIcon.None);
+            if (!_exiting) NotifyTray("LaunchFlow", "Stopped. Earlier browser actions may already have happened.", Forms.ToolTipIcon.None);
         }
         catch (Exception ex)
         {
             WorkflowStatusLabel.Text = "Couldn't finish this time";
             AppendLog("Run error: " + ex.GetType().Name);
-            if (!_exiting) NotifyTray("LaunchFlow", "Couldn't finish this time. Your sites and passwords are fine — try again when ready.", Forms.ToolTipIcon.None);
+            if (!_exiting) NotifyTray("LaunchFlow", "Couldn't finish this time. Review the browser and saved changes before retrying.", Forms.ToolTipIcon.None);
         }
         finally
         {

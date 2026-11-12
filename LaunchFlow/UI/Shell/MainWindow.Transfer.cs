@@ -56,7 +56,7 @@ public partial class MainWindow
             AppendLog("Encrypted portable configuration exported.");
             MessageBox.Show(this, "Export saved. Keep the file and password safe.", "Export complete");
         }
-        catch (Exception ex) { MessageBox.Show(this, ex.Message, "Export failed", MessageBoxButton.OK, MessageBoxImage.Error); }
+        catch (Exception ex) { MessageBox.Show(this, RunIssueNotice.SafeExceptionReason(ex), "Export failed", MessageBoxButton.OK, MessageBoxImage.Error); }
     }
 
     private void Import_Click(object sender, RoutedEventArgs e)
@@ -165,7 +165,7 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "Import failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(this, RunIssueNotice.SafeExceptionReason(ex), "Import failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

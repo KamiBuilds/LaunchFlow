@@ -79,7 +79,7 @@ public partial class StepEditorWindow : Window
             try { AutomationEngine.ValidateUrl(target); }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "Invalid URL", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(this, RunIssueNotice.SafeExceptionReason(ex), "Invalid URL", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
         }

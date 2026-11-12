@@ -111,7 +111,9 @@ check(approval.get("Topmost") == "True" and
       approval.get("WindowStartupLocation") == "CenterScreen" and
       'IsDefault="True"' in approval_markup and
       'IsCancel="True"' in approval_markup and
-      'new PasswordOriginApprovalWindow(workflow.Name, newOrigin)' in source and
+      'new PasswordOriginApprovalWindow(workflow.Name, newOrigin,' in source and
+      'requestedLease = _runUi.CaptureLeaseForCallback()' in source and
+      'ApproveCredentialOriginAsync' in source and
       'new PasswordOriginApprovalCoordinator(_saveTransaction).Request(' in source and
       'return dialog.ShowDialog() == true;' in source and
       'if (!stillOwns()) return new(Outcome.Invalidated);' in approval_coordinator and

@@ -49,7 +49,7 @@ public partial class NewWorkflowWindow : Window
         }
         catch (Exception ex) when (ex is ArgumentException or UriFormatException)
         {
-            MessageBox.Show(this, ex.Message, "Check website address", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, RunIssueNotice.SafeExceptionReason(ex), "Check website address", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -172,7 +172,7 @@ public partial class NewWorkflowWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, "Could not paste from the clipboard: " + ex.Message,
+            MessageBox.Show(this, "Could not paste from the clipboard: " + RunIssueNotice.SafeExceptionReason(ex),
                 "Paste address", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }

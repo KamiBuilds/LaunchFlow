@@ -84,6 +84,37 @@ public static class RunIssueNotice
         };
     }
 
+    // Exception.Message may include a URL, selector, browser output or even a
+    // filled credential. Only internally recognized fixed text may reach UI.
+    public static string SafeExceptionReason(Exception exception)
+    {
+        if (exception is OperationCanceledException) return Message(RunIssueCode.Cancelled);
+        if (exception is not InvalidOperationException)
+            return "Couldn't finish this run — check the browser window and try again.";
+        var raw = exception.Message;
+        // Exact strings below are produced by LaunchFlow, never copied from a
+        // browser driver. Do not use substring matching for secrets or URLs.
+        return raw switch
+        {
+            "Credential document changed. Retry sign-in manually." or
+            "Credential form changed. Retry sign-in manually." or
+            "Credential field changed or was not ready. Retry sign-in manually." =>
+                Message(RunIssueCode.DocumentChanged),
+            "Credential origin changed. Retry sign-in manually." or
+            "The password destination changed while awaiting approval." or
+            "The approved password destination changed during sign-in. Retry sign-in manually." =>
+                Message(RunIssueCode.DestinationChanged),
+            "Credential origin was not approved. Complete sign-in manually." =>
+                Message(RunIssueCode.OriginDeclined),
+            "Browser cleanup is incomplete. Retry closing sessions before continuing." or
+            "The previous browser session could not be closed. Retry closing sessions before continuing." =>
+                "A previous browser session could not close. Close its window and retry.",
+            "Automatic credentials require HTTPS. Use manual sign-in for HTTP sites." =>
+                "Automatic sign-in requires HTTPS. Use manual sign-in for HTTP sites.",
+            _ => Message(RunIssueCode.Unknown)
+        };
+    }
+
     public static string SafeProgress(string? message) => message switch
     {
         "Opening browser…" or "Opening the website…" or
