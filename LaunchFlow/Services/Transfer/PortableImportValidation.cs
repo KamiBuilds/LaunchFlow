@@ -77,6 +77,7 @@ public static class PortableImportValidation
         // workspace selection. Nonempty legacy references to removed websites
         // remain compatible: WorkspaceProfile.Resolve already ignores them.
         var workspaceIds = new HashSet<Guid>();
+        var workspaceNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var workspace in package.Config.Workspaces)
         {
             if (workspace is null)
@@ -85,6 +86,11 @@ public static class PortableImportValidation
                 throw new InvalidDataException("Import workspaces must each have a unique id.");
             if (string.IsNullOrWhiteSpace(workspace.Name) || workspace.Name.Length > 64)
                 throw new InvalidDataException("Import workspace name is missing or too long.");
+            // WorkspaceCatalog resolves names case-insensitively after Trim().
+            // Different IDs with the same visible name would select the wrong
+            // workspace after import.
+            if (!workspaceNames.Add(workspace.Name.Trim()))
+                throw new InvalidDataException("Import workspaces must have unique names.");
             if (workspace.WorkflowIds.Count > MaxWorkflows ||
                 workspace.WorkflowIds.Contains(Guid.Empty))
                 throw new InvalidDataException("Import workspace contains invalid website references.");

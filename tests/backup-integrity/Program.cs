@@ -246,6 +246,23 @@ try
     catch (InvalidDataException) { duplicateWorkspaceRejected = true; }
     Check(duplicateWorkspaceRejected, "B4 duplicate workspace ids cannot create ambiguous selection");
 
+    var repeatedWorkspaceNames = new PortableExport.PortablePackage
+    {
+        Config = new Configuration
+        {
+            Workspaces = new()
+            {
+                new WorkspaceProfile { Id = Guid.NewGuid(), Name = "Morning" },
+                new WorkspaceProfile { Id = Guid.NewGuid(), Name = " morning " }
+            }
+        }
+    };
+    bool duplicateWorkspaceNameRejected = false;
+    try { PortableImportValidation.Validate(repeatedWorkspaceNames); }
+    catch (InvalidDataException) { duplicateWorkspaceNameRejected = true; }
+    Check(duplicateWorkspaceNameRejected,
+        "B4 same-name workspaces are refused even with different IDs and case or whitespace");
+
     // Old backups can mention a deleted website in a workspace. The workspace
     // resolver intentionally ignores that reference, so imports must still work.
     var compatibleWorkspace = new PortableExport.PortablePackage

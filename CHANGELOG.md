@@ -3,6 +3,7 @@
 - Guard the optional KeePassXC fallback with the LaunchFlow vault lock, including authorization recheck after CLI lookup.
 - Close-to-tray uses the same durable-save guard as Exit, preventing locked dirty editor state from disappearing without warning.
 - Preserve imported first-website guidance history to avoid repeating already-seen prompts.
+- Reject case-insensitive, whitespace-normalized duplicate workspace names in imported backups before ambiguous workspace selection.
 - Add locked-vault credential and background-close regression checks; Windows acceptance remains required.
 
 # v0.7.79 — Portable import graph-integrity checks
