@@ -1,3 +1,10 @@
+# v0.7.79 — Portable import graph-integrity checks
+
+- Reject orphan credential entries that do not belong to an imported website.
+- Reject null, duplicate-id, invalid-name, oversized or empty-id workspace entries before importing encrypted data.
+- Preserve backward compatibility for workspaces referencing websites removed in older backups; their resolver safely ignores missing IDs.
+- Add encrypted-file and in-memory regression coverage. The Windows installer and real-account login still require native acceptance before any public release.
+
 # v0.7.78 — Linked run consent and browser-profile family safety
 
 - Accept the engine-owned linked cancellation token for live password-page consent while rejecting UI parent tokens and stale/finished engine runs. Preserve UI run lease, editor, vault and host-policy checks.

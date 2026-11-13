@@ -204,6 +204,65 @@ try
     catch (InvalidDataException) { fillRejected = true; }
     Check(fillRejected, "B3 Fill steps with typed values are refused on import");
 
+    // An encrypted file is not automatically a valid configuration. Unmatched
+    // credential rows must never be imported into a vault with no owning site.
+    var orphanPath = Path.Combine(root, "orphan-credential.launchflow");
+    PortableExport.Write(orphanPath, exportKey, new PortableExport.PortablePackage
+    {
+        Config = config,
+        Credentials = new Dictionary<Guid, SiteCredential>
+        {
+            [Guid.NewGuid()] = new("orphan@example.invalid", "synthetic-orphan-secret")
+        }
+    });
+    bool orphanRejected = false;
+    try { SecureTransferService.Read(orphanPath, exportKey); }
+    catch (InvalidDataException) { orphanRejected = true; }
+    Check(orphanRejected, "B4 real encrypted import rejects orphan credentials with no website");
+
+    var nullWorkspace = new PortableExport.PortablePackage
+    {
+        Config = new Configuration { Workspaces = new List<WorkspaceProfile> { null! } }
+    };
+    bool nullWorkspaceRejected = false;
+    try { PortableImportValidation.Validate(nullWorkspace); }
+    catch (InvalidDataException) { nullWorkspaceRejected = true; }
+    Check(nullWorkspaceRejected, "B4 null workspace is rejected before publishing a vault snapshot");
+
+    var workspaceId = Guid.NewGuid();
+    var repeatedWorkspace = new PortableExport.PortablePackage
+    {
+        Config = new Configuration
+        {
+            Workspaces = new()
+            {
+                new WorkspaceProfile { Id = workspaceId, Name = "First" },
+                new WorkspaceProfile { Id = workspaceId, Name = "Second" }
+            }
+        }
+    };
+    bool duplicateWorkspaceRejected = false;
+    try { PortableImportValidation.Validate(repeatedWorkspace); }
+    catch (InvalidDataException) { duplicateWorkspaceRejected = true; }
+    Check(duplicateWorkspaceRejected, "B4 duplicate workspace ids cannot create ambiguous selection");
+
+    // Old backups can mention a deleted website in a workspace. The workspace
+    // resolver intentionally ignores that reference, so imports must still work.
+    var compatibleWorkspace = new PortableExport.PortablePackage
+    {
+        Config = new Configuration
+        {
+            Workflows = new() { new WebsiteWorkflow { Name = "Available", StartUrl = "https://example.test" } },
+            Workspaces = new()
+            {
+                new WorkspaceProfile { Name = "Historical", WorkflowIds = new() { Guid.NewGuid() } }
+            }
+        }
+    };
+    PortableImportValidation.Validate(compatibleWorkspace);
+    Check(compatibleWorkspace.Config.Workspaces.Single().Resolve(compatibleWorkspace.Config).Count() == 0,
+        "B4 legacy workspace with removed website remains importable and resolves safely");
+
     var projected = ImportConfigurationProjection.ForThisDevice(
         new Configuration
         {

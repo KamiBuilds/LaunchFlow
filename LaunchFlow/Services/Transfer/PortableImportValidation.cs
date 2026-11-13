@@ -11,6 +11,7 @@ namespace LaunchFlow.Services;
 public static class PortableImportValidation
 {
     private const int MaxWorkflows = 500;
+    private const int MaxWorkspaces = 500;
     private const int MaxStepsPerWorkflow = 500;
     private const int MaxNameLength = 200;
     private const int MaxSelectorLength = 4096;
@@ -34,6 +35,8 @@ public static class PortableImportValidation
 
         if (package.Config.Workflows.Count > MaxWorkflows)
             throw new InvalidDataException("Import has too many websites.");
+        if (package.Config.Workspaces.Count > MaxWorkspaces)
+            throw new InvalidDataException("Import has too many workspaces.");
 
         var ids = new HashSet<Guid>();
         foreach (var workflow in package.Config.Workflows)
@@ -69,10 +72,30 @@ public static class PortableImportValidation
             }
         }
 
+        // Workspaces are loaded directly into the UI after import. Reject
+        // malformed entries rather than persisting objects that later crash
+        // workspace selection. Nonempty legacy references to removed websites
+        // remain compatible: WorkspaceProfile.Resolve already ignores them.
+        var workspaceIds = new HashSet<Guid>();
+        foreach (var workspace in package.Config.Workspaces)
+        {
+            if (workspace is null)
+                throw new InvalidDataException("Import contains a null workspace.");
+            if (workspace.Id == Guid.Empty || !workspaceIds.Add(workspace.Id))
+                throw new InvalidDataException("Import workspaces must each have a unique id.");
+            if (string.IsNullOrWhiteSpace(workspace.Name) || workspace.Name.Length > 64)
+                throw new InvalidDataException("Import workspace name is missing or too long.");
+            if (workspace.WorkflowIds.Count > MaxWorkflows ||
+                workspace.WorkflowIds.Contains(Guid.Empty))
+                throw new InvalidDataException("Import workspace contains invalid website references.");
+        }
+
         foreach (var pair in package.Credentials)
         {
             if (pair.Key == Guid.Empty)
                 throw new InvalidDataException("Import credentials contain an empty website id.");
+            if (!ids.Contains(pair.Key))
+                throw new InvalidDataException("Import credentials refer to a website missing from the backup.");
             if (pair.Value is null)
                 throw new InvalidDataException("Import credentials contain a null entry.");
             if (pair.Value.Username is { Length: > 2048 } || pair.Value.Password is { Length: > 4096 })
