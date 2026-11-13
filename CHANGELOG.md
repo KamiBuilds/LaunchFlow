@@ -2,6 +2,7 @@
 
 - Accept the engine-owned linked cancellation token for live password-page consent while rejecting UI parent tokens and stale/finished engine runs. Preserve UI run lease, editor, vault and host-policy checks.
 - Refuse to launch Firefox against an existing Chromium profile (and vice versa), preserving its files and encrypted snapshot; existing compatible profiles remain usable.
+- Duplicated workflows now drop inherited KeePassXC references and all origin trust grants, matching the UI promise of a copy without credentials.
 - Add source-linked UI, engine lifecycle, synthetic filesystem and safe-diagnostic regressions. Native real-account login remains a separate acceptance gate.
 - Candidate build: no automatic release, migration or overwrite of encrypted data.
 

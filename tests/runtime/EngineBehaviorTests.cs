@@ -18,6 +18,30 @@ internal static class EngineBehaviorTests
         await ApprovalPurposeAndStaleDestinationAsync(playwright);
         await BrowserSelectionSessionSwitchAsync(playwright);
         BrowserProfileFamilySafety();
+        DuplicateWorkflowDropsCredentialAuthority();
+    }
+
+    private static void DuplicateWorkflowDropsCredentialAuthority()
+    {
+        var source = new WebsiteWorkflow
+        {
+            Name = "Synthetic website",
+            StartUrl = "https://example.test",
+            KeepassEntryPath = "synthetic/secret-entry",
+            CredentialOrigin = "https://username.test",
+            PasswordCredentialOrigin = "https://password.test",
+            UsernameSelector = "#login"
+        };
+        source.ApprovedLoginOrigins.Add("https://trusted.test");
+        var copy = source.CloneWithoutCredential();
+        Check(copy.Id != source.Id && !copy.Enabled &&
+            copy.StartUrl == source.StartUrl && copy.UsernameSelector == source.UsernameSelector &&
+            copy.KeepassEntryPath is null && copy.CredentialOrigin == "" &&
+            copy.PasswordCredentialOrigin == "" && copy.ApprovedLoginOrigins.Count == 0,
+            "duplicate website retains nonsecret setup but never inherits KeePass credentials or trusted origins");
+        Check(source.KeepassEntryPath == "synthetic/secret-entry" &&
+            source.ApprovedLoginOrigins.Contains("https://trusted.test"),
+            "duplicating must not mutate the original website's authorization");
     }
 
     private static async Task ApprovalPurposeAndStaleDestinationAsync(IPlaywright playwright)

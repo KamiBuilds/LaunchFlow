@@ -63,13 +63,14 @@ public sealed class WebsiteWorkflow
             UsernameSelector = UsernameSelector,
             PasswordSelector = PasswordSelector,
             SubmitSelector = SubmitSelector,
-            CredentialOrigin = CredentialOrigin,
-            PasswordCredentialOrigin = PasswordCredentialOrigin,
+            // A duplicate has a new workflow identity, not inherited approval.
+            CredentialOrigin = "",
+            PasswordCredentialOrigin = "",
             UsernameContinueSelector = UsernameContinueSelector,
             LoginSuccessSelector = LoginSuccessSelector,
             LoginSuccessUrlContains = LoginSuccessUrlContains,
             LoginWaitSeconds = LoginWaitSeconds,
-            KeepassEntryPath = KeepassEntryPath,
+            KeepassEntryPath = null,
             Steps = Steps.Select(s => new WorkflowStep
             {
                 Type = s.Type,
@@ -77,7 +78,7 @@ public sealed class WebsiteWorkflow
                 Value = s.Value,
                 Description = s.Description
             }).ToList(),
-            ApprovedLoginOrigins = new HashSet<string>(ApprovedLoginOrigins, StringComparer.OrdinalIgnoreCase)
+            ApprovedLoginOrigins = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         };
     }
 }
