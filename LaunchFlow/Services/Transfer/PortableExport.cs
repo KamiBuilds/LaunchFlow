@@ -46,11 +46,16 @@ public static class PortableExport
             // Serialize directly into a clearable UTF-8 buffer and revoke it
             // immediately after encryption, before slow filesystem verification.
             var payload = JsonSerializer.SerializeToUtf8Bytes(package, JsonOptions);
-            var nonce = RandomNumberGenerator.GetBytes(NonceSize);
-            var ciphertext = new byte[payload.Length];
-            var tag = new byte[TagSize];
+            byte[] nonce = Array.Empty<byte>();
+            byte[] ciphertext = Array.Empty<byte>();
+            byte[] tag = Array.Empty<byte>();
             try
             {
+                // Allocation failures must clear plaintext too, not only an
+                // AES/write failure after the output arrays were allocated.
+                nonce = RandomNumberGenerator.GetBytes(NonceSize);
+                ciphertext = new byte[payload.Length];
+                tag = new byte[TagSize];
                 using var aes = new AesGcm(key, TagSize);
                 aes.Encrypt(nonce, payload, ciphertext, tag);
             }
