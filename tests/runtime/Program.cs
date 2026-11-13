@@ -188,6 +188,25 @@ if (OperatingSystem.IsLinux())
         finally { playwrightField.SetValue(engine, null); }
         Assert(rejected, "an unrestored sealed profile blocks browser creation instead of starting a replacement session");
         Assert(!Directory.Exists(Path.Combine(ProfileVaultService.ProfilesRoot, blockedWorkflow.Id.ToString("N"))), "failed restore never creates a replacement plaintext profile");
+
+        var placeholderWorkflow = new WebsiteWorkflow { Browser = "Chromium" };
+        var placeholder = Path.Combine(ProfileVaultService.ProfilesRoot, placeholderWorkflow.Id.ToString("N"));
+        Directory.CreateDirectory(placeholder);
+        var placeholderArchive = Path.Combine(ProfileVaultService.SealedRoot,
+            placeholderWorkflow.Id.ToString("N") + ".profile.aes");
+        File.WriteAllText(placeholderArchive, "synthetic ciphertext - preserve");
+        playwrightField.SetValue(engine, playwright);
+        var rejectedPlaceholder = false;
+        try { await (Task<IPage>)getPage.Invoke(engine,
+            new object[] { placeholderWorkflow, CancellationToken.None })!; }
+        catch (InvalidOperationException ex)
+        {
+            rejectedPlaceholder = ex.Message.Contains("restor", StringComparison.OrdinalIgnoreCase);
+        }
+        finally { playwrightField.SetValue(engine, null); }
+        Assert(rejectedPlaceholder && !Directory.EnumerateFileSystemEntries(placeholder).Any() &&
+               File.ReadAllText(placeholderArchive) == "synthetic ciphertext - preserve",
+            "empty browser profile placeholder cannot overwrite a retained encrypted snapshot");
     }
     finally
     {

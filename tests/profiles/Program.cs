@@ -33,6 +33,23 @@ try
     ProfileVaultService.UnsealAll();
     Assert(File.ReadAllBytes(Path.Combine(root, "profile-key.dpapi")).SequenceEqual(originalWrappedKey), "repeated legacy writes preserve the existing wrapped key exactly");
     Assert(CrashLog.Failures.Count == 0, "repeated profile lock/unlock reports no failures");
+    // An empty profile folder is not evidence that the matching sealed
+    // snapshot has been restored; preserve both and refuse a false success.
+    var emptyId = Guid.NewGuid().ToString("N");
+    var emptyTarget = Path.Combine(ProfileVaultService.ProfilesRoot, emptyId);
+    var emptyArchive = Path.Combine(ProfileVaultService.SealedRoot, emptyId + ".profile.aes");
+    Directory.CreateDirectory(emptyTarget);
+    File.Copy(firstArchive, emptyArchive);
+    var emptyDenied = false;
+    try { ProfileVaultService.UnsealAll(); }
+    catch (AggregateException) { emptyDenied = true; }
+    Assert(emptyDenied && !Directory.EnumerateFileSystemEntries(emptyTarget).Any() &&
+           File.ReadAllBytes(emptyArchive).SequenceEqual(File.ReadAllBytes(firstArchive)),
+        "empty placeholder directory cannot suppress encrypted browser-profile restoration");
+    Directory.Delete(emptyTarget);
+    ProfileVaultService.UnsealAll();
+    Assert(File.ReadAllBytes(Path.Combine(emptyTarget, "large.bin")).SequenceEqual(largeFixture),
+        "removing empty placeholder permits recovery of the original encrypted profile");
     var tamperedId = Guid.NewGuid().ToString("N");
     var tamperedPath = Path.Combine(ProfileVaultService.SealedRoot, tamperedId + ".profile.aes");
     var tampered = File.ReadAllBytes(firstArchive);

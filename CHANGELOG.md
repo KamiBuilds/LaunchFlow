@@ -2,6 +2,7 @@
 
 - Fail closed when an interrupted browser-profile restore leaves a reserved `.restore-*` directory containing potentially plaintext browser data. Both Lock vault and profile restore now refuse to claim success until the user resolves the retained staging files.
 - Rejecting a legacy AES-GCM profile authentication tag now explicitly zeroes the temporary decrypted buffer and returns an empty byte array.
+- Reject an empty browser-profile directory beside a retained encrypted snapshot during both restore and engine launch. Do not mistake a placeholder for successfully restored cookies or overwrite the sealed original.
 - Extend actual production-linked profile and filesystem cleanup tests to cover retained restore staging, refusal on both lock and unlock, and failed-decryption output cleanup.
 - No automatic deletion of unverified recovery files; Windows owner acceptance remains required.
 

@@ -70,7 +70,9 @@ public sealed partial class AutomationEngine
         var browserType = ResolveBrowserType(workflow.Browser);
         // Do not replace a failed restore with an empty browser profile and overwrite its sealed data on the next lock.
         var sealedPath = Path.Combine(ProfileVaultService.SealedRoot, workflow.Id.ToString("N") + ".profile.aes");
-        if (!Directory.Exists(profileDir) && File.Exists(sealedPath))
+        if (File.Exists(sealedPath) &&
+            (!Directory.Exists(profileDir) ||
+             !Directory.EnumerateFileSystemEntries(profileDir).Any()))
             throw new InvalidOperationException("This browser profile could not be restored. Its encrypted files were retained; do not replace them.");
         Directory.CreateDirectory(profileDir);
 

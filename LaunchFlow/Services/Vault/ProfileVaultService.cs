@@ -214,7 +214,15 @@ public static class ProfileVaultService
     {
         var id = Path.GetFileName(sealedPath).Replace(".profile.aes", "", StringComparison.OrdinalIgnoreCase);
         var target = Path.Combine(ProfilesRoot, id);
-        if (Directory.Exists(target)) return;
+        if (Directory.Exists(target))
+        {
+            // A failed launch or failed earlier restore can leave a placeholder
+            // directory. It is not proof that the encrypted profile was
+            // restored, and must never suppress recovery of its cookie data.
+            if (!Directory.EnumerateFileSystemEntries(target).Any())
+                throw new IOException("An empty browser-profile directory prevents restoring its encrypted snapshot. Encrypted data was retained.");
+            return;
+        }
 
         var key = ProfileKey();
         var staging = Path.Combine(ProfilesRoot, ".restore-" + Guid.NewGuid().ToString("N"));
