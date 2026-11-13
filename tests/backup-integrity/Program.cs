@@ -268,6 +268,7 @@ try
         {
             KeePassDatabasePath = @"D:\OtherPC\passwords.kdbx",
             KeePassKeyFilePath = @"D:\OtherPC\key.key",
+            FirstWebsiteGuidanceShown = true,
             Workflows =
             {
                 new WebsiteWorkflow
@@ -282,7 +283,8 @@ try
         config,
         "Ctrl+M");
     Check(projected.KeePassDatabasePath is null && projected.KeePassKeyFilePath is null &&
-          projected.Workflows.Single().KeepassEntryPath is null,
+          projected.Workflows.Single().KeepassEntryPath is null &&
+          projected.FirstWebsiteGuidanceShown,
         "B3 imported KeePass paths are cleared for this device");
 }
 finally

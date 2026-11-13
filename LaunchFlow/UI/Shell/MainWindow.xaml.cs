@@ -737,7 +737,8 @@ public partial class MainWindow : Window
         }
         if (choice.Choice == CloseChoice.Background)
         {
-            if (_editorSession.IsDirty && VaultDatabase.Current.IsUnlocked && !SaveAll())
+            // Backgrounding cannot discard a locked or unsaved editor.
+            if (!TryCloseWithSavedChanges())
             {
                 e.Cancel = true;
                 return;

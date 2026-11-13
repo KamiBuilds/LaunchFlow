@@ -42,6 +42,7 @@ public static class ImportConfigurationProjection
             UnlockDelaySeconds = Math.Clamp(imported.UnlockDelaySeconds, 0, 300),
             VaultLockMinutes = Math.Clamp(imported.VaultLockMinutes, 1, 120),
             ShortcutTipShown = imported.ShortcutTipShown,
+            FirstWebsiteGuidanceShown = imported.FirstWebsiteGuidanceShown,
             TrayNotificationsEnabled = imported.TrayNotificationsEnabled,
             WelcomeChecklistShown = imported.WelcomeChecklistShown,
             DiagnosticsLogEnabled = false,

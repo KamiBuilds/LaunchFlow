@@ -31,6 +31,8 @@ public sealed class CredentialVault
         string? keepassMasterPassword = null)
     {
         EnterprisePolicy.Current.RequireCredentialRead();
+        // KeePass credentials must never bypass the LaunchFlow master lock.
+        if (!VaultDatabase.Current.IsUnlocked) return null;
         var local = Read(workflow.Id);
         if (local is not null) return local;
 
@@ -41,13 +43,16 @@ public sealed class CredentialVault
         if (configuration is null || string.IsNullOrWhiteSpace(configuration.KeePassDatabasePath))
             return null;
 
+        if (!VaultDatabase.Current.IsUnlocked) return null;
         try
         {
-            return KeePassXcService.ReadEntry(
+            var credential = KeePassXcService.ReadEntry(
                 configuration.KeePassDatabasePath,
                 workflow.KeepassEntryPath!,
                 configuration.KeePassKeyFilePath,
                 keepassMasterPassword);
+            // Windows can lock while the external CLI is running.
+            return VaultDatabase.Current.IsUnlocked ? credential : null;
         }
         catch (Exception)
         {

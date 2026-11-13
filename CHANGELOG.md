@@ -1,3 +1,10 @@
+# v0.7.80 — Locked credential fallback, tray-save and import safety
+
+- Guard the optional KeePassXC fallback with the LaunchFlow vault lock, including authorization recheck after CLI lookup.
+- Close-to-tray uses the same durable-save guard as Exit, preventing locked dirty editor state from disappearing without warning.
+- Preserve imported first-website guidance history to avoid repeating already-seen prompts.
+- Add locked-vault credential and background-close regression checks; Windows acceptance remains required.
+
 # v0.7.79 — Portable import graph-integrity checks
 
 - Preserve extra encrypted credential records in older backups even when their websites have been removed, as required by the legacy recovery contract.

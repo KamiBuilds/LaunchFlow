@@ -110,6 +110,21 @@ internal static class VaultTests
                 Refused(() => vault.Read(new WebsiteWorkflow { KeepassEntryPath = "fixture" }, new Configuration { KeePassDatabasePath = "fixture" }));
             Check(KeePassXcService.Calls == before);
         });
+        test("locked LaunchFlow vault never calls KeePass fallback", () =>
+        {
+            var before = KeePassXcService.Calls;
+            db.Lock();
+            try
+            {
+                var linked = new WebsiteWorkflow { KeepassEntryPath = "synthetic/entry" };
+                var settings = new Configuration { KeePassDatabasePath = "synthetic.kdbx" };
+                Check(vault.Read(linked, settings) is null && KeePassXcService.Calls == before,
+                    "Locked vault bypassed by KeePass lookup.");
+            }
+            finally { Check(db.Unlock(Master)); }
+            Check(db.ReadCredential(id) == credential,
+                "Locked KeePass attempt changed the saved credential.");
+        });
         test("denied operations preserve decryptable vault across lock/unlock", () =>
         {
             db.Lock();
