@@ -585,6 +585,29 @@ var tests = new List<(string Name, Func<Task> Body)>
             string.IsNullOrEmpty(flow.PasswordCredentialOrigin),
             "queued old-run approval must refuse without a modal or write");
     }),
+    ("78-P1 linked engine token authorizes legitimate consent, not the UI parent token", async () =>
+    {
+        var ui = new UiFixture();
+        var flow = ui._configuration.Workflows[0];
+        flow.StartUrl = "https://initial.test";
+        ui._editorSession.Select(flow);
+        Check(ui._runUi.TryBeginRun(out var lease), "linked token run admitted");
+        using var parent = new CancellationTokenSource();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(parent.Token);
+        Check(ui._runUi.AttachCancellation(lease, parent), "parent token attached");
+        ui._runner.ActiveRunToken = linked.Token;
+        PasswordOriginApprovalWindow.Result = true;
+        Check(!await ui.ApproveWithToken(flow, "https://idp.test", parent.Token) &&
+            ui._store.Saves == 0, "a UI parent token cannot impersonate the engine-linked run token");
+        Check(await ui.ApproveWithToken(flow, "https://idp.test", linked.Token) &&
+            ui._store.Saves == 1 &&
+            flow.PasswordCredentialOrigin == "https://idp.test",
+            "the genuine engine-linked token can commit consent while its UI source is active");
+        parent.Cancel();
+        Check(!await ui.ApproveWithToken(flow, "https://another.test", linked.Token) &&
+            ui._store.Saves == 1,
+            "cancelled source invalidates the authorized linked run");
+    }),
     ("77-P1 approval requires the originating cancellation token", async () =>
     {
         var ui = new UiFixture();
@@ -1645,6 +1668,10 @@ namespace LaunchFlow.Services
             public int FailedCount { get; set; }
         }
         public bool IsRunning;
+        public CancellationToken ActiveRunToken;
+        public bool OwnsRunCancellation(CancellationToken token) =>
+            token.CanBeCanceled && !token.IsCancellationRequested &&
+            ActiveRunToken.CanBeCanceled && ActiveRunToken == token;
         public int RunCalls;
         public List<WebsiteWorkflow> LastRun = new();
         public bool IncludeDisabled;

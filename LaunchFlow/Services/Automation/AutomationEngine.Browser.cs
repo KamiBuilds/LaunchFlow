@@ -22,6 +22,12 @@ public sealed partial class AutomationEngine
     {
         ct.ThrowIfCancellationRequested();
         RequireAutomationUrl(workflow.StartUrl);
+        // The encrypted snapshot is keyed by workflow ID. Keep the existing
+        // on-disk profile; Chromium and Firefox cannot safely share its format.
+        var profileDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "LaunchFlow", "profiles-v2", workflow.Id.ToString("N"));
+        EnsureBrowserProfileCompatibility(profileDir, workflow.Browser);
         if (_sessions.TryGetValue(workflow.Id, out var existing))
         {
             // A workflow ID identifies its profile, not its requested browser.
@@ -62,9 +68,6 @@ public sealed partial class AutomationEngine
                 $"The selected browser ({workflow.Browser}) is not installed. Install it or pick another browser for this website.");
         }
         var browserType = ResolveBrowserType(workflow.Browser);
-        var profileDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "LaunchFlow", "profiles-v2", workflow.Id.ToString("N"));
         // Do not replace a failed restore with an empty browser profile and overwrite its sealed data on the next lock.
         var sealedPath = Path.Combine(ProfileVaultService.SealedRoot, workflow.Id.ToString("N") + ".profile.aes");
         if (!Directory.Exists(profileDir) && File.Exists(sealedPath))
@@ -139,6 +142,23 @@ public sealed partial class AutomationEngine
             catch { lock (_gate) _cleanupRequired = true; }
             throw;
         }
+    }
+
+    // Legacy profiles have no browser-family marker. Detect the browser's own
+    // on-disk signatures and refuse incompatible launches without modifying any
+    // profile bytes or replacing the existing encrypted snapshot.
+    internal static void EnsureBrowserProfileCompatibility(string directory, string browser)
+    {
+        if (!Directory.Exists(directory)) return;
+        var firefox = File.Exists(Path.Combine(directory, "prefs.js")) ||
+                      File.Exists(Path.Combine(directory, "compatibility.ini"));
+        var chromium = File.Exists(Path.Combine(directory, "Local State")) ||
+                       Directory.Exists(Path.Combine(directory, "Default")) ||
+                       File.Exists(Path.Combine(directory, "First Run"));
+        var wantsFirefox = browser.Contains("Firefox", StringComparison.OrdinalIgnoreCase);
+        if ((firefox && chromium) || (wantsFirefox && chromium) || (!wantsFirefox && firefox))
+            throw new InvalidOperationException(
+                RunIssueNotice.Message(RunIssueCode.BrowserProfileMismatch));
     }
 
     private async Task<IBrowserContext> LaunchContextWithRecoveryAsync(

@@ -1,3 +1,10 @@
+# v0.7.78 — Linked run consent and browser-profile family safety
+
+- Accept the engine-owned linked cancellation token for live password-page consent while rejecting UI parent tokens and stale/finished engine runs. Preserve UI run lease, editor, vault and host-policy checks.
+- Refuse to launch Firefox against an existing Chromium profile (and vice versa), preserving its files and encrypted snapshot; existing compatible profiles remain usable.
+- Add source-linked UI, engine lifecycle, synthetic filesystem and safe-diagnostic regressions. Native real-account login remains a separate acceptance gate.
+- Candidate build: no automatic release, migration or overwrite of encrypted data.
+
 # v0.7.77 — Approval ownership, browser switching, and privacy fixes
 
 - Explicitly distinguish username-origin approval from a password-destination grant. The native consent dialog says what is authorized, and the engine no longer overwrites a durable approved destination after returning from a modal.

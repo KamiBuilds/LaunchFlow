@@ -46,6 +46,18 @@ public sealed partial class AutomationEngine : IAsyncDisposable
         get { lock (_gate) return _running; }
     }
 
+    // The engine owns a linked run token, which is intentionally different
+    // from the UI cancellation source. Only this active engine run may
+    // authorize a password-origin consent callback.
+    public bool OwnsRunCancellation(CancellationToken token)
+    {
+        if (!token.CanBeCanceled || token.IsCancellationRequested) return false;
+        lock (_gate)
+            return _running && !_closing && !_cleanupRequired &&
+                _activeRunCancellation is { IsCancellationRequested: false } active &&
+                active.Token == token;
+    }
+
     public sealed record LoginAttention(Guid WorkflowId, string WorkflowName, string Reason);
     public sealed record StepAttention(Guid WorkflowId, string WorkflowName, string StepType);
     public sealed record WorkflowFailure(Guid WorkflowId, string WorkflowName, string Reason);

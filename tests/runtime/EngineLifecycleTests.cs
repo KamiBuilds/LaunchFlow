@@ -51,18 +51,30 @@ internal static class EngineLifecycleTests
         await using var engine = new AutomationEngine(new CredentialVault());
         Task? close = null;
         var returnedBeforeRunFinished = false;
+        using var parent = new CancellationTokenSource();
+        CancellationToken observedLinked = default;
+        var linkedRunAuthorized = false;
         engine.OnWorkflowStatus += (_, state) =>
         {
             if (state != AutomationEngine.WorkflowRunState.Running) return;
+            var active = (CancellationTokenSource?)typeof(AutomationEngine)
+                .GetField("_activeRunCancellation", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .GetValue(engine);
+            observedLinked = active?.Token ?? default;
+            linkedRunAuthorized = active is not null &&
+                observedLinked != parent.Token &&
+                engine.OwnsRunCancellation(observedLinked) &&
+                !engine.OwnsRunCancellation(parent.Token);
             close = engine.CloseSessionsAsync();
             returnedBeforeRunFinished = close.IsCompleted;
         };
         var workflow = new WebsiteWorkflow { StartUrl = "invalid-inert-no-launch", AutoLogin = false };
-        var run = engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        var run = engine.RunAsync(new[] { workflow }, parent.Token);
         var cancelled = await CancelledAsync(run);
         await close!;
-        EngineBehaviorTests.Check(cancelled && !returnedBeforeRunFinished && run.IsCompleted,
-            "a Running-status close cannot finish before its newly admitted run task is registered and finished");
+        EngineBehaviorTests.Check(cancelled && !returnedBeforeRunFinished && run.IsCompleted &&
+            linkedRunAuthorized && !engine.OwnsRunCancellation(observedLinked),
+            "engine-linked token authenticates current approval, external token cannot, and completed run revokes it");
     }
 
     private static async Task ParallelContextCloseAsync(IPlaywright playwright)

@@ -6,7 +6,8 @@ public enum RunIssueCode
     Unknown, BrowserUnavailable, FieldsNotReady, PasswordStageMissing,
     PasswordFieldMissing, CredentialMissing, OriginDeclined, DestinationChanged,
     DocumentChanged, ExtraAuthenticationObserved, SsoManual, AmbiguousSubmit,
-    FinalSubmitMissing, CompletionUnverified, Cancelled, RecordedStepFailed
+    FinalSubmitMissing, CompletionUnverified, Cancelled, RecordedStepFailed,
+    BrowserProfileMismatch
 }
 
 /// <summary>Bounded user-facing notices; never forwards browser-driver exceptions,
@@ -30,6 +31,7 @@ public static class RunIssueNotice
     public static string Message(RunIssueCode code) => code switch
     {
         RunIssueCode.BrowserUnavailable => "Couldn't open the automation browser — check Browser readiness, or choose another installed browser.",
+        RunIssueCode.BrowserProfileMismatch => "This website has a saved browser profile from a different browser family. Its files were preserved. Switch back or create a new website entry for the other browser.",
         RunIssueCode.FieldsNotReady => "The sign-in boxes weren’t ready yet — check the browser window, or try Test again in a moment.",
         RunIssueCode.PasswordStageMissing => "The password step didn’t show up yet — check the browser, or try again in a moment.",
         RunIssueCode.PasswordFieldMissing => "Couldn’t spot the password box this time — finish in the browser, or try Test again.",
@@ -111,6 +113,8 @@ public static class RunIssueNotice
                 "A previous browser session could not close. Close its window and retry.",
             "Automatic credentials require HTTPS. Use manual sign-in for HTTP sites." =>
                 "Automatic sign-in requires HTTPS. Use manual sign-in for HTTP sites.",
+            _ when string.Equals(raw, Message(RunIssueCode.BrowserProfileMismatch), StringComparison.Ordinal) =>
+                Message(RunIssueCode.BrowserProfileMismatch),
             _ => Message(RunIssueCode.Unknown)
         };
     }

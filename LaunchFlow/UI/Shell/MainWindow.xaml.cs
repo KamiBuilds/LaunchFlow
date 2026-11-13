@@ -510,8 +510,9 @@ public partial class MainWindow : Window
             // run/editor/configuration/vault authority on the UI thread.
             var cancellation = _runUi.Cancellation;
             var lease = requestedLease;
-            if (runToken.CanBeCanceled &&
-                (cancellation is null || cancellation.Token != runToken)) return false;
+            // RunAsync creates a linked cancellation source. Its token is not
+            // the UI source's Token; compare against the engine's actual run.
+            if (runToken.CanBeCanceled && !_runner.OwnsRunCancellation(runToken)) return false;
             var editorOwner = _editorSession.CaptureOwnership();
             var config = _configuration;
             var generation = VaultDatabase.Current.SessionGeneration;
@@ -524,6 +525,7 @@ public partial class MainWindow : Window
                 var policy = EnterprisePolicy.Current;
                 return lease != 0 && _runUi.Owns(lease) &&
                     !runToken.IsCancellationRequested &&
+                    (!runToken.CanBeCanceled || _runner.OwnsRunCancellation(runToken)) &&
                     cancellation is { IsCancellationRequested: false } &&
                     ReferenceEquals(_runUi.Cancellation, cancellation) &&
                     _editorSession.IsCurrent(editorOwner) &&

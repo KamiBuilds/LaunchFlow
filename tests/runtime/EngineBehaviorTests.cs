@@ -17,6 +17,7 @@ internal static class EngineBehaviorTests
         await CredentialContinuationCancellationAsync(playwright);
         await ApprovalPurposeAndStaleDestinationAsync(playwright);
         await BrowserSelectionSessionSwitchAsync(playwright);
+        BrowserProfileFamilySafety();
     }
 
     private static async Task ApprovalPurposeAndStaleDestinationAsync(IPlaywright playwright)
@@ -90,6 +91,42 @@ internal static class EngineBehaviorTests
         Check(refused && workflow.PasswordCredentialOrigin == "https://changed.test" &&
             await page.InputValueAsync("#password") == "",
             "late approval cannot overwrite competing password destination");
+    }
+
+    private static void BrowserProfileFamilySafety()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "lf-profile-family-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var chromiumMarker = Path.Combine(dir, "Local State");
+            var firefoxMarker = Path.Combine(dir, "prefs.js");
+            File.WriteAllText(chromiumMarker, "synthetic-chromium");
+            AutomationEngine.EnsureBrowserProfileCompatibility(dir, "Edge");
+            var blocked = false;
+            try { AutomationEngine.EnsureBrowserProfileCompatibility(dir, "Firefox"); }
+            catch (InvalidOperationException) { blocked = true; }
+            Check(blocked && File.ReadAllText(chromiumMarker) == "synthetic-chromium",
+                "Firefox cannot take ownership of an existing Chromium profile; bytes are preserved");
+            File.Delete(chromiumMarker);
+            File.WriteAllText(firefoxMarker, "synthetic-firefox");
+            AutomationEngine.EnsureBrowserProfileCompatibility(dir, "Firefox");
+            blocked = false;
+            try { AutomationEngine.EnsureBrowserProfileCompatibility(dir, "Edge"); }
+            catch (InvalidOperationException) { blocked = true; }
+            Check(blocked && File.ReadAllText(firefoxMarker) == "synthetic-firefox",
+                "Chromium cannot take ownership of an existing Firefox profile; bytes are preserved");
+            File.WriteAllText(chromiumMarker, "synthetic-chromium");
+            blocked = false;
+            try { AutomationEngine.EnsureBrowserProfileCompatibility(dir, "Firefox"); }
+            catch (InvalidOperationException) { blocked = true; }
+            Check(blocked && File.Exists(chromiumMarker) && File.Exists(firefoxMarker),
+                "mixed browser-family profile refuses rather than silently replacing data");
+            var safeReason = RunIssueNotice.Message(RunIssueCode.BrowserProfileMismatch);
+            Check(RunIssueNotice.SafeExceptionReason(new InvalidOperationException(safeReason)) == safeReason,
+                "known profile incompatibility produces a bounded actionable error instead of raw browser data");
+        }
+        finally { Directory.Delete(dir, recursive: true); }
     }
 
     private static async Task BrowserSelectionSessionSwitchAsync(IPlaywright playwright)
