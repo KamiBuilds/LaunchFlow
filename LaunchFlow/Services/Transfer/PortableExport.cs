@@ -43,7 +43,8 @@ public static class PortableExport
         var key = DeriveKey(exportPassword, salt);
         try
         {
-            var payload = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(package, JsonOptions));
+            // Serialize directly into a clearable UTF-8 buffer: no immutable JSON string carrying credentials.
+            var payload = JsonSerializer.SerializeToUtf8Bytes(package, JsonOptions);
             try
             {
             var nonce = RandomNumberGenerator.GetBytes(NonceSize);
