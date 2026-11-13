@@ -43,15 +43,18 @@ public static class PortableExport
         var key = DeriveKey(exportPassword, salt);
         try
         {
-            // Serialize directly into a clearable UTF-8 buffer: no immutable JSON string carrying credentials.
+            // Serialize directly into a clearable UTF-8 buffer and revoke it
+            // immediately after encryption, before slow filesystem verification.
             var payload = JsonSerializer.SerializeToUtf8Bytes(package, JsonOptions);
-            try
-            {
             var nonce = RandomNumberGenerator.GetBytes(NonceSize);
             var ciphertext = new byte[payload.Length];
             var tag = new byte[TagSize];
-            using (var aes = new AesGcm(key, TagSize))
+            try
+            {
+                using var aes = new AesGcm(key, TagSize);
                 aes.Encrypt(nonce, payload, ciphertext, tag);
+            }
+            finally { CryptographicOperations.ZeroMemory(payload); }
 
             var destination = Path.GetFullPath(path);
             var directory = Path.GetDirectoryName(destination)
@@ -87,8 +90,6 @@ public static class PortableExport
             {
                 if (File.Exists(temporary)) File.Delete(temporary);
             }
-            }
-            finally { CryptographicOperations.ZeroMemory(payload); }
         }
         finally
         {
