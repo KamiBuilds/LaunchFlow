@@ -71,13 +71,17 @@ public sealed class WebsiteWorkflow
             LoginSuccessUrlContains = LoginSuccessUrlContains,
             LoginWaitSeconds = LoginWaitSeconds,
             KeepassEntryPath = null,
-            Steps = Steps.Select(s => new WorkflowStep
-            {
-                Type = s.Type,
-                Target = s.Target,
-                Value = s.Value,
-                Description = s.Description
-            }).ToList(),
+            // Older Fill actions may contain typed passwords or tokens.
+            // A password-free copy cannot inherit them. Non-Fill values
+            // are unused by playback; scrub those fields as well.
+            Steps = Steps.Where(s => !string.Equals(s.Type, "Fill", StringComparison.Ordinal))
+                .Select(s => new WorkflowStep
+                {
+                    Type = s.Type,
+                    Target = s.Target,
+                    Value = null,
+                    Description = s.Description
+                }).ToList(),
             ApprovedLoginOrigins = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         };
     }

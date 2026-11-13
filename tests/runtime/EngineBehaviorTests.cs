@@ -33,15 +33,21 @@ internal static class EngineBehaviorTests
             UsernameSelector = "#login"
         };
         source.ApprovedLoginOrigins.Add("https://trusted.test");
+        source.Steps.Add(new WorkflowStep { Type = "Fill", Target = "#token", Value = "synthetic-private-value" });
+        source.Steps.Add(new WorkflowStep { Type = "Click", Target = "#next", Value = "unexpected-private-value" });
         var copy = source.CloneWithoutCredential();
         Check(copy.Id != source.Id && !copy.Enabled &&
             copy.StartUrl == source.StartUrl && copy.UsernameSelector == source.UsernameSelector &&
             copy.KeepassEntryPath is null && copy.CredentialOrigin == "" &&
             copy.PasswordCredentialOrigin == "" && copy.ApprovedLoginOrigins.Count == 0,
             "duplicate website retains nonsecret setup but never inherits KeePass credentials or trusted origins");
+        Check(copy.Steps.Count == 1 && copy.Steps[0].Type == "Click" &&
+            copy.Steps[0].Target == "#next" && copy.Steps[0].Value is null,
+            "duplicate drops old Fill steps and unused typed values instead of copying possible secrets");
         Check(source.KeepassEntryPath == "synthetic/secret-entry" &&
-            source.ApprovedLoginOrigins.Contains("https://trusted.test"),
-            "duplicating must not mutate the original website's authorization");
+            source.ApprovedLoginOrigins.Contains("https://trusted.test") &&
+            source.Steps.Count == 2 && source.Steps[0].Value == "synthetic-private-value",
+            "duplicating must not mutate the original website's authorization or recorded steps");
     }
 
     private static async Task ApprovalPurposeAndStaleDestinationAsync(IPlaywright playwright)

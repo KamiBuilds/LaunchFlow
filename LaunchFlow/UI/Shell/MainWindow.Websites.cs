@@ -184,7 +184,11 @@ public partial class MainWindow
 
         var ownedConfig = _configuration;
         var ownedVaultSession = VaultDatabase.Current.SessionGeneration;
-        var next = _editorSession.Selection.CloneWithoutCredential();
+        var source = _editorSession.Selection;
+        if (source is null || !ownedConfig.Workflows.Any(item => ReferenceEquals(item, source))) return;
+        var skippedFillCount = source.Steps.Count(step =>
+            string.Equals(step.Type, "Fill", StringComparison.Ordinal));
+        var next = source.CloneWithoutCredential();
         try
         {
             var candidate = System.Text.Json.JsonSerializer.Deserialize<Configuration>(
@@ -207,6 +211,11 @@ public partial class MainWindow
             RefreshWorkflowList(next);
             if (!_editorSession.IsDirty) MarkSaved();
             AppendLog($"Duplicated '{next.Name}' without a password (add credentials separately). Saved.");
+            if (skippedFillCount > 0)
+                MessageBox.Show(this,
+                    $"The copy left out {skippedFillCount} old Fill action(s), which may contain typed private text. " +
+                    "The original website was not changed. Review and re-record those steps if needed.",
+                    "Review copied steps", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {

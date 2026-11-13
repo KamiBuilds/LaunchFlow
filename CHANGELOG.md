@@ -1,6 +1,7 @@
 # v0.7.79 — Portable import graph-integrity checks
 
 - Reject orphan credential entries that do not belong to an imported website.
+- Password-free duplication now omits legacy Fill actions and unused typed step values; it informs users when steps need re-recording and preserves the original workflow.
 - Reject null, duplicate-id, invalid-name, oversized or empty-id workspace entries before importing encrypted data.
 - Preserve backward compatibility for workspaces referencing websites removed in older backups; their resolver safely ignores missing IDs.
 - Add encrypted-file and in-memory regression coverage. The Windows installer and real-account login still require native acceptance before any public release.
