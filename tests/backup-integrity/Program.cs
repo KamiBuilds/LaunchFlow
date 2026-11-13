@@ -204,21 +204,21 @@ try
     catch (InvalidDataException) { fillRejected = true; }
     Check(fillRejected, "B3 Fill steps with typed values are refused on import");
 
-    // An encrypted file is not automatically a valid configuration. Unmatched
-    // credential rows must never be imported into a vault with no owning site.
+    // Older vaults can legitimately retain credential rows after a website
+    // has been removed. Portable backups must preserve those encrypted rows
+    // for legacy recovery, rather than reject or silently discard them.
+    var orphanId = Guid.NewGuid();
+    var orphanSecret = new SiteCredential("orphan@example.invalid", "synthetic-orphan-secret");
     var orphanPath = Path.Combine(root, "orphan-credential.launchflow");
     PortableExport.Write(orphanPath, exportKey, new PortableExport.PortablePackage
     {
         Config = config,
-        Credentials = new Dictionary<Guid, SiteCredential>
-        {
-            [Guid.NewGuid()] = new("orphan@example.invalid", "synthetic-orphan-secret")
-        }
+        Credentials = new Dictionary<Guid, SiteCredential> { [orphanId] = orphanSecret }
     });
-    bool orphanRejected = false;
-    try { SecureTransferService.Read(orphanPath, exportKey); }
-    catch (InvalidDataException) { orphanRejected = true; }
-    Check(orphanRejected, "B4 real encrypted import rejects orphan credentials with no website");
+    var orphanPackage = SecureTransferService.Read(orphanPath, exportKey);
+    Check(orphanPackage.Credentials.TryGetValue(orphanId, out var preservedOrphan) &&
+          preservedOrphan == orphanSecret,
+          "B4 old encrypted backups preserve extra credential records for backward compatibility");
 
     var nullWorkspace = new PortableExport.PortablePackage
     {

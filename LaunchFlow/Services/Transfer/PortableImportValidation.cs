@@ -94,8 +94,6 @@ public static class PortableImportValidation
         {
             if (pair.Key == Guid.Empty)
                 throw new InvalidDataException("Import credentials contain an empty website id.");
-            if (!ids.Contains(pair.Key))
-                throw new InvalidDataException("Import credentials refer to a website missing from the backup.");
             if (pair.Value is null)
                 throw new InvalidDataException("Import credentials contain a null entry.");
             if (pair.Value.Username is { Length: > 2048 } || pair.Value.Password is { Length: > 4096 })
