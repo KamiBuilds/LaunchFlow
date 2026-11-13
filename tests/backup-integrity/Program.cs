@@ -41,6 +41,27 @@ try
     Check(SecureTransferService.Read(configOnly, exportKey).Credentials.Count == 0,
         "B1 configuration-only backup round-trips and omits passwords");
 
+    // Direct UTF-8 serialization must preserve international credentials without
+    // creating an extra immutable JSON string that holds their plaintext.
+    var unicodeId = Guid.NewGuid();
+    var unicodeSecret = new SiteCredential("użytkownik@example.invalid", "Pąsswörd-🔐");
+    var unicodePath = Path.Combine(root, "unicode.launchflow");
+    PortableExport.Write(unicodePath, exportKey, new PortableExport.PortablePackage
+    {
+        Config = new Configuration
+        {
+            Workflows = new() { new WebsiteWorkflow
+            {
+                Id = unicodeId, Name = "Zażółć", StartUrl = "https://example.test"
+            } }
+        },
+        Credentials = new Dictionary<Guid, SiteCredential> { [unicodeId] = unicodeSecret }
+    });
+    var unicodeRestored = SecureTransferService.Read(unicodePath, exportKey);
+    Check(unicodeRestored.Credentials[unicodeId] == unicodeSecret &&
+          unicodeRestored.Config.Workflows.Single().Name == "Zażółć",
+        "B5 direct UTF-8 encryption/decryption preserves international passwords and site names");
+
     // Header/length validation must reject corrupt archives before expensive
     // password derivation, without modifying a prior valid backup.
     var validEncryptedBytes = File.ReadAllBytes(inclusive);

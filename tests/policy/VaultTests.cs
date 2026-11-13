@@ -125,6 +125,20 @@ internal static class VaultTests
             Check(db.ReadCredential(id) == credential,
                 "Locked KeePass attempt changed the saved credential.");
         });
+        test("KeePass result still succeeds with unchanged unlocked vault session", () =>
+        {
+            var linked = new WebsiteWorkflow { Id = Guid.NewGuid(), KeepassEntryPath = "synthetic/entry" };
+            var settings = new Configuration { KeePassDatabasePath = "synthetic.kdbx" };
+            var expected = new SiteCredential("allowed@example.invalid", "fixture-allowed-secret");
+            var session = db.SessionGeneration;
+            KeePassXcService.OnRead = () => expected;
+            try
+            {
+                Check(vault.Read(linked, settings) == expected && db.SessionGeneration == session,
+                    "Valid KeePass lookup was accidentally blocked without a session or policy change.");
+            }
+            finally { KeePassXcService.OnRead = null; }
+        });
         test("KeePass result from old vault session is rejected after lock and unlock", () =>
         {
             var oldSession = db.SessionGeneration;
