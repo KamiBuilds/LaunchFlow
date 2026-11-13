@@ -49,8 +49,16 @@ try
     Check(error is not null,"legacy quarantine also blocks a false-success restore");
     Directory.Delete(legacy,true);
     var reserved=Path.Combine(ProfileVaultService.ProfilesRoot,".restore-22222222222222222222222222222222");Directory.CreateDirectory(reserved);File.WriteAllText(Path.Combine(reserved,"partial.txt"),"synthetic crash residue");
+    error=null;try{ProfileVaultService.SealAll();}catch(AggregateException ex){error=ex;}
+    Check(error is not null && Directory.Exists(reserved) &&
+        File.ReadAllText(Path.Combine(reserved,"partial.txt"))=="synthetic crash residue" &&
+        !File.Exists(Path.Combine(ProfileVaultService.SealedRoot,Path.GetFileName(reserved)+".profile.aes")),
+        "incomplete restore plaintext refuses a false-success Lock and remains untouched");
+    error=null;try{ProfileVaultService.UnsealAll();}catch(AggregateException ex){error=ex;}
+    Check(error is not null && Directory.Exists(reserved),
+        "incomplete restore plaintext refuses a false-success Unseal");
+    Directory.Delete(reserved,true);
     ProfileVaultService.SealAll();
-    Check(Directory.Exists(reserved)&&!File.Exists(Path.Combine(ProfileVaultService.SealedRoot,Path.GetFileName(reserved)+".profile.aes")),"reserved restore debris remains quarantined, never reclassified");
     var helperArchive=Path.Combine(ProfileVaultService.SealedRoot,".restore-33333333333333333333333333333333.profile.aes");File.WriteAllBytes(helperArchive,original);
     ProfileVaultService.UnsealAll();
     Check(!Directory.Exists(Path.Combine(ProfileVaultService.ProfilesRoot,".restore-33333333333333333333333333333333"))&&File.ReadAllBytes(helperArchive).SequenceEqual(original),"old helper ciphertext is preserved without publishing a reserved profile");

@@ -27,6 +27,7 @@ public static class ProfileVaultService
         // Never silently skip plaintext quarantined by an earlier interrupted deletion.
         // A failed retry prevents a successful lock/exit, without reopening the profile.
         CleanupRetainedSealedDirectories();
+        RefuseUnfinishedRestoreDirectories();
         var failures = new List<Exception>();
         foreach (var dir in Directory.GetDirectories(ProfilesRoot))
         {
@@ -47,6 +48,9 @@ public static class ProfileVaultService
 
     public static void UnsealAll()
     {
+        // Never report an unlocked/recovered state while a prior restore left
+        // readable cookie/token files in its uncommitted staging directory.
+        RefuseUnfinishedRestoreDirectories();
         if (!Directory.Exists(SealedRoot)) return;
         Directory.CreateDirectory(ProfilesRoot);
         CleanupRetainedSealedDirectories();
@@ -164,6 +168,19 @@ public static class ProfileVaultService
         }
         if (failures.Count > 0)
             throw new AggregateException("Plaintext browser-profile cleanup is still incomplete; no successful profile seal or restore is permitted.", failures);
+    }
+
+    private static void RefuseUnfinishedRestoreDirectories()
+    {
+        if (!Directory.Exists(ProfilesRoot)) return;
+        // An interrupted restore's .restore-* folder may contain extracted
+        // plaintext cookies. Do not delete it blindly or claim safe lock/exit.
+        // Recovery is manual until the owned staging contents are resolved.
+        if (Directory.EnumerateDirectories(
+                ProfilesRoot, ".restore-*", SearchOption.TopDirectoryOnly).Any())
+            throw new AggregateException(
+                "Incomplete browser-profile restore staging contains potentially unencrypted data. Manual recovery is required before Lock vault or restore can finish.",
+                new IOException("Unfinished .restore-* browser-profile directory was retained."));
     }
 
     private static void VerifyAuthenticatedSnapshot(string sealedPath)
@@ -384,6 +401,10 @@ public static class ProfileVaultService
         }
         catch (CryptographicException)
         {
+            // A rejected GCM tag must not leave even unauthenticated profile
+            // bytes available to a caller or retained in the heap buffer.
+            CryptographicOperations.ZeroMemory(plaintext);
+            plaintext = Array.Empty<byte>();
             return false;
         }
     }

@@ -1,3 +1,10 @@
+# v0.7.82 — Refuse incomplete browser-profile restore and clear failed decrypt buffers
+
+- Fail closed when an interrupted browser-profile restore leaves a reserved `.restore-*` directory containing potentially plaintext browser data. Both Lock vault and profile restore now refuse to claim success until the user resolves the retained staging files.
+- Rejecting a legacy AES-GCM profile authentication tag now explicitly zeroes the temporary decrypted buffer and returns an empty byte array.
+- Extend actual production-linked profile and filesystem cleanup tests to cover retained restore staging, refusal on both lock and unlock, and failed-decryption output cleanup.
+- No automatic deletion of unverified recovery files; Windows owner acceptance remains required.
+
 # v0.7.81 — KeePass session continuity and encrypted-backup memory safety
 
 - Bind optional KeePassXC credential results to the original unlocked vault session; a lock/reunlock invalidates any outstanding external read.

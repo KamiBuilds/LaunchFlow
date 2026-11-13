@@ -45,6 +45,21 @@ try
         "tampered legacy authentication never publishes a browser profile");
     Assert(File.ReadAllBytes(tamperedPath).SequenceEqual(tampered), "tampered legacy authentication retains exact ciphertext");
     Assert(ProtectedData.LastUnprotected!.All(b => b == 0), "legacy authentication failure zeroes the unwrapped profile key");
+    // Exercise production TryDecrypt rather than assuming AES-GCM's treatment
+    // of output buffers after a rejected authentication tag.
+    var testKey = ProtectedData.Unprotect(
+        File.ReadAllBytes(Path.Combine(root, "profile-key.dpapi")), null, DataProtectionScope.CurrentUser);
+    try
+    {
+        var decrypt = typeof(ProfileVaultService).GetMethod("TryDecrypt",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+            ?? throw new Exception("Production legacy profile decrypt boundary is missing");
+        object?[] arguments = { tampered, testKey, Array.Empty<byte>() };
+        var accepted = (bool)(decrypt.Invoke(null, arguments) ?? true);
+        Assert(!accepted && arguments[2] is byte[] { Length: 0 },
+            "rejected legacy GCM profile output is cleared and not returned to a caller");
+    }
+    finally { CryptographicOperations.ZeroMemory(testKey); }
     File.Delete(tamperedPath);
     var invalidId = Guid.NewGuid().ToString("N");
     using var zip = new MemoryStream();
