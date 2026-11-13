@@ -125,6 +125,47 @@ internal static class VaultTests
             Check(db.ReadCredential(id) == credential,
                 "Locked KeePass attempt changed the saved credential.");
         });
+        test("KeePass result from old vault session is rejected after lock and unlock", () =>
+        {
+            var oldSession = db.SessionGeneration;
+            var linked = new WebsiteWorkflow { Id = Guid.NewGuid(), KeepassEntryPath = "synthetic/entry" };
+            var settings = new Configuration { KeePassDatabasePath = "synthetic.kdbx" };
+            KeePassXcService.OnRead = () =>
+            {
+                db.Lock();
+                Check(db.Unlock(Master), "Synthetic vault could not reopen.");
+                return new SiteCredential("old-session@example.invalid", "stale-external-secret");
+            };
+            try
+            {
+                Check(vault.Read(linked, settings) is null &&
+                      db.IsUnlocked && db.SessionGeneration != oldSession,
+                    "A credential from a superseded KeePass operation escaped to a new vault session.");
+            }
+            finally { KeePassXcService.OnRead = null; }
+            Check(db.ReadCredential(id) == credential, "Session turnover corrupted the saved vault.");
+        });
+        test("KeePass result is refused if organization revokes credential access during lookup", () =>
+        {
+            var policyValues = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            var linked = new WebsiteWorkflow { Id = Guid.NewGuid(), KeepassEntryPath = "synthetic/entry" };
+            var settings = new Configuration { KeePassDatabasePath = "synthetic.kdbx" };
+            using (EnterprisePolicy.UseProviderForTesting(() => policyValues))
+            {
+                KeePassXcService.OnRead = () =>
+                {
+                    policyValues["DisableCredentialFill"] = 1;
+                    return new SiteCredential("revoked@example.invalid", "must-not-escape");
+                };
+                try
+                {
+                    Check(vault.Read(linked, settings) is null,
+                        "KeePass returned an external secret after credential policy was revoked.");
+                }
+                finally { KeePassXcService.OnRead = null; }
+            }
+            Check(db.ReadCredential(id) == credential, "Policy turnover corrupted the saved vault.");
+        });
         test("denied operations preserve decryptable vault across lock/unlock", () =>
         {
             db.Lock();

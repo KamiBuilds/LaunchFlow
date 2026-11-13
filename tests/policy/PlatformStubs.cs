@@ -7,9 +7,13 @@ namespace LaunchFlow.Services;
 public static class KeePassXcService
 {
     public static int Calls { get; private set; }
+    // Deterministic simulated CLI completion: allows lock/reunlock and policy
+    // revocation during the exact production CredentialVault.Read method.
+    public static Func<SiteCredential>? OnRead { get; set; }
     public static SiteCredential? ReadEntry(string database, string entry, string? keyFile, string? password)
     {
         Calls++;
+        if (OnRead is { } callback) return callback();
         throw new InvalidOperationException("External KeePass lookup is outside this harness.");
     }
 }

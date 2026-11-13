@@ -31,10 +31,15 @@ public sealed class CredentialVault
         string? keepassMasterPassword = null)
     {
         EnterprisePolicy.Current.RequireCredentialRead();
-        // KeePass credentials must never bypass the LaunchFlow master lock.
-        if (!VaultDatabase.Current.IsUnlocked) return null;
+        // A slow KeePass lookup must retain its exact vault authorization:
+        // lock + unlock is a new session even if the vault is open again.
+        var database = VaultDatabase.Current;
+        var authorizedSession = database.SessionGeneration;
+        if (!database.IsUnlocked) return null;
         var local = Read(workflow.Id);
-        if (local is not null) return local;
+        if (local is not null)
+            return database.IsUnlocked && database.SessionGeneration == authorizedSession
+                ? local : null;
 
         if (string.IsNullOrWhiteSpace(workflow.KeepassEntryPath))
             return null;
@@ -43,7 +48,7 @@ public sealed class CredentialVault
         if (configuration is null || string.IsNullOrWhiteSpace(configuration.KeePassDatabasePath))
             return null;
 
-        if (!VaultDatabase.Current.IsUnlocked) return null;
+        if (!database.IsUnlocked || database.SessionGeneration != authorizedSession) return null;
         try
         {
             var credential = KeePassXcService.ReadEntry(
@@ -51,8 +56,11 @@ public sealed class CredentialVault
                 workflow.KeepassEntryPath!,
                 configuration.KeePassKeyFilePath,
                 keepassMasterPassword);
-            // Windows can lock while the external CLI is running.
-            return VaultDatabase.Current.IsUnlocked ? credential : null;
+            // Administrator policy and the vault session can both change while
+            // the CLI runs. Reauthorize before releasing an external secret.
+            EnterprisePolicy.Current.RequireCredentialRead();
+            return database.IsUnlocked && database.SessionGeneration == authorizedSession
+                ? credential : null;
         }
         catch (Exception)
         {

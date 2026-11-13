@@ -41,6 +41,33 @@ try
     Check(SecureTransferService.Read(configOnly, exportKey).Credentials.Count == 0,
         "B1 configuration-only backup round-trips and omits passwords");
 
+    // Header/length validation must reject corrupt archives before expensive
+    // password derivation, without modifying a prior valid backup.
+    var validEncryptedBytes = File.ReadAllBytes(inclusive);
+    var shortHeader = Path.Combine(root, "incomplete-header.launchflow");
+    File.WriteAllBytes(shortHeader, validEncryptedBytes[..20]);
+    bool shortRejected = false;
+    try { PortableExport.Read(shortHeader, exportKey); }
+    catch (InvalidDataException) { shortRejected = true; }
+    Check(shortRejected, "B5 incomplete backup header is rejected before Argon2id");
+
+    var truncatedPayload = Path.Combine(root, "truncated-payload.launchflow");
+    File.WriteAllBytes(truncatedPayload, validEncryptedBytes[..^1]);
+    bool truncatedRejected = false;
+    try { PortableExport.Read(truncatedPayload, exportKey); }
+    catch (InvalidDataException) { truncatedRejected = true; }
+    Check(truncatedRejected, "B5 declared encrypted length cannot exceed remaining bytes");
+
+    var trailingPayload = Path.Combine(root, "trailing-payload.launchflow");
+    File.WriteAllBytes(trailingPayload, validEncryptedBytes.Concat(new byte[] { 0xFF }).ToArray());
+    bool trailingRejected = false;
+    try { PortableExport.Read(trailingPayload, exportKey); }
+    catch (InvalidDataException) { trailingRejected = true; }
+    Check(trailingRejected, "B5 trailing ciphertext bytes are rejected rather than silently ignored");
+
+    Check(SecureTransferService.Read(inclusive, exportKey).Credentials[workflow] == saved,
+        "B5 new header/zeroization path preserves valid legacy-format encrypted backups");
+
     // Existing workflows can still hold Fill actions from older versions.
     // Do not write a backup that this same app would reject on import, and
     // do not erase an older, valid backup if such an export is attempted.

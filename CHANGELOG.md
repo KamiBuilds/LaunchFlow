@@ -1,3 +1,11 @@
+# v0.7.81 — KeePass session continuity and encrypted-backup memory safety
+
+- Bind optional KeePassXC credential results to the original unlocked vault session; a lock/reunlock invalidates any outstanding external read.
+- Recheck organization credential policy after the external KeePass lookup, so a policy change while the CLI is running cannot return a secret.
+- Validate encrypted backup header and ciphertext length before expensive password derivation; reject truncation and trailing data without touching existing backups.
+- Deserialize decrypted JSON directly from UTF-8 bytes and zero temporary plaintext/key/ciphertext buffers after use; zero transient export plaintext after encryption.
+- Add source-linked encrypted-vault regression tests for session turnover and policy revocation, and backup-integrity tests for valid, truncated and trailing-data archives.
+
 # v0.7.80 — Locked credential fallback, tray-save and import safety
 
 - Guard the optional KeePassXC fallback with the LaunchFlow vault lock, including authorization recheck after CLI lookup.

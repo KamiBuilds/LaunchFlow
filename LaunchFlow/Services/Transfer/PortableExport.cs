@@ -44,6 +44,8 @@ public static class PortableExport
         try
         {
             var payload = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(package, JsonOptions));
+            try
+            {
             var nonce = RandomNumberGenerator.GetBytes(NonceSize);
             var ciphertext = new byte[payload.Length];
             var tag = new byte[TagSize];
@@ -84,6 +86,8 @@ public static class PortableExport
             {
                 if (File.Exists(temporary)) File.Delete(temporary);
             }
+            }
+            finally { CryptographicOperations.ZeroMemory(payload); }
         }
         finally
         {
@@ -94,6 +98,9 @@ public static class PortableExport
     public static PortablePackage Read(string path, string exportPassword)
     {
         using var stream = File.OpenRead(path);
+        // Reject corrupt/truncated headers before spending 64 MiB on Argon2id.
+        if (stream.Length < Magic.Length + SaltSize + NonceSize + TagSize + sizeof(int))
+            throw new InvalidDataException("Backup header is incomplete.");
         using var reader = new BinaryReader(stream);
         var magic = Encoding.ASCII.GetString(reader.ReadBytes(Magic.Length));
         if (magic != Magic)
@@ -103,18 +110,22 @@ public static class PortableExport
         var nonce = reader.ReadBytes(NonceSize);
         var tag = reader.ReadBytes(TagSize);
         var length = reader.ReadInt32();
-        if (length < 0 || length > 64 * 1024 * 1024)
-            throw new InvalidDataException("Backup payload is invalid.");
+        if (length < 0 || length > 64 * 1024 * 1024 ||
+            stream.Length - stream.Position != length)
+            throw new InvalidDataException("Backup payload is invalid or truncated.");
         var ciphertext = reader.ReadBytes(length);
-
-        var key = DeriveKey(exportPassword, salt);
+        byte[]? plaintext = null;
+        byte[]? key = null;
         try
         {
-            var plaintext = new byte[ciphertext.Length];
+            key = DeriveKey(exportPassword, salt);
+            plaintext = new byte[ciphertext.Length];
             using var aes = new AesGcm(key, TagSize);
             aes.Decrypt(nonce, ciphertext, tag, plaintext);
-            PortablePackage? parsed = JsonSerializer.Deserialize<PortablePackage>(
-                Encoding.UTF8.GetString(plaintext), JsonOptions);
+            // Deserialize UTF-8 directly; do not create an additional
+            // immutable string containing every password in the backup.
+            var parsed = JsonSerializer.Deserialize<PortablePackage>(
+                plaintext.AsSpan(), JsonOptions);
             if (parsed is null)
                 throw new InvalidDataException("Backup JSON is empty.");
             return parsed;
@@ -125,7 +136,9 @@ public static class PortableExport
         }
         finally
         {
-            CryptographicOperations.ZeroMemory(key);
+            if (plaintext is not null) CryptographicOperations.ZeroMemory(plaintext);
+            if (key is not null) CryptographicOperations.ZeroMemory(key);
+            CryptographicOperations.ZeroMemory(ciphertext);
         }
     }
 
