@@ -209,6 +209,14 @@ public sealed partial class VaultDatabase
 
     public bool Unlock(string password) => UnlockStrict(password);
 
+    /// <summary>
+    /// Confirms the master password without replacing the live key or bumping
+    /// <see cref="SessionGeneration"/>. Use this when the vault is already unlocked
+    /// (Hello enable, sensitive confirmations). Locked vaults still go through
+    /// <see cref="Unlock"/>.
+    /// </summary>
+    public bool ConfirmPassword(string password) => ConfirmPasswordStrict(password);
+
     public void Initialize(string password, Configuration config,
         Dictionary<Guid, SiteCredential>? secrets = null) =>
         InitializeStrict(password, config, secrets);
@@ -254,8 +262,10 @@ public sealed partial class VaultDatabase
 
             using var connection = OpenConnection();
             using var transaction = connection.BeginTransaction();
+            RequireExpectedStrictIdentity(connection);
             WriteConfigurationSealed(connection, candidateConfig);
             PersistCredentials(connection, candidateCredentials);
+            RefreshStrictIdentity(connection);
             transaction.Commit();
 
             foreach (var workflow in config.Workflows)
@@ -305,7 +315,11 @@ public sealed partial class VaultDatabase
         if (_key is null || (expectedSession.HasValue && _sessionGeneration != expectedSession))
             throw new InvalidOperationException("Vault authorization changed; configuration was not saved.");
         using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        RequireExpectedStrictIdentity(connection);
         WriteConfigurationSealed(connection, config);
+        RefreshStrictIdentity(connection);
+        transaction.Commit();
         _configCache = CloneConfig(config);
     }
 
@@ -343,7 +357,9 @@ public sealed partial class VaultDatabase
             candidate[id] = credential;
             using var connection = OpenConnection();
             using var transaction = connection.BeginTransaction();
+            RequireExpectedStrictIdentity(connection);
             PersistCredentials(connection, candidate);
+            RefreshStrictIdentity(connection);
             transaction.Commit();
             _secretsCache = candidate;
         }
@@ -369,8 +385,10 @@ public sealed partial class VaultDatabase
 
             using var connection = OpenConnection();
             using var transaction = connection.BeginTransaction();
+            RequireExpectedStrictIdentity(connection);
             PersistCredentials(connection, candidateSecrets);
             WriteConfigurationSealed(connection, candidateConfig);
+            RefreshStrictIdentity(connection);
             transaction.Commit();
             _configCache = candidateConfig;
             _secretsCache = candidateSecrets;
@@ -386,7 +404,9 @@ public sealed partial class VaultDatabase
             if (!candidate.Remove(id)) return;
             using var connection = OpenConnection();
             using var transaction = connection.BeginTransaction();
+            RequireExpectedStrictIdentity(connection);
             PersistCredentials(connection, candidate);
+            RefreshStrictIdentity(connection);
             transaction.Commit();
             _secretsCache = candidate;
         }
@@ -413,8 +433,10 @@ public sealed partial class VaultDatabase
 
             using var connection = OpenConnection();
             using var transaction = connection.BeginTransaction();
+            RequireExpectedStrictIdentity(connection);
             PersistCredentials(connection, candidateSecrets);
             WriteConfigurationSealed(connection, candidateConfig);
+            RefreshStrictIdentity(connection);
             transaction.Commit();
             _configCache = candidateConfig;
             _secretsCache = candidateSecrets;
@@ -445,8 +467,10 @@ public sealed partial class VaultDatabase
 
             using var connection = OpenConnection();
             using var transaction = connection.BeginTransaction();
+            RequireExpectedStrictIdentity(connection);
             PersistCredentials(connection, candidateSecrets);
             WriteConfigurationSealed(connection, candidateConfig);
+            RefreshStrictIdentity(connection);
             transaction.Commit();
             _configCache = candidateConfig;
             _secretsCache = candidateSecrets;
@@ -577,12 +601,17 @@ public sealed partial class VaultDatabase
 
     private void ZeroKey()
     {
-        if (_key is null) return;
-        // Revoke the previous authorization before dropping the old key.
-        _sessionGeneration++;
-        CryptographicOperations.ZeroMemory(_key);
+        if (_key is not null)
+        {
+            // Revoke the previous authorization before dropping the old key.
+            _sessionGeneration++;
+            CryptographicOperations.ZeroMemory(_key);
+        }
+        if (_strictIdentityToken is not null)
+            CryptographicOperations.ZeroMemory(_strictIdentityToken);
         _key = null;
         _strictVaultId = null;
+        _strictIdentityToken = null;
     }
 
     private SqliteConnection OpenConnection(bool create = false)

@@ -2,7 +2,7 @@
 
 ## Release boundary
 
-- Pushes to `hermes` and `chatgpt`, pull requests, and manual dispatch run the Windows build and installer tests. Ordinary builds have read-only repository permissions and upload CI artifacts only.
+- Pull requests and manual dispatch run the Windows build and installer tests. Ordinary builds have read-only repository permissions and upload CI artifacts only.
 - `publish_release` defaults to false. A manual draft request additionally requires the exact `DRAFT-v<VERSION>@<full commit SHA>` confirmation and a nonblank native-Windows evidence reference. This is a publisher attestation, not automatic validation of that evidence.
 - The separate draft job uses the `windows-release` environment. Repository administrators must configure its required reviewers before release use; naming an environment alone does not enforce review.
 - Draft creation refuses an existing release or an inconclusive lookup. It uses create-only REST POSTs, not release upserts, and reads back the exact new release ID and uploaded asset names, sizes, states and SHA-256 digests. A failure can leave a partial draft for manual inspection. It never publishes stable or marks a release latest.
@@ -65,7 +65,7 @@ Independent review was unavailable after the earlier reviewer quota failure. Loc
 
 ## Parent integration checkpoint
 
-The parent reconciled this work with the actual `chatgpt` v0.7.19 source in an isolated integration worktree. Real PowerShell and .NET checks again passed: C# **69/69**, packaging/workflow **62/62**, parser **7 files + 8 workflow scripts**, and bootstrapper cross-build **0 warnings, 0 errors**. A newly published self-contained v0.7.19 app payload passed the shipped runtime/driver/SQLite assertions and reported assembly version `0.7.19.0`; it was not run on Windows.
+Integration against the v0.7.19 source in an isolated worktree passed the maintained PowerShell and .NET checks (installer behavior, packaging/workflow, parser, and bootstrapper cross-build). A self-contained v0.7.19 app payload passed shipped runtime/driver/SQLite assertions and reported assembly version `0.7.19.0`; it was not run on Windows.
 
 Integration caught a newer-branch regression: merely building artifacts could close and ultimately force-kill the user's installed LaunchFlow process. An inert process-discovery/termination guard reproduced five builder control-flow failures, then passed after removing that behavior. The builder now leaves running applications alone. Application closure belongs to the separately launched Windows Setup. Historical RED and subsequent GREEN are retained as `parent-build-preserves-running-app-RED.log` / `-GREEN.log`.
 

@@ -38,7 +38,8 @@ public static class UpdateChecker
         return true;
     }
 
-    public static async Task<UpdateInfo> CheckAsync(string? feedUrl, CancellationToken ct = default)
+    public static async Task<UpdateInfo> CheckAsync(string? feedUrl, CancellationToken ct = default,
+        bool diagnosticsLogEnabled = false)
     {
         var current = Assembly.GetExecutingAssembly().GetName().Version;
         var currentText = current is null ? AppInfo.VersionString : $"{current.Major}.{current.Minor}.{current.Build}";
@@ -82,7 +83,7 @@ public static class UpdateChecker
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or UriFormatException)
         {
-            CrashLog.Write("UpdateCheck", ex);
+            if (diagnosticsLogEnabled) CrashLog.Write("UpdateCheck", ex);
             return new UpdateInfo(false, currentText, null, "Could not check for updates. Check your connection and retry.");
         }
     }

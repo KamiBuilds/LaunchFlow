@@ -88,10 +88,15 @@ public sealed partial class AutomationEngine
                 part.Equals("challenge", StringComparison.OrdinalIgnoreCase)))
                 return false;
             // Share LoginHealth structural challenge evidence; do not veto on
-            // unrelated dashboard MFA/verification wording alone.
+            // unrelated dashboard MFA/verification wording alone. Keep the
+            // structural snapshot last so a challenge inserted during an earlier
+            // await cannot authorize reuse.
+            if (await page.Locator("body").CountAsync().ConfigureAwait(false) <= 0)
+                return false;
+            ct.ThrowIfCancellationRequested();
             if (await LoginHealth.HasStructuralSecurityChallengeAsync(page, ct).ConfigureAwait(false))
                 return false;
-            return await page.Locator("body").CountAsync().ConfigureAwait(false) > 0;
+            return true;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception) { return false; }

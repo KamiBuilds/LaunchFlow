@@ -1244,6 +1244,7 @@ partial class UiFixture
     public static readonly TimeSpan PasswordSessionDuration = TimeSpan.FromHours(1);
     public Action? UnlockHook;
     public bool NextUnlockUsesHello;
+    public bool NextUnlockRequestsReset { get; set; }
     public bool? UnlockDialogResult = true;
     public readonly TaskCompletionSource<bool> RecorderResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource RecorderDrainRelease = CompletedDrain();
@@ -1300,6 +1301,7 @@ partial class UiFixture
     public bool IsVisible { get; set; } = true;
     public WindowState WindowState { get; set; } = WindowState.Normal;
     public void Hide() { }
+    public Task ContinueToSetupAfterVaultResetAsync() => Task.CompletedTask;
     public static string MakeBrowserFriendlyMessage(Exception ex) => ex.GetType().Name;
 }
 sealed class UnlockWindow
@@ -1307,6 +1309,7 @@ sealed class UnlockWindow
     public required UiFixture Owner { get; init; }
     public string Password => "synthetic-fixture-only";
     public bool UsedWindowsHello { get; set; }
+    public bool ResetRequested => Owner.NextUnlockRequestsReset;
     public bool? ShowDialog()
     {
         Owner.Prompts++;

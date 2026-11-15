@@ -221,6 +221,11 @@ public partial class VisualRecorderWindow : Window
             var page = _page.Context.Pages.LastOrDefault(p => !p.IsClosed) ?? _page;
             var url = page.Url;
             if (!CheckPolicy(url)) return;
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+                !string.IsNullOrEmpty(uri.Query) ||
+                !string.IsNullOrEmpty(uri.Fragment) ||
+                !string.IsNullOrEmpty(uri.UserInfo))
+                throw new InvalidOperationException("The current page URL contains private navigation data.");
             AutomationEngine.ValidateUrl(url);
             AddStep("Navigate", url, "Open " + url);
         }

@@ -169,7 +169,7 @@ public partial class MainWindow
             if (candidateConfig.Workflows[index].Id != workflow.Id)
                 throw new InvalidOperationException("The selected workflow changed.");
             var autoLogin = AutoLoginCheck.IsChecked == true;
-            var keepassPath = KeepassEntryBox.Text.Trim();
+            var keepassPath = WebsiteEditMapper.PreserveExactIdentity(KeepassEntryBox.Text);
             candidateConfig.Workflows[index].AutoLogin = autoLogin;
             candidateConfig.Workflows[index].KeepassEntryPath = keepassPath;
             if (!ReferenceEquals(_configuration, ownedConfig) || !ReferenceEquals(_editorSession.Selection, workflow) ||

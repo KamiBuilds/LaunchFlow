@@ -10,6 +10,7 @@ public sealed partial class VaultDatabase
 {
     private const int StrictSchemaVersion = VaultRecordCodec.Version;
     private byte[]? _strictVaultId;
+    private byte[]? _strictIdentityToken;
 
     private sealed record StrictMeta(
         byte[] VaultId, byte[] Salt, byte[] Verifier, int MemoryKb, int Iterations, int Lanes);
@@ -83,6 +84,41 @@ public sealed partial class VaultDatabase
             r.GetInt32(3), r.GetInt32(4), r.GetInt32(5));
     }
 
+    private static byte[] StrictIdentityToken(StrictMeta meta)
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        hash.AppendData(meta.VaultId);
+        hash.AppendData(meta.Salt);
+        hash.AppendData(meta.Verifier);
+        Span<byte> parameters = stackalloc byte[sizeof(int) * 3];
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(parameters, meta.MemoryKb);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(parameters[sizeof(int)..], meta.Iterations);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(parameters[(sizeof(int) * 2)..], meta.Lanes);
+        hash.AppendData(parameters);
+        return hash.GetHashAndReset();
+    }
+
+    private void RequireExpectedStrictIdentity(SqliteConnection connection)
+    {
+        var current = StrictIdentityToken(ReadStrictMeta(connection));
+        try
+        {
+            if (_strictIdentityToken is null ||
+                !CryptographicOperations.FixedTimeEquals(_strictIdentityToken, current))
+                throw new InvalidOperationException(
+                    "The encrypted vault changed on disk. Lock, unlock, and retry.");
+        }
+        finally { CryptographicOperations.ZeroMemory(current); }
+    }
+
+    private void RefreshStrictIdentity(SqliteConnection connection)
+    {
+        var next = StrictIdentityToken(ReadStrictMeta(connection));
+        if (_strictIdentityToken is not null)
+            CryptographicOperations.ZeroMemory(_strictIdentityToken);
+        _strictIdentityToken = next;
+    }
+
     private static void InsertStrictMeta(SqliteConnection connection,
         byte[] vaultId, byte[] salt, byte[] verifier)
     {
@@ -129,11 +165,54 @@ public sealed partial class VaultDatabase
                 ZeroKey();
                 _key = candidateKey;
                 _strictVaultId = meta.VaultId.ToArray();
+                _strictIdentityToken = StrictIdentityToken(meta);
                 _sessionGeneration++;
                 candidateKey = null;
                 _configCache = CloneConfig(config);
                 _secretsCache = CloneSecrets(secrets);
                 return true;
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                if (candidateKey is not null)
+                    CryptographicOperations.ZeroMemory(candidateKey);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verifier-only check while unlocked: no ZeroKey, no cache reload, no session bump.
+    /// Falls back to <see cref="UnlockStrict"/> when locked.
+    /// </summary>
+    private bool ConfirmPasswordStrict(string password)
+    {
+        if (string.IsNullOrEmpty(password)) return false;
+        lock (_gate)
+        {
+            if (_key is null)
+                return UnlockStrict(password);
+
+            byte[]? candidateKey = null;
+            try
+            {
+                if (InspectStorage() != VaultStorageState.PresentNeedsAuthentication)
+                    return false;
+                using var connection = OpenConnection();
+                var meta = ReadStrictMeta(connection);
+                if (_strictIdentityToken is not null &&
+                    !CryptographicOperations.FixedTimeEquals(
+                        _strictIdentityToken, StrictIdentityToken(meta)))
+                    return false;
+                candidateKey = DeriveKey(password, meta.Salt, meta.MemoryKb, meta.Iterations, meta.Lanes);
+                var verifier = VaultRecordCodec.Open(meta.Verifier, candidateKey, meta.VaultId,
+                    "verifier", "verifier");
+                var ok = Encoding.UTF8.GetString(verifier) == "LaunchFlow.Vault.v3";
+                CryptographicOperations.ZeroMemory(verifier);
+                return ok;
             }
             catch
             {
@@ -179,6 +258,8 @@ public sealed partial class VaultDatabase
 
                 _key = key;
                 _strictVaultId = vaultId;
+                _strictIdentityToken = StrictIdentityToken(
+                    new StrictMeta(vaultId, salt, verifier, ArgonMemoryKb, ArgonIterations, ArgonLanes));
                 _sessionGeneration++;
                 key = null!;
                 _configCache = candidateConfig;
@@ -201,6 +282,8 @@ public sealed partial class VaultDatabase
             if (_key is null && !UnlockStrict(currentPassword))
                 throw new InvalidOperationException("Current master password is incorrect.");
             using var connection = OpenConnection();
+            using var transaction = connection.BeginTransaction();
+            RequireExpectedStrictIdentity(connection);
             var oldMeta = ReadStrictMeta(connection);
             var check = DeriveKey(currentPassword, oldMeta.Salt, oldMeta.MemoryKb,
                 oldMeta.Iterations, oldMeta.Lanes);
@@ -224,7 +307,6 @@ public sealed partial class VaultDatabase
             var key = DeriveKey(newPassword, nextSalt, ArgonMemoryKb, ArgonIterations, ArgonLanes);
             try
             {
-                using var transaction = connection.BeginTransaction();
                 var verifier = VaultRecordCodec.Seal(Encoding.UTF8.GetBytes("LaunchFlow.Vault.v3"),
                     key, oldMeta.VaultId, "verifier", "verifier");
                 using (var cmd = connection.CreateCommand())
@@ -252,6 +334,9 @@ public sealed partial class VaultDatabase
                 ZeroKey();
                 _key = key;
                 _strictVaultId = oldMeta.VaultId.ToArray();
+                _strictIdentityToken = StrictIdentityToken(
+                    new StrictMeta(oldMeta.VaultId, nextSalt, verifier,
+                        ArgonMemoryKb, ArgonIterations, ArgonLanes));
                 _sessionGeneration++;
                 key = null!;
                 _configCache = CloneConfig(config);

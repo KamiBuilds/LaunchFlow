@@ -173,6 +173,19 @@ internal static class RecorderPolicyTests
         await popup.CloseAsync();
 
         Policy();
+        var privateUrls = await OpenWindow(page);
+        var privatePopup = await page.Context.NewPageAsync();
+        await privatePopup.GotoAsync("https://recorder.test/capture?token=private");
+        privateUrls.TestCaptureUrl();
+        Check(privateUrls.RecordedSteps.Count == 0, "Capture URL refuses query data");
+        await privatePopup.GotoAsync("https://recorder.test/capture#private");
+        privateUrls.TestCaptureUrl();
+        Check(privateUrls.RecordedSteps.Count == 0, "Capture URL refuses fragment data");
+        privateUrls.TestCancel();
+        await privateUrls.TestWaitForUpdatesAsync();
+        await privatePopup.CloseAsync();
+
+        Policy();
         var provenance = await OpenWindow(page);
         await page.ClickAsync("button");
         await Flush(page);

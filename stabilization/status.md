@@ -16,7 +16,7 @@
 | Version/product identity | v0.7.46 unchanged |
 | Remote branch inventory before M0 | Only `main` and the validated branch (user-directed cleanup executed). The 34 archived branch tips are in the successful [pre-cleanup recovery artifact](https://github.com/KamiBuilds/LaunchFlow/actions/runs/41685214053). |
 
-**Historical discrepancy:** the contract's G15 preservation list includes `develop`, `hermes`, `both`, `both-2`, `both-3`, which were already removed by the separately authorized branch cleanup. Do not pretend these refs exist or restore them without a decision. GitHub's historic open stacked PR #1–#26 metadata is not equivalent to live branch refs. `AGENTS.md` still references `hermes`, which is stale for this repository state.
+**Historical discrepancy:** older branch names from the G15 preservation list were already removed by the separately authorized branch cleanup. Do not restore deleted refs without a decision. GitHub's historic open stacked PR metadata is not equivalent to live branch refs.
 
 ## Completed vs open milestones
 

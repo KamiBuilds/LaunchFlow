@@ -319,9 +319,12 @@ public partial class App : Application
         try
         {
             var quarantine = VaultRecoveryService.QuarantineLiveVault();
-            foreach (var workflow in package.Config.Workflows)
+            var localDefaults = new Configuration();
+            var projected = ImportConfigurationProjection.ForThisDevice(
+                package.Config, localDefaults, localDefaults.GlobalShortcut);
+            foreach (var workflow in projected.Workflows)
                 workflow.Enabled = false;
-            VaultDatabase.Current.Initialize(master.Secret, package.Config, package.Credentials);
+            VaultDatabase.Current.Initialize(master.Secret, projected, package.Credentials);
             MessageBox.Show(
                 "Portable backup imported into a new vault. Automatic website launches are disabled until you review them.\n\n" +
                 "Broken vault kept at:\n" + quarantine,
@@ -419,7 +422,19 @@ public partial class App : Application
                     if (dialog.ShowDialog() != true)
                     {
                         if (dialog.ResetRequested)
+                        {
+                            // Cold start: no MainWindow browsers yet; wipe then retry for setup.
+                            try { VaultResetService.ResetLocalVault(wipeProfiles: true); }
+                            catch (Exception ex)
+                            {
+                                CrashLog.Write("VaultReset", ex);
+                                MessageBox.Show(
+                                    "Reset is incomplete. Some vault or profile files may still remain. Close other apps using those files and retry.",
+                                    "Reset incomplete", MessageBoxButton.OK, MessageBoxImage.Warning);
+                                return false;
+                            }
                             break; // vault deleted; retry outer loop for setup
+                        }
                         return false;
                     }
                     if (string.IsNullOrEmpty(dialog.Password)) continue;
@@ -486,6 +501,32 @@ public partial class App : Application
             return true;
         }
         return false;
+    }
+
+    internal void KeepAliveForVaultResetSetup() =>
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
+    /// <summary>
+    /// Restores normal shutdown after an aborted vault-reset path that never
+    /// reached <see cref="ContinueVaultResetSetup"/>.
+    /// </summary>
+    internal void CancelVaultResetKeepAlive()
+    {
+        if (ShutdownMode == ShutdownMode.OnExplicitShutdown)
+            ShutdownMode = ShutdownMode.OnMainWindowClose;
+    }
+
+    internal void ContinueVaultResetSetup()
+    {
+        if (!InitializeVault())
+        {
+            Shutdown();
+            return;
+        }
+        var window = new MainWindow();
+        MainWindow = window;
+        ShutdownMode = ShutdownMode.OnMainWindowClose;
+        window.Show();
     }
 
     private static bool RequestExistingWindow(string? openPath, bool forInstaller = false)

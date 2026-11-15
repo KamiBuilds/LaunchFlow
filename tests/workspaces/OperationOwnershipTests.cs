@@ -107,6 +107,53 @@ internal static class OperationOwnershipTests
             editor.MarkEdited();
             Check(!editor.IsCurrent(selected, revision), "stale edit revision accepted");
         });
+        yield return ("Hello enable refuses stale epoch, locked vault, and replaced config", () =>
+        {
+            var hello = new HelloUnlockCoordinator();
+            var config = new Configuration();
+            var epoch = hello.BeginEnable();
+            Check(hello.StillOwnsEnable(epoch, config, config, 7, 7, true, false, false, false),
+                "fresh enable ownership denied");
+            hello.InvalidateOutstandingEnables();
+            Check(!hello.StillOwnsEnable(epoch, config, config, 7, 7, true, false, false, false),
+                "stale epoch still owned after invalidate");
+            epoch = hello.BeginEnable();
+            Check(!hello.StillOwnsEnable(epoch, config, config, 7, 7, false, false, false, false),
+                "locked vault still owned");
+            Check(!hello.StillOwnsEnable(epoch, config, config, 7, 8, true, false, false, false),
+                "session mismatch still owned");
+            Check(!hello.StillOwnsEnable(epoch, config, new Configuration(), 7, 7, true, false, false, false),
+                "replaced config instance still owned");
+        });
+        yield return ("Hello persist rolls back flag and disable on save failure", () =>
+        {
+            var hello = new HelloUnlockCoordinator();
+            var config = new Configuration();
+            var disabled = false;
+            try
+            {
+                hello.TryPersistEnabled(config, 1,
+                    (_, _) => throw new InvalidOperationException("disk"),
+                    () => disabled = true);
+                throw new InvalidOperationException("persist should have thrown");
+            }
+            catch (InvalidOperationException ex) when (ex.Message == "disk")
+            {
+            }
+            Check(!config.WindowsHelloUnlockEnabled && disabled,
+                "failed persist left Hello enabled without rollback");
+        });
+        yield return ("Hello disable refuses persist when vault ownership is gone", () =>
+        {
+            var hello = new HelloUnlockCoordinator();
+            var config = new Configuration { WindowsHelloUnlockEnabled = true };
+            var disabled = false;
+            var saved = false;
+            Check(!hello.TryDisableAndPersist(config, config, 3, 4, true, false, false, false,
+                    () => disabled = true, (_, _) => saved = true) &&
+                disabled && !config.WindowsHelloUnlockEnabled && !saved,
+                "session mismatch still persisted Hello-off preference");
+        });
     }
     private static void Check(bool condition, string why)
     {

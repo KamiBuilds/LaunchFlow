@@ -57,7 +57,7 @@ public partial class MainWindow
                 WebsiteLoginMode.UsesSavedPassword(SelectedLoginMode(LoginModeCombo.SelectedIndex)),
                 WebsiteEditMapper.NormalizeText(UsernameContinueBox.Text),
                 WebsiteEditMapper.NormalizeText(PasswordOriginBox.Text),
-                WebsiteEditMapper.NormalizeText(KeepassEntryBox.Text),
+                WebsiteEditMapper.PreserveExactIdentity(KeepassEntryBox.Text),
                 WebsiteEditMapper.NormalizeText(UsernameSelectorBox.Text),
                 WebsiteEditMapper.NormalizeText(PasswordSelectorBox.Text),
                 WebsiteEditMapper.NormalizeText(SubmitSelectorBox.Text),

@@ -21,6 +21,7 @@ namespace LaunchFlow.Services
     {
         public static int DisableCalls;
         public static void Disable() => DisableCalls++;
+        public static void DisableStrict() => DisableCalls++;
     }
 }
 

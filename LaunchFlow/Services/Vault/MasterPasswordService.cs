@@ -1,8 +1,5 @@
 namespace LaunchFlow.Services;
 
-/// <summary>
-/// Thin helper over <see cref="VaultDatabase"/> master-password operations.
-/// </summary>
 public sealed class MasterPasswordService
 {
     public bool IsConfigured => VaultDatabase.Current.Exists;
@@ -10,13 +7,10 @@ public sealed class MasterPasswordService
     public bool Verify(string password)
     {
         if (string.IsNullOrEmpty(password)) return false;
+        // Already unlocked: confirm without ZeroKey / SessionGeneration bump /
+        // cache reload (Enable Hello and other in-session prompts rely on this).
         if (VaultDatabase.Current.IsUnlocked)
-        {
-            // Already unlocked this session: re-verify by attempting a fresh unlock
-            // against a cloned derivation without wiping the current key on failure.
-            // Simplest correct path: Unlock replaces the key only on success.
-            return VaultDatabase.Current.Unlock(password);
-        }
+            return VaultDatabase.Current.ConfirmPassword(password);
 
         return VaultDatabase.Current.Unlock(password);
     }

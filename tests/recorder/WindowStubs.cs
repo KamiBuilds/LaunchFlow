@@ -70,6 +70,7 @@ namespace LaunchFlow.Services
     public static class ProfileVaultService
     {
         public static string SealedRoot => throw new NotSupportedException("Recorder replay tests must not open persistent browser profiles.");
+        public static bool HasValuableSealedProfile(Guid workflowId) => false;
     }
 }
 namespace LaunchFlow

@@ -40,16 +40,37 @@ try
     var emptyArchive = Path.Combine(ProfileVaultService.SealedRoot, emptyId + ".profile.aes");
     Directory.CreateDirectory(emptyTarget);
     File.Copy(firstArchive, emptyArchive);
+    var preservedArchive = File.ReadAllBytes(emptyArchive);
+    var emptySealDenied = false;
+    try { ProfileVaultService.SealAll(); }
+    catch (AggregateException) { emptySealDenied = true; }
+    Assert(emptySealDenied && Directory.Exists(emptyTarget) &&
+           File.ReadAllBytes(emptyArchive).SequenceEqual(preservedArchive),
+        "empty placeholder cannot overwrite an authenticated nonempty snapshot");
     var emptyDenied = false;
     try { ProfileVaultService.UnsealAll(); }
     catch (AggregateException) { emptyDenied = true; }
     Assert(emptyDenied && !Directory.EnumerateFileSystemEntries(emptyTarget).Any() &&
-           File.ReadAllBytes(emptyArchive).SequenceEqual(File.ReadAllBytes(firstArchive)),
+           File.ReadAllBytes(emptyArchive).SequenceEqual(preservedArchive),
         "empty placeholder directory cannot suppress encrypted browser-profile restoration");
     Directory.Delete(emptyTarget);
     ProfileVaultService.UnsealAll();
     Assert(File.ReadAllBytes(Path.Combine(emptyTarget, "large.bin")).SequenceEqual(largeFixture),
         "removing empty placeholder permits recovery of the original encrypted profile");
+    var neverInitializedId = Guid.NewGuid().ToString("N");
+    var neverInitialized = Path.Combine(ProfileVaultService.ProfilesRoot, neverInitializedId);
+    var neverInitializedAes = Path.Combine(ProfileVaultService.SealedRoot,
+        neverInitializedId + ".profile.aes");
+    Directory.CreateDirectory(neverInitialized);
+    ProfileVaultService.SealAll();
+    Assert(!Directory.Exists(neverInitialized) && !File.Exists(neverInitializedAes),
+        "never-initialized empty launch must not publish an empty sealed snapshot");
+    Directory.CreateDirectory(neverInitialized);
+    ProfileVaultService.UnsealAll();
+    Assert(Directory.Exists(neverInitialized) &&
+           !Directory.EnumerateFileSystemEntries(neverInitialized).Any() &&
+           !ProfileVaultService.HasValuableSealedProfile(Guid.ParseExact(neverInitializedId, "N")),
+        "empty first-launch placeholder remains retryable without valuable sealed data");
     var tamperedId = Guid.NewGuid().ToString("N");
     var tamperedPath = Path.Combine(ProfileVaultService.SealedRoot, tamperedId + ".profile.aes");
     var tampered = File.ReadAllBytes(firstArchive);

@@ -110,11 +110,14 @@ public static class KeePassXcService
                 throw new InvalidOperationException(
                     "KeePassXC couldn't unlock the database. Check your master password and key file.");
 
-            return output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            // Preserve exact case and interior whitespace; KeePassXC entry paths
+            // are identity-sensitive. Only strip trailing CR from line endings.
+            return output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .Select(line => line.TrimEnd('\r'))
-                .Where(line => !line.EndsWith('/') &&
+                .Where(line => line.Length > 0 &&
+                               !line.EndsWith('/') &&
                                !line.StartsWith("Enter password", StringComparison.OrdinalIgnoreCase))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Distinct(StringComparer.Ordinal)
                 .Take(1000)
                 .ToArray();
         }

@@ -68,9 +68,10 @@ public sealed partial class AutomationEngine
                 $"The selected browser ({workflow.Browser}) is not installed. Install it or pick another browser for this website.");
         }
         var browserType = ResolveBrowserType(workflow.Browser);
-        // Do not replace a failed restore with an empty browser profile and overwrite its sealed data on the next lock.
-        var sealedPath = Path.Combine(ProfileVaultService.SealedRoot, workflow.Id.ToString("N") + ".profile.aes");
-        if (File.Exists(sealedPath) &&
+        // Do not replace a failed restore of a valuable sealed profile with an
+        // empty browser directory. Authenticated empty placeholders are not
+        // valuable restore data and must not permanently block first-launch retry.
+        if (ProfileVaultService.HasValuableSealedProfile(workflow.Id) &&
             (!Directory.Exists(profileDir) ||
              !Directory.EnumerateFileSystemEntries(profileDir).Any()))
             throw new InvalidOperationException("This browser profile could not be restored. Its encrypted files were retained; do not replace them.");

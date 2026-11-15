@@ -80,8 +80,17 @@ public partial class MainWindow
                 "Shortcut unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
+        var ownedVaultSession = VaultDatabase.Current.SessionGeneration;
+        if (!VaultDatabase.Current.IsUnlocked ||
+            VaultDatabase.Current.SessionGeneration != ownedVaultSession ||
+            _windowsLocked || _vaultLockInProgress || _exiting)
+        {
+            MessageBox.Show(this, "The vault changed before the shortcut could be saved. Unlock and try again.",
+                "Shortcut not saved", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
         _configuration.GlobalShortcut = requested;
-        _store.Save(_configuration);
+        _store.SaveDurable(_configuration, ownedVaultSession);
     }
 
     private void ToggleSidebar_Click(object sender, RoutedEventArgs e)

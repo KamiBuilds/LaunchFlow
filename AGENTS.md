@@ -20,6 +20,6 @@ Each delivered change set bumps the patch version by **1** (for example `0.7.54`
 
 ## Continuity
 
-The authoritative remote development baseline is the validated branch above. A previously documented rescue machine used `/root/projects/LaunchFlow-rescue` and `/root/projects/launchflow-evidence`; those are historical paths, **not** assumed present in current tooling. Current architecture, inventory and acceptance ownership are tracked in `architecture/` and `stabilization/`; all CI claims must be tied to an exact commit/tree and GitHub run.
+The authoritative remote development baseline is the validated branch above. Current architecture, inventory and acceptance ownership are tracked in `architecture/` and `stabilization/`; all CI claims must be tied to an exact commit/tree and GitHub run.
 
-Other project automation is intentionally paused by the user's exclusive-focus instruction. Do not resume it until the user changes that instruction. Keep existing servers/services running. Project focus state and paused IDs are recorded outside the public repo at `/root/projects/launchflow-evidence/focus-state.json`.
+Other project automation is intentionally paused by the user's exclusive-focus instruction. Do not resume it until the user changes that instruction. Keep existing servers/services running.

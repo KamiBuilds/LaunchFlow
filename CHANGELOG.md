@@ -1,3 +1,95 @@
+# v0.7.96 — Lean source delivery ZIP
+
+- Version bump for a clean delivery archive that excludes `bin/`, `obj/`, `.git`, and other build outputs (prior ~779 MB zip was dominated by local build artifacts).
+- Native Windows interactive acceptance remains required.
+
+# v0.7.95 — Vault reset requires strict Hello material removal
+
+- `VaultResetService` uses `WindowsHelloService.DisableStrict()` so a claimed wipe cannot succeed while `hello-unlock.bin` still exists.
+- Runtime reset continues to setup only after Hello material is gone; otherwise shuts down with an explicit cleanup message.
+- Stale in-flight Enable Hello (ownership lost after `EnableAsync`) uses `DisableStrict` so reset/lock cannot leave a recoverable secret.
+- Ordinary UI `Disable()` remains best-effort.
+- Native Windows interactive acceptance remains required.
+
+# v0.7.94 — Post-wipe Close belt-and-suspenders
+
+- `OnClosing` allows Close while `_exiting` when the vault file is already gone (covers exit-permit grant races after wipe).
+- Retains v0.7.93 permit grant before Close and dirty-revoke skip when vault missing.
+- Native Windows interactive acceptance remains required.
+
+# v0.7.93 — Post-wipe Close must hold an exit permit
+
+- After vault wipe, grant `ExitCompletionGate` before `Close()` so `OnClosing` does not cancel under bare `_exiting` and leave the old window beside setup.
+- When the vault file is already gone, a permitted close no longer revokes on late dirty/editor-dialog state.
+- Native Windows interactive acceptance remains required.
+
+# v0.7.92 — Vault-reset exit cannot strand MainWindow without a vault
+
+- Runtime reset sets `_exiting`/disables UI before drain+wipe; aborted pre-wipe paths restore `ShutdownMode` via `CancelVaultResetKeepAlive`.
+- After the vault file is gone, setup continues even if profile cleanup was partial — skips dirty/save `CompleteOwnedExitAsync` gates that could leave a live window without a database.
+- Native Windows interactive acceptance remains required.
+
+# v0.7.91 — Hello confirm without session bump + deferred vault reset
+
+- `MasterPasswordService.Verify` / `VaultDatabase.ConfirmPassword` verify while unlocked without `ZeroKey`, cache reload, or `SessionGeneration` bump (Enable Hello no longer aborts after a correct password).
+- Enable Hello shows an unlock-first message when the vault is locked.
+- Forgot-password reset only signals intent in `UnlockWindow`; MainWindow closes/drains browsers via `SecureVaultLockAsync` before `VaultResetService` wipe; cold-start App path still wipes immediately (no sessions).
+- Master-password change aborts if Hello-off cannot be persisted before rotation (Hello material left intact).
+- Native Windows interactive acceptance remains required.
+
+# v0.7.90 — Hello coordinator vault-free + persist parity
+
+- `HelloUnlockCoordinator` no longer reads `VaultDatabase` (fixes WorkspaceTests compile when Controllers are linked without vault stubs).
+- Enable/disable preference writes mirror welcome-checklist durability (rollback/disable on save failure; disable path swallows persist failure after local disable).
+- Master-password change clears Hello material/epoch and SaveDurable Hello-off **before** `ChangeMasterStrict` re-seals (post-change session bump made the earlier write unreachable).
+- Native Windows interactive acceptance remains required.
+
+# v0.7.89 — Architecture maps + Hello unlock coordinator peel
+
+- Documented ownership contracts (revision + vault session + ReferenceEquals), MainWindow partial map, and AutomationEngine partial map under `architecture/`.
+- Refreshed `architecture/overview.md` and `LaunchFlow/STRUCTURE.md` links to match the current tree.
+- Extracted `HelloUnlockCoordinator` for Hello enable-epoch and durable preference writes; MainWindow keeps WPF prompts only.
+- Did not split AutomationEngine into separate Playwright owners. Native Windows interactive acceptance remains required.
+
+# v0.7.88 — Remove obsolete agent/handoff documentation
+
+- Deleted obsolete historical agent/handoff docs under `docs/archive/` and scrubbed remaining references from ownership inventory, installer verification, recorder/workspaces READMEs, STRUCTURE, stabilization status and AGENTS continuity notes.
+- Kept current product docs under `docs/` and the engineering rescue contract in `AGENTS.md`. Native Windows interactive acceptance remains required.
+
+# v0.7.87 — Welcome checklist preference only sticks after durable save
+
+- Mark WelcomeChecklistShown durable only when SaveDurable succeeds under the captured vault session; revert the in-memory flag on failure so first-run coaching can retry.
+- Completes the last Low item from the CLEAR High/Medium runtime review. Native Windows interactive acceptance remains required.
+
+# v0.7.86 — KeePass status label exact identity and refreshed UI extract
+
+- KeePass selected-entry status label shows the exact path identity (no Trim).
+- Regenerated workspaces UiMethods extract so seam tests match production Repair/credential bodies.
+- Follow-up hygiene after CLEAR High/Medium runtime review. Native Windows interactive acceptance remains required.
+
+# v0.7.85 — Session-bound settings writes and KeePass credential-path identity
+
+- Workspace save, Hello enable/disable, welcome checklist and shortcut capture use SaveDurable with the captured vault session instead of session-free Save.
+- Credential save preserves exact KeePass entry identity (no Trim), matching SaveAll/editor mapping.
+- Follow-up to the v0.7.83/0.7.84 runtime regression review. Native Windows interactive acceptance remains required.
+
+# v0.7.84 — Repair/Teach exclusion and delete-draft dirty continuity
+
+- Revalidate Run/Teach/engine ownership after the Firefox readiness modal inside Repair, matching Record.
+- Mark the editor dirty after restoring a refused website-delete draft so exit/autosave still see pending text.
+- Keep recorder test stubs aligned with HasValuableSealedProfile.
+- Candidate follow-up on 0.7.83. Native Windows interactive acceptance remains required.
+
+# v0.7.83 — Cross-writer vault identity, profile seal admission and UI/platform P2 repairs
+
+- Guard vault configuration/credential writes and master-password rotation with an authenticated on-disk vault identity token so independent stale instances cannot overwrite a newer or rotated vault.
+- Keep confirmation structural challenge inspection last; preserve exact KeePass entry identities; apply Add-website editor after wizard await; revalidate Run/Teach exclusion after Firefox readiness; evict a still-owned failed KeePass cache on retry.
+- Reauthorize recorded Fill immediately before dispatch; authorize Press against the focused frame URL; teach Navigate for Press URL transitions or refuse consuming them; do not let a remembered SamePage hint veto an explicit continue selector.
+- Profile seal validates restore admission limits before deleting plaintext; refuse empty placeholders that would overwrite valuable sealed snapshots; do not publish empty first-launch seals that permanently block retry.
+- Portable incomplete-vault recovery projects configuration through ForThisDevice; Hello enable uses ownership epochs; delete restores pending drafts; runtime forgot-password reset routes to setup; recorder Add-current-page refuses secret-bearing URLs.
+- Publish-draft checks out LF_SOURCE_SHA before signature verification; Firefox readiness requires the package revision; scheduled-task delete failures propagate; update-check diagnostics require consent; uninstall removes Run key and LaunchFlow Autostart without wiping vault data.
+- Candidate repair from aee7e0b / 0.7.82. Native Windows interactive acceptance remains required before any public release claim.
+
 # v0.7.82 — Refuse incomplete browser-profile restore and clear failed decrypt buffers
 
 - Fail closed when an interrupted browser-profile restore leaves a reserved `.restore-*` directory containing potentially plaintext browser data. Both Lock vault and profile restore now refuse to claim success until the user resolves the retained staging files.
@@ -234,7 +326,7 @@
 
 # v0.7.51 — Cleanup pass: archive clutter, peel MainWindow helpers
 
-- Archived obsolete Hermes/BOTH/version handoff docs under `docs/archive/` (current guides stay in `docs/` + `architecture/`).
+- Archived obsolete version handoff docs (later removed from the tree; current guides stay in `docs/` + `architecture/`).
 - Extracted `WindowWorkAreaConstraint`, `RunOutcomeSummary`, `PasswordSessionPolicy`, and `GlobalShortcutRegistrar` so maximize math, run tray wording, password-tab timing, and hotkey registration are not buried in MainWindow.
 - Removed obsolete `tools/Verify-MaskedCredentialSave.py` (v0.7.8 UI asserts).
 - Added pure architecture checks for the new helpers. Vault format and AppId unchanged. Development preview only.
@@ -326,7 +418,7 @@
 - No intentional encrypted vault schema migration, workflow-ID change, or profile-path change.
 - Separate version number for this test installer, as required for each new user-visible build.
 
-**Development preview, not a stable release.** Unified lifecycle coordination and browser-session ownership milestones from the wider Hermes plan remain unfinished. Avoid relying on this test build for production credentials until native Windows upgrade and lock/unlock acceptance testing.
+**Development preview, not a stable release.** Unified lifecycle coordination and browser-session ownership milestones remained unfinished at this preview. Avoid relying on this test build for production credentials until native Windows upgrade and lock/unlock acceptance testing.
 
 # v0.7.40 — Encrypted auto-save
 

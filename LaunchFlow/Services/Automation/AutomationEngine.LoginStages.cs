@@ -313,7 +313,10 @@ public sealed partial class AutomationEngine
             return;
         }
 
-        if (rememberedRecipe == LoginRecipe.SamePage)
+        // A remembered SamePage hint must not veto a deliberate current
+        // identifier-first continuation or classified multi-stage form.
+        if (rememberedRecipe == LoginRecipe.SamePage &&
+            string.IsNullOrWhiteSpace(workflow.UsernameContinueSelector))
         {
             state.FailureCode = "no-password-field";
             state.StageReached = false;

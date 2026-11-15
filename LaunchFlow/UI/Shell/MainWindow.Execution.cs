@@ -156,6 +156,10 @@ public partial class MainWindow
             _editorSession.Selection is null || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(_editorSession.Selection) || !SaveAll()) return;
         var workflow = _editorSession.Selection;
         if (!EnsureFirefoxAutomationReady(new[] { workflow })) return;
+        // Firefox readiness can pump a concurrent Run; refuse Teach if Run now owns UI/engine.
+        if (_runUi.IsRunning || _runner.IsRunning || _vaultLockInProgress || _windowsLocked || _exiting ||
+            _teachUi.IsBusy || !VaultDatabase.Current.IsUnlocked ||
+            !ReferenceEquals(_editorSession.Selection, workflow) || !TeachAllowed(workflow)) return;
         if (!_teachUi.TryBegin(out var teachLease)) return;
         var admittedConfiguration = _configuration;
         var admittedRevision = _workspaceRevision;
@@ -226,6 +230,10 @@ public partial class MainWindow
             _vaultLockInProgress || _windowsLocked || _exiting ||
             workflow is null || !VaultDatabase.Current.IsUnlocked || !TeachAllowed(workflow)) return;
         if (!EnsureFirefoxAutomationReady(new[] { workflow })) return;
+        // Firefox readiness can pump a concurrent Run; refuse Repair if Run now owns UI/engine.
+        if (_runUi.IsRunning || _runner.IsRunning || _vaultLockInProgress || _windowsLocked || _exiting ||
+            _teachUi.IsBusy || !VaultDatabase.Current.IsUnlocked ||
+            !ReferenceEquals(target ?? _editorSession.Selection, workflow) || !TeachAllowed(workflow)) return;
         if (!_teachUi.TryBegin(out var teachLease)) return;
 
         var admittedConfiguration = _configuration;
@@ -286,6 +294,12 @@ public partial class MainWindow
                     : _configuration.Workflows.Where(workflow => workflow.Enabled).ToList();
             if (toRun.Count == 0) { AppendLog("No enabled workflows to run."); return; }
             if (!EnsureFirefoxAutomationReady(toRun)) return;
+            // Readiness modal can admit Teach; revalidate mutual exclusion after it returns.
+            if (_teachUi.IsBusy || _runner.IsRunning || _vaultLockInProgress || _windowsLocked || _exiting)
+            {
+                AppendLog("Another operation started during browser setup. Run again when idle.");
+                return;
+            }
             if (!WorkspaceCatalog.PendingRunIsCurrent(
                     _configuration, toRun, onlySelected, workspace, launchRevision, _workspaceRevision) ||
                 (onlySelected && !ReferenceEquals(_editorSession.Selection, toRun[0])) ||

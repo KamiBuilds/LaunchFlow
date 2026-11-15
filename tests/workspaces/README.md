@@ -44,7 +44,7 @@ output includes both the workspace and UI summaries.
 
 These are **executable orchestration seams**, not actual WPF event delivery,
 Windows Registry/DPAPI, browser dispatch cancellation or installer assurance.
-`docs/BOTH-UI-INTEGRATION.md` records exact parent contracts and native gates.
+See `docs/NATIVE-WINDOWS-ACCEPTANCE.md` for the native gates.
 
 ## 2026-11-06 source-linked structural ownership regressions
 

@@ -135,6 +135,18 @@ try
     Check(separateVault.Unlock(password) && new ConfigStore(separateVault).Load().UiLanguage == "pl",
         "independent vault instance verifies disk bytes rather than only memory cache");
     separateVault.Lock();
+
+    // ConfirmPassword while unlocked must not bump session or replace the live cache.
+    Check(vault.Unlock(password), "re-unlock for confirm-password characterization");
+    var confirmSession = vault.SessionGeneration;
+    var languageBefore = vault.LoadConfiguration().UiLanguage;
+    Check(vault.ConfirmPassword(password) && vault.SessionGeneration == confirmSession &&
+        vault.IsUnlocked && vault.LoadConfiguration().UiLanguage == languageBefore,
+        "ConfirmPassword while unlocked keeps session and configuration cache");
+    Check(!vault.ConfirmPassword("Wrong!Password-NotIt9") && vault.SessionGeneration == confirmSession &&
+        vault.IsUnlocked,
+        "failed ConfirmPassword must not lock or bump session");
+
     vault.Lock();
     Console.WriteLine("PASS: all real encrypted SQLite save integration tests");
 }

@@ -60,6 +60,10 @@ internal static class BrowserInstallationTests
             {
                 Check(PlaywrightFirefoxSupport.ResolveLaunchBrowsersPath(bundled, user, cache) == user,
                     "no Firefox build must fall back to the consent-install directory");
+                CreateFirefoxBuild(cache, "1234");
+                Check(PlaywrightFirefoxSupport.ResolveLaunchBrowsersPath(bundled, user, cache) == user,
+                    "an obsolete Playwright Firefox revision must not be reported ready");
+                Directory.Delete(cache, recursive: true);
                 CreateFirefoxBuild(cache);
                 Check(PlaywrightFirefoxSupport.ResolveLaunchBrowsersPath(bundled, user, cache) == cache,
                     "a default-cache-only Firefox must launch from its detected cache");
@@ -132,9 +136,9 @@ internal static class BrowserInstallationTests
         });
     }
 
-    private static void CreateFirefoxBuild(string root)
+    private static void CreateFirefoxBuild(string root, string revision = "1543")
     {
-        var bin = Path.Combine(root, "firefox-1234", "firefox");
+        var bin = Path.Combine(root, "firefox-" + revision, "firefox");
         Directory.CreateDirectory(bin);
         File.WriteAllBytes(Path.Combine(bin, "firefox.exe"), Array.Empty<byte>());
     }

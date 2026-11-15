@@ -4,6 +4,11 @@ using Microsoft.Playwright;
 
 namespace LaunchFlow.Services;
 
+/// <summary>
+/// Cohesive automation subsystem (browser session, login stages, steps,
+/// confirmation). Partial map: <c>architecture/automation-engine-map.md</c>.
+/// Do not introduce a second Playwright session owner beside this type.
+/// </summary>
 public sealed partial class AutomationEngine : IAsyncDisposable
 {
     private readonly CredentialVault _vault;

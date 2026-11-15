@@ -13,6 +13,12 @@ public static class WebsiteEditMapper
 
     public static string NormalizeText(string? raw) => raw?.Trim() ?? "";
 
+    /// <summary>
+    /// KeePassXC entry paths are identity-sensitive: preserve exact case and
+    /// whitespace. Do not trim or case-fold them for storage/CLI.
+    /// </summary>
+    public static string PreserveExactIdentity(string? raw) => raw ?? "";
+
     public static int NormalizeWait(string? raw) =>
         int.TryParse(raw, out var seconds) ? Math.Clamp(seconds, 5, 180) : 60;
 
@@ -52,7 +58,7 @@ public static class WebsiteEditMapper
         string submitSelector, string credentialOrigin, string loginSuccessSelector,
         string loginSuccessUrlContains, int loginWaitSeconds)
     {
-        workflow.KeepassEntryPath = NormalizeText(keepassEntryPath);
+        workflow.KeepassEntryPath = PreserveExactIdentity(keepassEntryPath);
         workflow.UsernameSelector = NormalizeText(usernameSelector);
         workflow.PasswordSelector = NormalizeText(passwordSelector);
         workflow.SubmitSelector = NormalizeText(submitSelector);

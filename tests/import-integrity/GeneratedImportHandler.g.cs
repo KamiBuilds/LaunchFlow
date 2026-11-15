@@ -98,7 +98,7 @@ public sealed partial class MainWindow
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "Import failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(this, RunIssueNotice.SafeExceptionReason(ex), "Import failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
     private void PublishKeePassCache(string? secret)

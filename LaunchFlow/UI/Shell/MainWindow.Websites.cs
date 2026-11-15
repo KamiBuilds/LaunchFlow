@@ -73,13 +73,6 @@ public partial class MainWindow
             return;
         }
 
-        try { ApplyCurrentEditor(); }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, RunIssueNotice.SafeExceptionReason(ex), "Cannot save previous website", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
         // An unowned setup window stays open when LaunchFlow is minimized.
         var wizard = new NewWorkflowWindow();
         _newWorkflowWindow = wizard;
@@ -87,6 +80,14 @@ public partial class MainWindow
         {
             if (!await ShowNewWorkflowAsync(wizard)) return;
             if (_vaultLockInProgress || _windowsLocked || _exiting || !VaultDatabase.Current.IsUnlocked) return;
+            // Capture/apply the owned editor AFTER the wizard await so pending
+            // edits made while the modeless dialog was open are not discarded.
+            try { ApplyCurrentEditor(); }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, RunIssueNotice.SafeExceptionReason(ex), "Cannot save previous website", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
             var next = wizard.CreatedWorkflow;
             if (next is null) return;
             // Show the next-step dialog once, only for a genuinely first
@@ -229,6 +230,13 @@ public partial class MainWindow
         if (_editorSession.Selection is null || _vaultLockInProgress || _windowsLocked || _exiting ||
             !VaultDatabase.Current.IsUnlocked) return;
         var w = _editorSession.Selection;
+        WebsiteEditDraft? pendingDraft;
+        try { pendingDraft = CaptureConfigurationDraft(showNotification: false).Website; }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, RunIssueNotice.SafeExceptionReason(ex), "Cannot delete", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
         // Capture authorization continuity before the modal pumps the dispatcher.
         var ownedConfig = _configuration;
         var ownedVaultSession = VaultDatabase.Current.SessionGeneration;
@@ -247,6 +255,7 @@ public partial class MainWindow
                 ownedVaultSession != VaultDatabase.Current.SessionGeneration)
             {
                 AppendLog("Website delete canceled: selection or vault changed during confirmation.");
+                RestoreDeleteDraft(ownedConfig, w, pendingDraft);
                 return;
             }
 
@@ -294,9 +303,45 @@ public partial class MainWindow
             MessageBox.Show(this,
                 "Could not delete the website. Your vault was left unchanged if the encrypted write failed.",
                 "Delete website", MessageBoxButton.OK, MessageBoxImage.Warning);
-            RefreshWorkflowList(_configuration.Workflows.FirstOrDefault(workflow => workflow.Id == w.Id)
-                ?? _configuration.Workflows.FirstOrDefault());
+            RestoreDeleteDraft(ownedConfig, w, pendingDraft);
         }
+    }
+
+    private void RestoreDeleteDraft(Configuration ownedConfig, WebsiteWorkflow workflow, WebsiteEditDraft? draft)
+    {
+        if (draft is null || !ReferenceEquals(_configuration, ownedConfig) ||
+            !ownedConfig.Workflows.Any(item => ReferenceEquals(item, workflow))) return;
+        _loadingEditor = true;
+        try
+        {
+            WorkflowList.SelectedItem = workflow;
+            _editorSession.Select(workflow);
+            EnabledCheck.IsChecked = draft.Enabled;
+            NameBox.Text = draft.Name;
+            StartUrlBox.Text = draft.StartUrl;
+            DestinationUrlBox.Text = draft.DestinationUrl;
+            BrowserChoices.Refresh(BrowserCombo, draft.Browser);
+            var monitors = MonitorService.GetMonitors();
+            MonitorCombo.ItemsSource = monitors;
+            MonitorCombo.SelectedItem = monitors.FirstOrDefault(m =>
+                string.Equals(m.DeviceName, draft.MonitorDeviceName, StringComparison.OrdinalIgnoreCase))
+                ?? monitors.FirstOrDefault(m => m.Index == draft.MonitorIndex);
+            LoginModeCombo.SelectedIndex = LoginModeIndex(draft.LoginMode);
+            AutoLoginCheck.IsChecked = draft.AutoLogin;
+            UsernameContinueBox.Text = draft.UsernameContinueSelector;
+            PasswordOriginBox.Text = draft.PasswordCredentialOrigin;
+            KeepassEntryBox.Text = draft.KeepassEntryPath;
+            UsernameSelectorBox.Text = draft.UsernameSelector;
+            PasswordSelectorBox.Text = draft.PasswordSelector;
+            SubmitSelectorBox.Text = draft.SubmitSelector;
+            CredentialOriginBox.Text = draft.CredentialOrigin;
+            LoginSuccessSelectorBox.Text = draft.LoginSuccessSelector;
+            LoginSuccessUrlBox.Text = draft.LoginSuccessUrlContains;
+            LoginWaitBox.Text = draft.LoginWaitSeconds.ToString();
+        }
+        finally { _loadingEditor = false; }
+        // Loading suppressed TextChanged dirty marks; keep exit/autosave aware of the restored draft.
+        _editorSession.MarkFailed();
     }
 
 }

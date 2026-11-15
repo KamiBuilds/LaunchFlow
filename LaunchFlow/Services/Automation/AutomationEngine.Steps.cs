@@ -33,7 +33,7 @@ public sealed partial class AutomationEngine
                 await ExecuteElementActionAsync(page, step, ct).ConfigureAwait(false);
                 break;
             case "Press":
-                await page.Keyboard.PressAsync(step.Target).ConfigureAwait(false);
+                await ExecutePressAsync(page, step, ct).ConfigureAwait(false);
                 break;
             case "Wait":
                 if (int.TryParse(step.Target, out var ms))
@@ -91,9 +91,37 @@ public sealed partial class AutomationEngine
                 string.Equals(autocomplete, "new-password", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("Use vault credentials instead of storing passwords in workflow steps.");
             ct.ThrowIfCancellationRequested();
+            // Attribute inspection awaits can race a live policy change; recheck
+            // before this separate fill dispatch.
+            RequireAutomationUrl(url);
+            if (EnterprisePolicy.Current.DisableCredentialFill)
+                throw new InvalidOperationException("Fill actions are disabled by your organization's policy.");
+            if (EnterprisePolicy.Current.DisableAutomation)
+                throw new InvalidOperationException("Automation is disabled by your organization's policy.");
             await element.FillAsync(step.Value ?? "").ConfigureAwait(false);
         }
         else await element.ClickAsync().ConfigureAwait(false);
+    }
+
+    private static async Task ExecutePressAsync(IPage page, WorkflowStep step, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        // Keyboard input follows focused frame ownership, not only page.Url.
+        var focusedUrl = await page.EvaluateAsync<string?>("""
+            () => {
+              const active = document.activeElement;
+              if (active && (active.tagName === 'IFRAME' || active.tagName === 'FRAME')) {
+                try { return active.contentWindow?.location?.href || null; }
+                catch { return null; }
+              }
+              return document.location.href;
+            }
+            """).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(focusedUrl))
+            throw new InvalidOperationException("Keyboard focus is in a frame LaunchFlow cannot authorize.");
+        RequireAutomationUrl(focusedUrl);
+        ct.ThrowIfCancellationRequested();
+        await page.Keyboard.PressAsync(step.Target).ConfigureAwait(false);
     }
 
 }

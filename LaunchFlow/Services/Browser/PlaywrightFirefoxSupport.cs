@@ -12,6 +12,8 @@ namespace LaunchFlow.Services;
 public static class PlaywrightFirefoxSupport
 {
     public const string BundledFolderName = "playwright-browsers";
+    // Microsoft.Playwright 1.63.0's package manifest requires this patched build.
+    private const string RequiredFirefoxRevision = "1543";
 
     public static string BundledBrowsersPath =>
         Path.Combine(AppContext.BaseDirectory, BundledFolderName);
@@ -63,17 +65,14 @@ public static class PlaywrightFirefoxSupport
         if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root)) return false;
         try
         {
-            foreach (var dir in Directory.EnumerateDirectories(root, "firefox-*"))
-            {
-                if (Directory.EnumerateFiles(dir, "firefox.exe", SearchOption.AllDirectories).Any())
-                    return true;
-            }
+            var dir = Path.Combine(root, "firefox-" + RequiredFirefoxRevision);
+            return Directory.Exists(dir) &&
+                Directory.EnumerateFiles(dir, "firefox.exe", SearchOption.AllDirectories).Any();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return false;
         }
-        return false;
     }
 
     /// <summary>

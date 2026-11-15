@@ -143,8 +143,20 @@ public partial class MainWindow
         if (Environment.GetCommandLineArgs().Contains("--tray", StringComparer.OrdinalIgnoreCase))
             return;
 
-        _configuration.WelcomeChecklistShown = true;
-        try { _store.Save(_configuration); } catch { /* ignore */ }
+        var ownedConfig = _configuration;
+        var ownedVaultSession = VaultDatabase.Current.SessionGeneration;
+        if (VaultDatabase.Current.IsUnlocked &&
+            VaultDatabase.Current.SessionGeneration == ownedVaultSession &&
+            ReferenceEquals(_configuration, ownedConfig))
+        {
+            ownedConfig.WelcomeChecklistShown = true;
+            try { _store.SaveDurable(ownedConfig, ownedVaultSession); }
+            catch
+            {
+                // Keep offering first-run coaching until the preference is durable.
+                ownedConfig.WelcomeChecklistShown = false;
+            }
+        }
 
         // First unlock: coach only the first-website path so Help feels 1-on-1.
         OpenTutorial(firstRunFocus: true);
@@ -152,26 +164,74 @@ public partial class MainWindow
 
     private async void EnableHello_Click(object sender, RoutedEventArgs e)
     {
+        if (!VaultDatabase.Current.IsUnlocked)
+        {
+            MessageBox.Show(this, "Unlock the vault before enabling Windows Hello.",
+                "Windows Hello", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        var ownedConfig = _configuration;
+        var ownedVaultSession = VaultDatabase.Current.SessionGeneration;
+        var enableEpoch = _helloUnlock.BeginEnable();
+        bool StillOwnsEnable() =>
+            _helloUnlock.StillOwnsEnable(enableEpoch, ownedConfig, _configuration, ownedVaultSession,
+                VaultDatabase.Current.SessionGeneration, VaultDatabase.Current.IsUnlocked,
+                _windowsLocked, _vaultLockInProgress, _exiting);
+
         if (!await WindowsHelloService.IsSupportedAsync())
         {
+            if (!StillOwnsEnable()) return;
             MessageBox.Show(this,
                 "Windows Hello is not available on this PC. Set up Windows Hello in Windows Settings first.",
                 "Windows Hello", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
+        if (!StillOwnsEnable()) return;
         var prompt = new SecretPromptWindow("Enable Windows Hello",
             "Enter your LaunchFlow master password once. Next time you can unlock with Windows Hello.")
         { Owner = this };
         if (prompt.ShowDialog() != true) return;
+        if (!StillOwnsEnable()) return;
         if (!_master.Verify(prompt.Secret))
         {
             MessageBox.Show(this, "Incorrect master password.", "Windows Hello", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
+        if (!StillOwnsEnable()) return;
         if (await WindowsHelloService.EnableAsync(prompt.Secret))
         {
-            _configuration.WindowsHelloUnlockEnabled = true;
-            _store.Save(_configuration);
+            if (!StillOwnsEnable())
+            {
+                // Reset/lock may have invalidated this enable while Hello UI awaited;
+                // remove material strictly so a stale enable cannot leave a recoverable secret.
+                try { WindowsHelloService.DisableStrict(); }
+                catch (Exception cleanupError)
+                {
+                    AppendLog("Stale Windows Hello enable cleanup needs attention: " + cleanupError.GetType().Name);
+                    try { WindowsHelloService.Disable(); } catch { }
+                    if (WindowsHelloService.IsEnabled)
+                    {
+                        MessageBox.Show(this,
+                            "Windows Hello unlock material could not be removed after the enable was cancelled. " +
+                            "Delete hello-unlock.bin under %LOCALAPPDATA%\\LaunchFlow, or use Disable Windows Hello after unlocking.",
+                            "Windows Hello cleanup incomplete", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                }
+                return;
+            }
+            try
+            {
+                _helloUnlock.TryPersistEnabled(ownedConfig, ownedVaultSession, _store.SaveDurable,
+                    WindowsHelloService.Disable);
+            }
+            catch (Exception persistError)
+            {
+                AppendLog("Windows Hello unlock preference could not be saved: " + persistError.GetType().Name);
+                MessageBox.Show(this,
+                    "Windows Hello was set up on this PC, but LaunchFlow could not save the preference. Try again after unlocking the vault.",
+                    "Windows Hello", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
             AppendLog("Windows Hello unlock enabled for this Windows account.");
             MessageBox.Show(this, "Windows Hello unlock is on for this PC.", "Windows Hello");
         }
@@ -179,9 +239,16 @@ public partial class MainWindow
 
     private void DisableHello_Click(object sender, RoutedEventArgs e)
     {
-        WindowsHelloService.Disable();
-        _configuration.WindowsHelloUnlockEnabled = false;
-        _store.Save(_configuration);
+        var ownedConfig = _configuration;
+        var ownedVaultSession = VaultDatabase.Current.SessionGeneration;
+        if (!_helloUnlock.TryDisableAndPersist(ownedConfig, _configuration, ownedVaultSession,
+                VaultDatabase.Current.SessionGeneration, VaultDatabase.Current.IsUnlocked,
+                _windowsLocked, _vaultLockInProgress, _exiting,
+                WindowsHelloService.Disable, _store.SaveDurable))
+        {
+            AppendLog("Windows Hello unlock disabled locally; vault was unavailable to persist the preference.");
+            return;
+        }
         AppendLog("Windows Hello unlock disabled.");
     }
 
@@ -189,7 +256,8 @@ public partial class MainWindow
     {
         try
         {
-            var info = await UpdateChecker.CheckAsync(_configuration.UpdateFeedUrl);
+            var info = await UpdateChecker.CheckAsync(_configuration.UpdateFeedUrl,
+                diagnosticsLogEnabled: _configuration.DiagnosticsLogEnabled);
             UpdateStatusLabel.Text = info.Message;
             if (info.UpdateAvailable &&
                 UpdateChecker.TryValidateReleasePageUrl(info.ReleaseUrl, out var releasePage) &&

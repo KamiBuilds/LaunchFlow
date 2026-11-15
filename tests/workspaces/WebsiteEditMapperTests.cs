@@ -32,12 +32,24 @@ internal static class WebsiteEditMapperTests
                 durable.MonitorIndex == 4 && durable.MonitorDeviceName == "DISPLAY-4" &&
                 durable.UsernameContinueSelector == "#next" &&
                 durable.PasswordCredentialOrigin == "https://id.example.invalid" &&
-                durable.KeepassEntryPath == "Synthetic/KeePass/Entry" &&
+                durable.KeepassEntryPath == " Synthetic/KeePass/Entry " &&
                 durable.UsernameSelector == "#username" && durable.PasswordSelector == "#password" &&
                 durable.SubmitSelector == "#sign" && durable.CredentialOrigin == "https://login.example.invalid" &&
                 durable.LoginSuccessSelector == "#completed" && durable.LoginSuccessUrlContains == "/dashboard" &&
                 durable.LoginWaitSeconds == 180 && durable.AutoLogin,
                 "One or more explicitly editable properties were lost or not normalized");
+        });
+        yield return ("KeePass entry identity preserves exact case and interior whitespace", () =>
+        {
+            var path = " Service / Account ";
+            var otherCase = "service / account";
+            Check(WebsiteEditMapper.PreserveExactIdentity(path) == path,
+                "PreserveExactIdentity must not trim KeePass paths");
+            Check(!string.Equals(path, otherCase, StringComparison.Ordinal),
+                "case-distinct KeePass paths must remain distinguishable");
+            var w = new WebsiteWorkflow();
+            WebsiteEditMapper.ApplyDetails(w, path, "#u", "#p", "#s", "", "", "", 60);
+            Check(w.KeepassEntryPath == path, "ApplyDetails must store the exact KeePass identity");
         });
         yield return ("missing browser preserves legacy navigation partial mutation but does not commit login fields", () =>
         {

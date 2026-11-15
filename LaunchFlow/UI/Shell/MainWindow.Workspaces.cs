@@ -52,6 +52,7 @@ public partial class MainWindow
 
         var existing = WorkspaceCatalog.FindByName(_configuration, name);
         var revision = _workspaceRevision;
+        var ownedVaultSession = VaultDatabase.Current.SessionGeneration;
         var savedWorkflowIds = _configuration.Workflows.Where(workflow => workflow.Enabled)
             .Select(workflow => workflow.Id).ToArray();
         if (existing is not null && MessageBox.Show(this,
@@ -61,6 +62,7 @@ public partial class MainWindow
 
         // Modal confirmations pump UI events: import may replace the saved configuration.
         if (_windowsLocked || _vaultLockInProgress || _exiting || !VaultDatabase.Current.IsUnlocked ||
+            ownedVaultSession != VaultDatabase.Current.SessionGeneration ||
             !WorkspaceCatalog.ConfirmationStillValid(
                 _configuration, name, existing, revision, _workspaceRevision, savedWorkflowIds))
         {
@@ -73,7 +75,7 @@ public partial class MainWindow
         try
         {
             profile = WorkspaceCatalog.Save(_configuration, name,
-                () => _store.SaveDurable(_configuration));
+                () => _store.SaveDurable(_configuration, ownedVaultSession));
         }
         catch (Exception ex)
         {

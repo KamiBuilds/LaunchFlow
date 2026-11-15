@@ -80,31 +80,15 @@ public partial class UnlockWindow : Window
         if (confirm != MessageBoxResult.Yes) return;
 
         var again = MessageBox.Show(this,
-            "This cannot be undone. Reset LaunchFlow and remove its saved browser profiles?",
+            "This cannot be undone. LaunchFlow will close browser sessions first, then remove the vault and saved browser profiles.",
             "Confirm reset", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (again != MessageBoxResult.Yes) return;
 
-        try
-        {
-            VaultResetService.ResetLocalVault(wipeProfiles: true);
-            ResetRequested = true;
-            MessageBox.Show(this,
-                "The local vault was reset. LaunchFlow will open first-time setup next.",
-                "Vault reset", MessageBoxButton.OK, MessageBoxImage.Information);
-            DialogResult = false;
-        }
-        catch (AggregateException)
-        {
-            MessageBox.Show(this,
-                "Reset is incomplete. Some browser profiles or vault files may still remain. " +
-                "Close applications using those files and retry; no complete wipe is claimed.",
-                "Reset incomplete", MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
-        catch (Exception)
-        {
-            MessageBox.Show(this, "Reset could not finish. Existing files may remain.",
-                "Reset failed", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
+        // Defer destructive wipe to the caller so live Playwright profiles are
+        // closed before VaultResetService deletes them (cold-start App path has
+        // no sessions; MainWindow closes them via SecureVaultLock first).
+        ResetRequested = true;
+        DialogResult = false;
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)

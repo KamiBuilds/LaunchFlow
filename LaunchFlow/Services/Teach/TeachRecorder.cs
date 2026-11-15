@@ -247,7 +247,7 @@ public sealed class TeachRecorder : IDisposable
                                     session._unsupportedTargetObserved = true;
                                     return "null";
                                 }
-                                if (type == "Click" && safeToTeachNavigate)
+                                if (safeToTeachNavigate)
                                 {
                                     var safeUrl = next.GetLeftPart(UriPartial.Path);
                                     var previousPath = previous.GetLeftPart(UriPartial.Path);
@@ -255,6 +255,8 @@ public sealed class TeachRecorder : IDisposable
                                         safeUrl.Length <= 2048 &&
                                         session.CheckPolicy(source.Frame.Url, safeUrl))
                                     {
+                                        // Persist the path-only Navigate for Click or Press so a
+                                        // key after manual navigation cannot consume the URL gap.
                                         session._acceptedUrls.Add(source.Frame.Url);
                                         session._pendingActions.Enqueue(("Navigate", safeUrl));
                                     }
@@ -263,6 +265,12 @@ public sealed class TeachRecorder : IDisposable
                                         session._unsupportedTargetObserved = true;
                                         return "null";
                                     }
+                                }
+                                else if (type == "Press")
+                                {
+                                    // Do not advance last-captured URL for a Press that cannot
+                                    // teach Navigate; leave the transition for a later Click.
+                                    return "null";
                                 }
                                 session._lastCapturedPageUrl = source.Frame.Url;
                             }

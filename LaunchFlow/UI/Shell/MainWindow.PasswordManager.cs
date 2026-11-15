@@ -90,7 +90,11 @@ public partial class MainWindow
         if (!forcePrompt && PasswordSessionIsValid()) return true;
         if (!_master.IsConfigured) return false;
         var prompt = new UnlockWindow { Owner = this };
-        if (prompt.ShowDialog() != true || string.IsNullOrEmpty(prompt.Password)) return false;
+        if (prompt.ShowDialog() != true || string.IsNullOrEmpty(prompt.Password))
+        {
+            if (prompt.ResetRequested) _ = ContinueToSetupAfterVaultResetAsync();
+            return false;
+        }
         if (_vaultLockInProgress || _windowsLocked || _exiting) return false;
         try
         {
@@ -116,6 +120,109 @@ public partial class MainWindow
         catch (Exception ex) { AppendLog("Master password verification error: " + ex.GetType().Name); }
         MessageBox.Show(this, "Incorrect master password.", "Not unlocked", MessageBoxButton.OK, MessageBoxImage.Warning);
         return false;
+    }
+
+    private async Task ContinueToSetupAfterVaultResetAsync()
+    {
+        // The reset intentionally discards the model represented by these controls.
+        // Do not let normal close handling try to save that stale draft into a new vault.
+        _editorSession.TryAcknowledge(_editorSession.Revision);
+        _helloUnlock.InvalidateOutstandingEnables();
+        var app = (App)System.Windows.Application.Current;
+        app.KeepAliveForVaultResetSetup();
+        _exiting = true;
+        IsEnabled = false;
+        UpdateRunButtons();
+
+        void AbortBeforeWipe(string title, string message)
+        {
+            app.CancelVaultResetKeepAlive();
+            _exiting = false;
+            IsEnabled = true;
+            UpdateRunButtons();
+            MessageBox.Show(this, message, title, MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+
+        try
+        {
+            // Close/drain Playwright before wiping profile directories.
+            await SecureVaultLockAsync("Vault reset requested; closing browser sessions before wipe.");
+            if (_vaultCleanupFailed || _vaultLockInProgress || _profileSealFailed)
+            {
+                AbortBeforeWipe("Reset paused",
+                    "Browser sessions could not be closed safely. Close any LaunchFlow browser windows and retry reset from Unlock.");
+                return;
+            }
+            VaultResetService.ResetLocalVault(wipeProfiles: true);
+        }
+        catch (AggregateException)
+        {
+            if (VaultDatabase.Current.Exists)
+            {
+                AbortBeforeWipe("Reset incomplete",
+                    "Reset is incomplete. Some browser profiles, Windows Hello material, or vault files may still remain. " +
+                    "Close applications using those files and retry; no complete wipe is claimed.");
+                return;
+            }
+        }
+        catch (Exception)
+        {
+            if (VaultDatabase.Current.Exists)
+            {
+                AbortBeforeWipe("Reset failed",
+                    "Reset could not finish. Existing files may remain.");
+                return;
+            }
+        }
+
+        if (VaultDatabase.Current.Exists)
+        {
+            AbortBeforeWipe("Reset failed",
+                "The vault is still present after reset. Close other apps using those files and retry.");
+            return;
+        }
+
+        // Vault file is gone — Hello secret must also be gone before setup, or the
+        // previous master password remains recoverable via Windows Hello.
+        try { WindowsHelloService.DisableStrict(); }
+        catch (Exception ex)
+        {
+            AppendLog("Post-reset Hello cleanup needs attention: " + ex.GetType().Name);
+        }
+        if (WindowsHelloService.IsEnabled)
+        {
+            MessageBox.Show(this,
+                "The vault database was removed, but Windows Hello unlock material could not be deleted. " +
+                "Delete hello-unlock.bin under %LOCALAPPDATA%\\LaunchFlow, then restart LaunchFlow.",
+                "Reset incomplete", MessageBoxButton.OK, MessageBoxImage.Warning);
+            try { Close(); } catch { }
+            System.Windows.Application.Current.Shutdown();
+            return;
+        }
+
+        // Vault is gone — grant the close permit (cleanup already finished) so
+        // OnClosing does not cancel under bare _exiting and leave this window
+        // alive beside a new setup MainWindow.
+        _editorSession.TryAcknowledge(_editorSession.Revision);
+        try
+        {
+            _finalRunnerDisposeTask ??= _runner.DisposeAsync().AsTask();
+            await ExitCleanupWait.RequireAsync(_finalRunnerDisposeTask,
+                TimeSpan.FromSeconds(15), "Final browser shutdown");
+        }
+        catch (Exception ex)
+        {
+            AppendLog("Post-reset engine dispose needs attention: " + ex.GetType().Name);
+        }
+        try { await _exitDrain.PrepareAsync(() => Task.CompletedTask); }
+        catch (Exception ex)
+        {
+            AppendLog("Post-reset exit permit needs attention: " + ex.GetType().Name);
+        }
+        _editorSession.TryAcknowledge(_editorSession.Revision);
+        try { Close(); }
+        catch (Exception ex) { AppendLog("Post-reset window close: " + ex.GetType().Name); }
+        app.ContinueVaultResetSetup();
     }
 
     private async void LockPasswords_Click(object sender, RoutedEventArgs e)
@@ -153,10 +260,36 @@ public partial class MainWindow
         var changed = false;
         try
         {
+            // Persist Hello-off into the vault cache before ChangeMasterStrict re-seals
+            // and bumps SessionGeneration. Disable OS Hello only after durable write so a
+            // failed save can abort without stranding Hello material vs preference.
+            _helloUnlock.InvalidateOutstandingEnables();
+            var helloWasEnabled = _configuration.WindowsHelloUnlockEnabled || WindowsHelloService.IsEnabled;
+            if (helloWasEnabled)
+            {
+                var previousHello = _configuration.WindowsHelloUnlockEnabled;
+                _configuration.WindowsHelloUnlockEnabled = false;
+                try
+                {
+                    if (!VaultDatabase.Current.IsUnlocked ||
+                        VaultDatabase.Current.SessionGeneration != authorizedSession)
+                        throw new InvalidOperationException("Vault session changed before Hello preference could be saved.");
+                    _store.SaveDurable(_configuration, authorizedSession);
+                }
+                catch (Exception persistError)
+                {
+                    _configuration.WindowsHelloUnlockEnabled = previousHello;
+                    AppendLog("Windows Hello preference could not be persisted before password change: " +
+                        persistError.GetType().Name);
+                    MessageBox.Show(this,
+                        "The master password was not changed because Windows Hello preference could not be saved. Unlock and try again.",
+                        "Password change paused", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                WindowsHelloService.Disable();
+            }
             _master.Change(current.Secret, next.Secret);
             changed = true;
-            WindowsHelloService.Disable();
-            _configuration.WindowsHelloUnlockEnabled = false;
             await SecureVaultLockAsync("Master password changed; vault locked. Re-enable Windows Hello if you use it.");
             if (_vaultCleanupFailed || _vaultLockInProgress)
                 throw new InvalidOperationException("Browser cleanup did not finish after the password change.");

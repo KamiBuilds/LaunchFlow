@@ -60,6 +60,7 @@ public partial class MainWindow : Window
     private readonly RunUiOperationController _runUi = new();
     private readonly TeachUiOperationController _teachUi = new();
     private readonly WorkflowEditorSession _editorSession = new();
+    private readonly HelloUnlockCoordinator _helloUnlock = new();
     private bool _loadingEditor;
     private bool _exiting;
     private string? _keepassMasterPassword;
@@ -80,7 +81,12 @@ public partial class MainWindow : Window
     {
         // Inject the persistence, URL policy and Windows registration adapters.
         // The domain services themselves never depend on WPF or machine state.
-        _workflowConfiguration = new WorkflowConfigurationService(_store.SaveDurable, AutomationEngine.ValidateUrl);
+        // Validate-only at the MainWindow boundary; never bind the session-free
+        // SaveDurable(Configuration) overload (architecture tests still exercise Save).
+        _workflowConfiguration = new WorkflowConfigurationService(
+            _ => throw new InvalidOperationException(
+                "Website configuration must be persisted through a vault-session SaveDurable."),
+            AutomationEngine.ValidateUrl);
         _saveTransaction = new ConfigurationSaveTransaction(_store.SaveDurable, _workflowConfiguration.Validate);
         _startupRegistration = new StartupRegistrationService(TaskSchedulerService.Apply, StartupService.Apply);
         InitializeComponent();
@@ -705,7 +711,10 @@ public partial class MainWindow : Window
         // Explicit exits wait for an owned cleanup permit before WPF can close.
         if (_exitDrain.Permitted)
         {
-            if (_editorSession.IsDirty || HasPendingEditorDialog)
+            // After a successful vault wipe there is nothing left to save; never
+            // revoke the permit and re-enable a MainWindow without a database.
+            if ((_editorSession.IsDirty || HasPendingEditorDialog) &&
+                VaultDatabase.Current.Exists)
             {
                 e.Cancel = true;
                 _exitDrain.RevokePermit();
@@ -725,6 +734,10 @@ public partial class MainWindow : Window
         }
         if (_exiting)
         {
+            // Post-wipe reset handoff: allow Close even if the exit permit
+            // grant raced, so ContinueVaultResetSetup does not leave this shell.
+            if (!VaultDatabase.Current.Exists)
+                return;
             e.Cancel = true;
             return;
         }

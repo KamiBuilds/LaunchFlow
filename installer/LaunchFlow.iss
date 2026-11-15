@@ -1,4 +1,4 @@
-#define AppVersion "0.7.82"
+#define AppVersion "0.7.96"
 #define AppName "LaunchFlow"
 [Setup]
 AppId={{9B1A7C15-093B-4DBA-BDA7-BF43A2E67320}
@@ -63,6 +63,10 @@ Root: HKCU; Subkey: "Software\Classes\LaunchFlow.Backup\shell\open\command"; Val
 
 [Run]
 Filename: "{app}\LaunchFlow.exe"; Description: "Open LaunchFlow"; Flags: nowait postinstall skipifsilent
+
+[UninstallRun]
+Filename: "{cmd}"; Parameters: "/C reg.exe delete ""HKCU\Software\Microsoft\Windows\CurrentVersion\Run"" /v ""LaunchFlow"" /f >nul 2>&1"; Flags: runhidden
+Filename: "{cmd}"; Parameters: "/C schtasks.exe /Delete /TN ""LaunchFlow Autostart"" /F >nul 2>&1"; Flags: runhidden
 
 [UninstallDelete]
 ; Vault wipe is optional — see InitializeUninstall / CurUninstallStepChanged.

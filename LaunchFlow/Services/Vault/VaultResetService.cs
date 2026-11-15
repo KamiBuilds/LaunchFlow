@@ -54,7 +54,8 @@ public static class VaultResetService
         }
         else
         {
-            WindowsHelloService.Disable();
+            try { WindowsHelloService.DisableStrict(); }
+            catch (Exception ex) { failures.Add(ex); }
             if (wipeProfiles)
             {
                 var profileOutcome = deleteProfiles();
@@ -73,7 +74,7 @@ public static class VaultResetService
             $"Reset incomplete: databaseRemoved={databaseRemoved}; profilesRemoved={profilesRemoved}; failures={failures.Count}.");
         throw new AggregateException(
             databaseRemoved
-                ? "The vault database was removed, but some browser profile cleanup failed. Remaining profile folders must be cleaned before treating reset as complete."
+                ? "The vault database was removed, but Windows Hello material and/or browser profile cleanup failed. Finish remaining cleanup before treating reset as complete."
                 : "LaunchFlow could not complete the requested reset. Close other apps using these files and retry. Browser profiles were left unchanged.",
             failures);
     }

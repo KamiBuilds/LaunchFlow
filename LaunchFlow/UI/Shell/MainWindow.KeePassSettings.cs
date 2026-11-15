@@ -197,6 +197,9 @@ public partial class MainWindow
             // An older operation may fail after a newer operation published
             // its cache/status. Never mutate or warn in that newer owner.
             if (!StillOwns()) return;
+            // Evict only this still-owned failed cache so retry prompts again.
+            PublishKeePassCache(null);
+            cacheRevision = _keepassCacheRevision;
             AppendLog("KeePass selection failed: " + ex.GetType().Name);
             MessageBox.Show(this, "The KeePassXC login could not be selected. Check vault authorization, organization policy and the database connection.", "Couldn't read KeePassXC",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -285,8 +288,8 @@ public partial class MainWindow
 
     private void UpdateKeePassEntryLabel()
     {
-        var path = KeepassEntryBox.Text.Trim();
-        SelectedKeePassEntryLabel.Text = string.IsNullOrWhiteSpace(path)
+        var path = WebsiteEditMapper.PreserveExactIdentity(KeepassEntryBox.Text);
+        SelectedKeePassEntryLabel.Text = string.IsNullOrEmpty(path)
             ? "No KeePassXC login selected" : path;
     }
 

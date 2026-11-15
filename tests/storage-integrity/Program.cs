@@ -143,6 +143,33 @@ Test("S2 successful rotation revokes old credentials and old session", () =>
     catch (InvalidOperationException) { rejected = true; }
     Require(rejected, "stale session accepted a write on the original vault instance");
 });
+Test("F3 independent stale instance refuses writes after password rotation", () =>
+{
+    using var f = new VaultFixture();
+    var stale = new VaultDatabase(f.Path);
+    Require(stale.Unlock(OldMaster), "second instance did not unlock the shared vault");
+    f.Vault.ChangeMasterPassword(OldMaster, NewMaster);
+
+    var staleConfig = stale.LoadConfiguration();
+    staleConfig.UiLanguage = "nl";
+    var configRefused = false;
+    try { stale.SaveConfiguration(staleConfig); }
+    catch (InvalidOperationException) { configRefused = true; }
+    var credentialRefused = false;
+    try { stale.SaveCredential(f.A, new("stale@example.invalid", "stale-synthetic-secret")); }
+    catch (InvalidOperationException) { credentialRefused = true; }
+    var rotationRefused = false;
+    try { stale.ChangeMasterPassword(OldMaster, "Another!Vault-Master7"); }
+    catch (InvalidOperationException) { rotationRefused = true; }
+    stale.Lock();
+
+    using var cold = new ColdVault(f.Path);
+    Require(configRefused && credentialRefused && rotationRefused &&
+        cold.Vault.Unlock(NewMaster) &&
+        cold.Vault.LoadConfiguration().UiLanguage == "en" &&
+        cold.Vault.ReadCredential(f.A) == VaultFixture.ACredential,
+        "stale independent instance overwrote the rotated authenticated vault");
+});
 Test("A3 second statement rejection rolls credentials and settings back together", () =>
 {
     using var f = new VaultFixture();

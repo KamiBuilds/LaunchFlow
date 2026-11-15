@@ -81,12 +81,29 @@ public static class WindowsHelloService
 
     public static void Disable()
     {
-        try
+        try { DisableCore(); }
+        catch { /* best-effort UI path; reset uses DisableStrict */ }
+    }
+
+    /// <summary>
+    /// Removes Hello unlock material and fails if the secret file still exists.
+    /// Used by vault reset so a claimed wipe cannot leave a recoverable master password.
+    /// </summary>
+    public static void DisableStrict()
+    {
+        try { DisableCore(); }
+        catch (Exception ex)
         {
-            if (File.Exists(SecretPath)) File.Delete(SecretPath);
-            if (File.Exists(MetaPath)) File.Delete(MetaPath);
+            throw new IOException("Windows Hello unlock material could not be removed.", ex);
         }
-        catch { /* ignore */ }
+        if (File.Exists(SecretPath))
+            throw new IOException("Windows Hello unlock material is still present after disable.");
+    }
+
+    private static void DisableCore()
+    {
+        if (File.Exists(SecretPath)) File.Delete(SecretPath);
+        if (File.Exists(MetaPath)) File.Delete(MetaPath);
     }
 
     public static async Task<string?> TryUnlockPasswordAsync(int reauthDays = 30)

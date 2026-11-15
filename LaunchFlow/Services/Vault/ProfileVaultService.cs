@@ -19,6 +19,18 @@ public static class ProfileVaultService
     public static string SealedRoot =>
         Path.Combine(VaultDatabase.Current.DataDirectory, "profiles-sealed");
 
+    /// <summary>
+    /// True when an authenticated sealed snapshot for this workflow contains
+    /// at least one archive entry (cookie/session payload). An authenticated
+    /// empty placeholder is not treated as valuable restore data.
+    /// </summary>
+    public static bool HasValuableSealedProfile(Guid workflowId)
+    {
+        if (workflowId == Guid.Empty) return false;
+        var sealedPath = Path.Combine(SealedRoot, workflowId.ToString("N") + ".profile.aes");
+        return File.Exists(sealedPath) && AuthenticatedSnapshotHasEntries(sealedPath);
+    }
+
     public static void SealAll()
     {
         if (!Directory.Exists(ProfilesRoot)) return;
@@ -105,6 +117,18 @@ public static class ProfileVaultService
     {
         var id = Path.GetFileName(directory);
         var sealedPath = Path.Combine(SealedRoot, id + ".profile.aes");
+        if (!Directory.EnumerateFileSystemEntries(directory).Any())
+        {
+            // Preserve valuable sealed data (DELTA-PROFILE-01). Never-initialized
+            // empty launch dirs must not publish an empty aes that blocks retry.
+            if (File.Exists(sealedPath) && AuthenticatedSnapshotHasEntries(sealedPath))
+                throw new IOException(
+                    "An empty browser-profile directory cannot replace its authenticated encrypted snapshot.");
+            Directory.Delete(directory, recursive: true);
+            if (File.Exists(sealedPath))
+                File.Delete(sealedPath);
+            return;
+        }
         var temp = sealedPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         var key = ProfileKey();
         using var zip = new MemoryStream();
@@ -116,6 +140,9 @@ public static class ProfileVaultService
             // avoids spending minutes optimizing ZIP size on every safe exit;
             // encryption, publication ordering and restore format are unchanged.
             ZipFile.CreateFromDirectory(directory, zip, CompressionLevel.Fastest, includeBaseDirectory: false);
+            zip.Position = 0;
+            using (var archive = new ZipArchive(zip, ZipArchiveMode.Read, leaveOpen: true))
+                ValidateArchive(archive);
             plain = zip.ToArray();
             var sealedBytes = Encrypt(plain, key);
             using (var output = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
@@ -185,6 +212,11 @@ public static class ProfileVaultService
 
     private static void VerifyAuthenticatedSnapshot(string sealedPath)
     {
+        _ = AuthenticatedSnapshotHasEntries(sealedPath);
+    }
+
+    private static bool AuthenticatedSnapshotHasEntries(string sealedPath)
+    {
         if (!File.Exists(sealedPath))
             throw new IOException("The matching encrypted browser-profile snapshot is missing; quarantined plaintext was preserved.");
         var key = ProfileKey();
@@ -193,10 +225,21 @@ public static class ProfileVaultService
         try
         {
             encrypted = File.ReadAllBytes(sealedPath);
-            if (!TryDecrypt(encrypted, key, out plain))
+            if (encrypted.AsSpan().StartsWith("LFPS2"u8))
+            {
+                using var source = new MemoryStream(encrypted, writable: false);
+                source.Position = 5;
+                using var decrypted = new MemoryStream((int)Math.Min(source.Length, MaxChunkedZipBytes));
+                DecryptChunks(source, decrypted, key);
+                plain = decrypted.ToArray();
+            }
+            else if (!TryDecrypt(encrypted, key, out plain))
+            {
                 throw new CryptographicException("The encrypted browser-profile snapshot failed authentication; quarantined plaintext was preserved.");
+            }
             using var zip = new ZipArchive(new MemoryStream(plain, writable: false), ZipArchiveMode.Read);
-            _ = zip.Entries.Count;
+            ValidateArchive(zip);
+            return zip.Entries.Count != 0;
         }
         finally
         {
@@ -220,7 +263,15 @@ public static class ProfileVaultService
             // directory. It is not proof that the encrypted profile was
             // restored, and must never suppress recovery of its cookie data.
             if (!Directory.EnumerateFileSystemEntries(target).Any())
-                throw new IOException("An empty browser-profile directory prevents restoring its encrypted snapshot. Encrypted data was retained.");
+            {
+                if (AuthenticatedSnapshotHasEntries(sealedPath))
+                    throw new IOException("An empty browser-profile directory prevents restoring its encrypted snapshot. Encrypted data was retained.");
+                // Never-initialized empty aes: drop both placeholder and empty
+                // snapshot so the next launch can create a fresh profile.
+                Directory.Delete(target);
+                File.Delete(sealedPath);
+                return;
+            }
             return;
         }
 
@@ -280,6 +331,12 @@ public static class ProfileVaultService
     private static void ExtractArchive(Stream zip, string staging)
     {
         using var archive = new ZipArchive(zip, ZipArchiveMode.Read, leaveOpen: true);
+        ValidateArchive(archive);
+        archive.ExtractToDirectory(staging, overwriteFiles: false);
+    }
+
+    private static void ValidateArchive(ZipArchive archive)
+    {
         long total = 0;
         if (archive.Entries.Count > 200_000)
             throw new InvalidDataException("Browser profile has too many entries.");
@@ -290,7 +347,6 @@ public static class ProfileVaultService
                 throw new InvalidDataException("Browser profile exceeds its extraction limit.");
             total += entry.Length;
         }
-        archive.ExtractToDirectory(staging, overwriteFiles: false);
     }
 
     // Budget is the decrypted ZIP payload, not the expanded profile (bounded separately).

@@ -34,4 +34,11 @@ timing, and native maximize math live in the services above — not as a second
 god-object.
 
 Do not move vault codec/format, installer AppId, or workflow ID rules when
-rearranging files. Historical handoff notes live in `docs/archive/`.
+rearranging files.
+
+Architecture notes (current):
+
+- `architecture/overview.md` — subsystem contracts
+- `architecture/ownership-contracts.md` — revision / vault session / ReferenceEquals
+- `architecture/mainwindow-map.md` — MainWindow partial ownership
+- `architecture/automation-engine-map.md` — AutomationEngine partial ownership

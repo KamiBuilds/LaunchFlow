@@ -307,6 +307,11 @@ jobs:
           $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json' }
           $response = Invoke-WebRequest -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/v$env:LF_VERSION" -Headers $headers -SkipHttpErrorCheck
           if ($response.StatusCode -ne 404) { throw 'Refusing to create a draft: release exists or absence could not be verified.' }
+      - name: Check out the exact source used by the build
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.LF_SOURCE_SHA }}
+          persist-credentials: false
       - name: Download artifacts from this exact build
         uses: actions/download-artifact@v5
         with:
