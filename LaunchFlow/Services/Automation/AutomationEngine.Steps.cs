@@ -106,15 +106,29 @@ public sealed partial class AutomationEngine
     private static async Task ExecutePressAsync(IPage page, WorkflowStep step, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        // Keyboard input follows focused frame ownership, not only page.Url.
+        // Keyboard input follows the deepest focused frame owner (nested iframes /
+        // cross-origin grandchildren), not only top document or one iframe hop.
         var focusedUrl = await page.EvaluateAsync<string?>("""
             () => {
-              const active = document.activeElement;
-              if (active && (active.tagName === 'IFRAME' || active.tagName === 'FRAME')) {
-                try { return active.contentWindow?.location?.href || null; }
-                catch { return null; }
-              }
-              return document.location.href;
+              const deepest = (doc) => {
+                const active = doc.activeElement;
+                if (!active) return doc.location.href;
+                if (active.tagName === 'IFRAME' || active.tagName === 'FRAME') {
+                  try {
+                    const child = active.contentDocument;
+                    if (!child) return null;
+                    return deepest(child);
+                  } catch { return null; }
+                }
+                const root = active.getRootNode && active.getRootNode();
+                if (root && root instanceof ShadowRoot) {
+                  // Shadow hosts stay in the same document URL; still authorize the document.
+                  return doc.location.href;
+                }
+                return doc.location.href;
+              };
+              try { return deepest(document); }
+              catch { return null; }
             }
             """).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(focusedUrl))

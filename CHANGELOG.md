@@ -1,3 +1,17 @@
+# v0.7.97 — Review P2 ownership repairs (F3 / reset / confirmation / Teach / Hello / scheduler / Firefox)
+
+- F3: vault writes require sealed config+credential snapshot freshness as well as key identity (same-key stale writers refuse).
+- Reset: skip profile seal before wipe; disclose partial profile cleanup after DB removal; keep dirty editor ownership until wipe is terminal.
+- F1: structural security challenge is one browser-side snapshot (no helper-internal await gap).
+- AUTO-A4: remembered SamePage no longer vetoes owned auto-discovered Next.
+- AUTO-CASE-PATH: Teach Navigate preserves case-sensitive path identity; Synchronize resets capture URL baseline.
+- PARENT-PRESS-01: Press authorizes the deepest focused frame (nested iframes).
+- UI96-01: Hello enable publication generation; stale cleanup cannot delete a newer enable’s file.
+- PLAT-03 / PLAT96-01: scheduler children are reaped on timeout; missing-task delete uses query, not English text.
+- PARENT-FIREFOX-01: readiness requires `firefox-<rev>/firefox/firefox.exe`.
+- Stale ui/runtime test oracles refreshed for session-bound SaveDurable and CryptographicException profile refusal.
+- Native Windows interactive acceptance remains required.
+
 # v0.7.96 — Lean source delivery ZIP
 
 - Version bump for a clean delivery archive that excludes `bin/`, `obj/`, `.git`, and other build outputs (prior ~779 MB zip was dominated by local build artifacts).

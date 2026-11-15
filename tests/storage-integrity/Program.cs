@@ -170,6 +170,34 @@ Test("F3 independent stale instance refuses writes after password rotation", () 
         cold.Vault.ReadCredential(f.A) == VaultFixture.ACredential,
         "stale independent instance overwrote the rotated authenticated vault");
 });
+Test("F3 same-key independent writer refuses stale configuration/credential snapshots", () =>
+{
+    using var f = new VaultFixture();
+    var stale = new VaultDatabase(f.Path);
+    Require(stale.Unlock(OldMaster), "second same-key instance did not unlock");
+    var ahead = f.Vault.LoadConfiguration();
+    ahead.UiLanguage = "de";
+    f.Vault.SaveConfiguration(ahead, f.Vault.SessionGeneration);
+    f.Vault.SaveCredential(f.B, new("fresh-b@example.invalid", "fresh-b-secret"));
+
+    var staleConfig = stale.LoadConfiguration();
+    staleConfig.UiLanguage = "nl";
+    var configRefused = false;
+    try { stale.SaveConfiguration(staleConfig); }
+    catch (InvalidOperationException) { configRefused = true; }
+    var credentialRefused = false;
+    try { stale.SaveCredential(f.A, new("stale-a@example.invalid", "stale-a-secret")); }
+    catch (InvalidOperationException) { credentialRefused = true; }
+    stale.Lock();
+
+    using var cold = new ColdVault(f.Path);
+    Require(configRefused && credentialRefused &&
+        cold.Vault.Unlock(OldMaster) &&
+        cold.Vault.LoadConfiguration().UiLanguage == "de" &&
+        cold.Vault.ReadCredential(f.B) == new SiteCredential("fresh-b@example.invalid", "fresh-b-secret") &&
+        cold.Vault.ReadCredential(f.A) == VaultFixture.ACredential,
+        "same-key stale writer overwrote a fresher committed vault snapshot");
+});
 Test("A3 second statement rejection rolls credentials and settings back together", () =>
 {
     using var f = new VaultFixture();

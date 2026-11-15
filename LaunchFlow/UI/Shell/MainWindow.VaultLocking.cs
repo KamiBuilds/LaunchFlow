@@ -22,7 +22,7 @@ namespace LaunchFlow;
 /// <summary>Coordinated browser teardown and secure vault locking.</summary>
 public partial class MainWindow
 {
-    private Task SecureVaultLockAsync(string message)
+    private Task SecureVaultLockAsync(string message, bool sealProfiles = true)
     {
         if (!_vaultLockTask.IsCompleted) return _vaultLockTask;
         // Publish ownership before cancellation callbacks or modal reentrancy can lock again.
@@ -30,7 +30,7 @@ public partial class MainWindow
         _vaultLockTask = completion.Task;
         async Task CleanupAsync()
         {
-            try { await SecureVaultLockCoreAsync(message); completion.TrySetResult(); }
+            try { await SecureVaultLockCoreAsync(message, sealProfiles); completion.TrySetResult(); }
             catch (Exception ex) { completion.TrySetException(ex); }
         }
         _ = CleanupAsync();
@@ -39,7 +39,7 @@ public partial class MainWindow
 
     private Task? _profileSealTask;
 
-    private async Task SecureVaultLockCoreAsync(string message)
+    private async Task SecureVaultLockCoreAsync(string message, bool sealProfiles = true)
     {
         _vaultLockInProgress = true;
         _vaultCleanupFailed = false;
@@ -121,7 +121,7 @@ public partial class MainWindow
                     ex.GetType().Name);
                 return;
             }
-            if (_configuration.SealBrowserProfilesOnLock)
+            if (sealProfiles && _configuration.SealBrowserProfilesOnLock)
             {
                 if (_exiting) WorkflowStatusLabel.Text = "Closing LaunchFlow — encrypting browser profiles…";
                 _profileSealTask ??= Task.Run(ProfileVaultService.SealAll);

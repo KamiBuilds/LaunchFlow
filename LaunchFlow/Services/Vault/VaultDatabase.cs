@@ -609,9 +609,12 @@ public sealed partial class VaultDatabase
         }
         if (_strictIdentityToken is not null)
             CryptographicOperations.ZeroMemory(_strictIdentityToken);
+        if (_strictSnapshotToken is not null)
+            CryptographicOperations.ZeroMemory(_strictSnapshotToken);
         _key = null;
         _strictVaultId = null;
         _strictIdentityToken = null;
+        _strictSnapshotToken = null;
     }
 
     private SqliteConnection OpenConnection(bool create = false)

@@ -94,7 +94,9 @@ check('StartAutoSave();' in source and
       'SaveStatusLabel.Text = "Saving…"' in autosave_code and
       'SaveStatusLabel.Text = "Save failed"' in autosave_code and
       'ShowAutoSaveFailed();' in source and
-      '_store.SaveDurable(_configuration)' in source and
+      ('_store.SaveDurable(_configuration,' in source or
+       '_store.SaveDurable(candidate, ownedVaultSession)' in source or
+       '_store.SaveDurable(ownedConfig, ownedVaultSession)' in source) and
       'private bool _autoSaving' in autosave_code,
       "auto-save schedules edits and confirms encrypted durable writes")
 check('EnabledCheck.Checked += (_, _) => WebsiteEnabledChanged()' in source and
@@ -142,7 +144,10 @@ check('WorkspaceCatalog.ConfirmationStillValid(' in source and
 check('WorkspaceCatalog.PendingRunIsCurrent(' in source and
       'launchRevision = _workspaceRevision' in source and
       'WorkspaceCombo.SelectedItem, workspace' in source and
-      'SaveDurable(_configuration)' in source,
+      ('SaveDurable(_configuration,' in source or
+       'SaveDurable(originalConfiguration, originalVaultSession)' in source or
+       'SaveDurable(_configuration, session)' in source or
+       'SaveDurable(_configuration, ownedVaultSession)' in source),
       "modal workflow dispatch rechecks current workspace and saves are durable")
 store = (root / "LaunchFlow/Services/Persistence/ConfigStore.cs").read_text(encoding="utf-8")
 check('public void SaveDurable(Configuration configuration)' in store and

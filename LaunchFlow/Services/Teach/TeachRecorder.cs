@@ -70,6 +70,8 @@ public sealed class TeachRecorder : IDisposable
     public Task SynchronizeAsync()
     {
         CheckPolicy();
+        lock (_bridge.Gate)
+            _lastCapturedPageUrl = _page.Url;
         return _bridge.SynchronizeAsync();
     }
 
@@ -251,7 +253,15 @@ public sealed class TeachRecorder : IDisposable
                                 {
                                     var safeUrl = next.GetLeftPart(UriPartial.Path);
                                     var previousPath = previous.GetLeftPart(UriPartial.Path);
-                                    if (!string.Equals(previousPath, safeUrl, StringComparison.OrdinalIgnoreCase) &&
+                                    // Scheme/authority compare case-insensitively; HTTP path
+                                    // identity is case-sensitive (/Start vs /start).
+                                    var sameAuthority =
+                                        string.Equals(previous.Scheme, next.Scheme, StringComparison.OrdinalIgnoreCase) &&
+                                        string.Equals(previous.Authority, next.Authority, StringComparison.OrdinalIgnoreCase);
+                                    var pathChanged = !sameAuthority ||
+                                        !string.Equals(previous.AbsolutePath, next.AbsolutePath, StringComparison.Ordinal);
+                                    if (pathChanged &&
+                                        !string.Equals(previousPath, safeUrl, StringComparison.Ordinal) &&
                                         safeUrl.Length <= 2048 &&
                                         session.CheckPolicy(source.Frame.Url, safeUrl))
                                     {

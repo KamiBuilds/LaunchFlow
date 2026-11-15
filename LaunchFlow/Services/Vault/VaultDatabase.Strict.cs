@@ -11,6 +11,7 @@ public sealed partial class VaultDatabase
     private const int StrictSchemaVersion = VaultRecordCodec.Version;
     private byte[]? _strictVaultId;
     private byte[]? _strictIdentityToken;
+    private byte[]? _strictSnapshotToken;
 
     private sealed record StrictMeta(
         byte[] VaultId, byte[] Salt, byte[] Verifier, int MemoryKb, int Iterations, int Lanes);
@@ -101,14 +102,27 @@ public sealed partial class VaultDatabase
     private void RequireExpectedStrictIdentity(SqliteConnection connection)
     {
         var current = StrictIdentityToken(ReadStrictMeta(connection));
+        byte[]? snapshot = null;
         try
         {
             if (_strictIdentityToken is null ||
                 !CryptographicOperations.FixedTimeEquals(_strictIdentityToken, current))
                 throw new InvalidOperationException(
                     "The encrypted vault changed on disk. Lock, unlock, and retry.");
+            // Key identity alone is not enough: ordinary config/credential writes
+            // leave salt/verifier unchanged. Refuse writers whose last-seen sealed
+            // snapshot no longer matches disk (independent same-key stale caches).
+            snapshot = ComputeStrictSnapshotToken(connection);
+            if (_strictSnapshotToken is null ||
+                !CryptographicOperations.FixedTimeEquals(_strictSnapshotToken, snapshot))
+                throw new InvalidOperationException(
+                    "The encrypted vault changed on disk. Lock, unlock, and retry.");
         }
-        finally { CryptographicOperations.ZeroMemory(current); }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(current);
+            if (snapshot is not null) CryptographicOperations.ZeroMemory(snapshot);
+        }
     }
 
     private void RefreshStrictIdentity(SqliteConnection connection)
@@ -117,6 +131,41 @@ public sealed partial class VaultDatabase
         if (_strictIdentityToken is not null)
             CryptographicOperations.ZeroMemory(_strictIdentityToken);
         _strictIdentityToken = next;
+        var snapshot = ComputeStrictSnapshotToken(connection);
+        if (_strictSnapshotToken is not null)
+            CryptographicOperations.ZeroMemory(_strictSnapshotToken);
+        _strictSnapshotToken = snapshot;
+    }
+
+    /// <summary>
+    /// Fingerprint of authoritative sealed payload rows (config + credentials).
+    /// Independent of key/salt/verifier so same-key writers cannot overwrite a
+    /// fresher committed snapshot while still holding an unlocked cache.
+    /// </summary>
+    private static byte[] ComputeStrictSnapshotToken(SqliteConnection connection)
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT sealed FROM secure_objects WHERE id='config';";
+            var sealedConfig = cmd.ExecuteScalar() as byte[] ?? Array.Empty<byte>();
+            hash.AppendData(BitConverter.GetBytes(sealedConfig.Length));
+            hash.AppendData(sealedConfig);
+        }
+        using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT workflow_id, sealed FROM secure_credentials ORDER BY workflow_id COLLATE BINARY;";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var id = reader.GetString(0);
+                var sealedCred = (byte[])reader[1];
+                hash.AppendData(Encoding.UTF8.GetBytes(id));
+                hash.AppendData(BitConverter.GetBytes(sealedCred.Length));
+                hash.AppendData(sealedCred);
+            }
+        }
+        return hash.GetHashAndReset();
     }
 
     private static void InsertStrictMeta(SqliteConnection connection,
@@ -166,6 +215,9 @@ public sealed partial class VaultDatabase
                 _key = candidateKey;
                 _strictVaultId = meta.VaultId.ToArray();
                 _strictIdentityToken = StrictIdentityToken(meta);
+                if (_strictSnapshotToken is not null)
+                    CryptographicOperations.ZeroMemory(_strictSnapshotToken);
+                _strictSnapshotToken = ComputeStrictSnapshotToken(connection);
                 _sessionGeneration++;
                 candidateKey = null;
                 _configCache = CloneConfig(config);
@@ -207,6 +259,7 @@ public sealed partial class VaultDatabase
                     !CryptographicOperations.FixedTimeEquals(
                         _strictIdentityToken, StrictIdentityToken(meta)))
                     return false;
+                // Confirm is key/verifier only; snapshot freshness is enforced on writes.
                 candidateKey = DeriveKey(password, meta.Salt, meta.MemoryKb, meta.Iterations, meta.Lanes);
                 var verifier = VaultRecordCodec.Open(meta.Verifier, candidateKey, meta.VaultId,
                     "verifier", "verifier");
@@ -260,6 +313,9 @@ public sealed partial class VaultDatabase
                 _strictVaultId = vaultId;
                 _strictIdentityToken = StrictIdentityToken(
                     new StrictMeta(vaultId, salt, verifier, ArgonMemoryKb, ArgonIterations, ArgonLanes));
+                if (_strictSnapshotToken is not null)
+                    CryptographicOperations.ZeroMemory(_strictSnapshotToken);
+                _strictSnapshotToken = ComputeStrictSnapshotToken(connection);
                 _sessionGeneration++;
                 key = null!;
                 _configCache = candidateConfig;
@@ -337,6 +393,9 @@ public sealed partial class VaultDatabase
                 _strictIdentityToken = StrictIdentityToken(
                     new StrictMeta(oldMeta.VaultId, nextSalt, verifier,
                         ArgonMemoryKb, ArgonIterations, ArgonLanes));
+                if (_strictSnapshotToken is not null)
+                    CryptographicOperations.ZeroMemory(_strictSnapshotToken);
+                _strictSnapshotToken = ComputeStrictSnapshotToken(connection);
                 _sessionGeneration++;
                 key = null!;
                 _configCache = CloneConfig(config);

@@ -124,15 +124,16 @@ public partial class MainWindow
 
     private async Task ContinueToSetupAfterVaultResetAsync()
     {
-        // The reset intentionally discards the model represented by these controls.
-        // Do not let normal close handling try to save that stale draft into a new vault.
-        _editorSession.TryAcknowledge(_editorSession.Revision);
+        // Keep pending-edit dirty ownership until the wipe is terminal. Acknowledging
+        // early would let AbortBeforeWipe return to a still-present vault without
+        // unsaved-exit protection (UI96-03).
         _helloUnlock.InvalidateOutstandingEnables();
         var app = (App)System.Windows.Application.Current;
         app.KeepAliveForVaultResetSetup();
         _exiting = true;
         IsEnabled = false;
         UpdateRunButtons();
+        var partialCleanupAfterWipe = false;
 
         void AbortBeforeWipe(string title, string message)
         {
@@ -145,9 +146,13 @@ public partial class MainWindow
 
         try
         {
-            // Close/drain Playwright before wiping profile directories.
-            await SecureVaultLockAsync("Vault reset requested; closing browser sessions before wipe.");
-            if (_vaultCleanupFailed || _vaultLockInProgress || _profileSealFailed)
+            // Close/drain Playwright before wiping profile directories. Skip profile
+            // sealing: destructive reset intends to delete those directories, and a
+            // retained .restore-* seal refusal must not strand unlock/retry (UI96-02).
+            await SecureVaultLockAsync(
+                "Vault reset requested; closing browser sessions before wipe.",
+                sealProfiles: false);
+            if (_vaultCleanupFailed || _vaultLockInProgress)
             {
                 AbortBeforeWipe("Reset paused",
                     "Browser sessions could not be closed safely. Close any LaunchFlow browser windows and retry reset from Unlock.");
@@ -164,6 +169,8 @@ public partial class MainWindow
                     "Close applications using those files and retry; no complete wipe is claimed.");
                 return;
             }
+            // Database gone but profiles/Hello cleanup failed — disclose before setup.
+            partialCleanupAfterWipe = true;
         }
         catch (Exception)
         {
@@ -173,6 +180,7 @@ public partial class MainWindow
                     "Reset could not finish. Existing files may remain.");
                 return;
             }
+            partialCleanupAfterWipe = true;
         }
 
         if (VaultDatabase.Current.Exists)
@@ -180,6 +188,15 @@ public partial class MainWindow
             AbortBeforeWipe("Reset failed",
                 "The vault is still present after reset. Close other apps using those files and retry.");
             return;
+        }
+
+        if (partialCleanupAfterWipe)
+        {
+            MessageBox.Show(this,
+                "The vault database was removed, but some browser profiles or related files may still remain on disk. " +
+                "Close apps using those folders and delete leftover profiles under LaunchFlow’s data directory if needed. " +
+                "Setup will continue; do not treat profile cleanup as complete.",
+                "Reset incomplete", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
 
         // Vault file is gone — Hello secret must also be gone before setup, or the
@@ -200,9 +217,8 @@ public partial class MainWindow
             return;
         }
 
-        // Vault is gone — grant the close permit (cleanup already finished) so
-        // OnClosing does not cancel under bare _exiting and leave this window
-        // alive beside a new setup MainWindow.
+        // Vault is gone — discard editor draft only now, then grant the close permit
+        // so OnClosing does not cancel under bare _exiting beside a new setup window.
         _editorSession.TryAcknowledge(_editorSession.Revision);
         try
         {

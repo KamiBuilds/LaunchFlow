@@ -198,18 +198,19 @@ public partial class MainWindow
             return;
         }
         if (!StillOwnsEnable()) return;
-        if (await WindowsHelloService.EnableAsync(prompt.Secret))
+        var published = await WindowsHelloService.EnableAsync(prompt.Secret);
+        if (published is long ownedPublication)
         {
             if (!StillOwnsEnable())
             {
-                // Reset/lock may have invalidated this enable while Hello UI awaited;
-                // remove material strictly so a stale enable cannot leave a recoverable secret.
-                try { WindowsHelloService.DisableStrict(); }
+                // Only delete material belonging to this enable generation; a newer
+                // successful enable must keep its file (UI96-01).
+                try { WindowsHelloService.DisableIfPublication(ownedPublication); }
                 catch (Exception cleanupError)
                 {
                     AppendLog("Stale Windows Hello enable cleanup needs attention: " + cleanupError.GetType().Name);
-                    try { WindowsHelloService.Disable(); } catch { }
-                    if (WindowsHelloService.IsEnabled)
+                    if (WindowsHelloService.IsEnabled &&
+                        WindowsHelloService.PublicationGeneration == ownedPublication)
                     {
                         MessageBox.Show(this,
                             "Windows Hello unlock material could not be removed after the enable was cancelled. " +

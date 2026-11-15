@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Security.Cryptography;
 using LaunchFlow.Models;
 using LaunchFlow.Services;
 using Microsoft.Playwright;
@@ -184,10 +185,13 @@ if (OperatingSystem.IsLinux())
         var rejected = false;
         try { await (Task<IPage>)getPage.Invoke(engine, new object[] { blockedWorkflow, CancellationToken.None })!; }
         catch (InvalidOperationException ex) { rejected = ex.Message.Contains("restor", StringComparison.OrdinalIgnoreCase); }
+        catch (CryptographicException) { rejected = true; /* counterfeit ciphertext fails closed */ }
         catch (PlaywrightException) { }
         finally { playwrightField.SetValue(engine, null); }
         Assert(rejected, "an unrestored sealed profile blocks browser creation instead of starting a replacement session");
         Assert(!Directory.Exists(Path.Combine(ProfileVaultService.ProfilesRoot, blockedWorkflow.Id.ToString("N"))), "failed restore never creates a replacement plaintext profile");
+        Assert(File.Exists(Path.Combine(ProfileVaultService.SealedRoot, blockedWorkflow.Id.ToString("N") + ".profile.aes")),
+            "failed restore preserves the counterfeit sealed snapshot on disk");
 
         var placeholderWorkflow = new WebsiteWorkflow { Browser = "Chromium" };
         var placeholder = Path.Combine(ProfileVaultService.ProfilesRoot, placeholderWorkflow.Id.ToString("N"));
@@ -202,6 +206,10 @@ if (OperatingSystem.IsLinux())
         catch (InvalidOperationException ex)
         {
             rejectedPlaceholder = ex.Message.Contains("restor", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (CryptographicException)
+        {
+            rejectedPlaceholder = true;
         }
         finally { playwrightField.SetValue(engine, null); }
         Assert(rejectedPlaceholder && !Directory.EnumerateFileSystemEntries(placeholder).Any() &&

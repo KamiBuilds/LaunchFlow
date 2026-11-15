@@ -66,8 +66,10 @@ public static class PlaywrightFirefoxSupport
         try
         {
             var dir = Path.Combine(root, "firefox-" + RequiredFirefoxRevision);
-            return Directory.Exists(dir) &&
-                Directory.EnumerateFiles(dir, "firefox.exe", SearchOption.AllDirectories).Any();
+            // Playwright's driver expects revision/firefox/firefox.exe — not a
+            // misplaced firefox.exe anywhere under the revision folder.
+            var executable = Path.Combine(dir, "firefox", "firefox.exe");
+            return File.Exists(executable);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

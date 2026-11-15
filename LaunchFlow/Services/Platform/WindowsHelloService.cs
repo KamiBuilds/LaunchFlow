@@ -2,6 +2,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using Windows.Security.Credentials.UI;
 
 namespace LaunchFlow.Services;
@@ -12,6 +13,8 @@ namespace LaunchFlow.Services;
 /// </summary>
 public static class WindowsHelloService
 {
+    private static long _publicationGeneration;
+
     private static string SecretPath =>
         Path.Combine(VaultDatabase.Current.DataDirectory, "hello-unlock.bin");
 
@@ -19,6 +22,9 @@ public static class WindowsHelloService
         Path.Combine(VaultDatabase.Current.DataDirectory, "hello-meta.json");
 
     public static bool IsEnabled => File.Exists(SecretPath);
+
+    /// <summary>Monotonic owner for hello-unlock.bin publication/cleanup.</summary>
+    public static long PublicationGeneration => Interlocked.Read(ref _publicationGeneration);
 
     public static async Task<bool> IsSupportedAsync()
     {
@@ -63,25 +69,31 @@ public static class WindowsHelloService
         catch { /* ignore */ }
     }
 
-    public static async Task<bool> EnableAsync(string masterPassword)
+    /// <returns>Publication generation that owns the written file, or null on failure/supersession.</returns>
+    public static async Task<long?> EnableAsync(string masterPassword)
     {
-        if (string.IsNullOrEmpty(masterPassword)) return false;
+        if (string.IsNullOrEmpty(masterPassword)) return null;
         if (!await VerifyUserAsync("Enable Windows Hello unlock for LaunchFlow").ConfigureAwait(true))
-            return false;
+            return null;
 
         var protectedBytes = ProtectedData.Protect(
             Encoding.UTF8.GetBytes(masterPassword),
             optionalEntropy: Encoding.UTF8.GetBytes("LaunchFlow.Hello.v1"),
             scope: DataProtectionScope.CurrentUser);
         Directory.CreateDirectory(VaultDatabase.Current.DataDirectory);
+        // Claim publication before writing so a superseded enable cannot delete
+        // a newer successful file during stale cleanup (UI96-01).
+        var ownedPublication = Interlocked.Increment(ref _publicationGeneration);
         await File.WriteAllBytesAsync(SecretPath, protectedBytes).ConfigureAwait(true);
+        if (Interlocked.Read(ref _publicationGeneration) != ownedPublication)
+            return null;
         MarkPasswordVerified();
-        return true;
+        return ownedPublication;
     }
 
     public static void Disable()
     {
-        try { DisableCore(); }
+        try { DisableCore(force: true); }
         catch { /* best-effort UI path; reset uses DisableStrict */ }
     }
 
@@ -91,7 +103,7 @@ public static class WindowsHelloService
     /// </summary>
     public static void DisableStrict()
     {
-        try { DisableCore(); }
+        try { DisableCore(force: true); }
         catch (Exception ex)
         {
             throw new IOException("Windows Hello unlock material could not be removed.", ex);
@@ -100,8 +112,27 @@ public static class WindowsHelloService
             throw new IOException("Windows Hello unlock material is still present after disable.");
     }
 
-    private static void DisableCore()
+    /// <summary>
+    /// Stale-enable cleanup: delete only while <paramref name="publication"/> still owns the file.
+    /// </summary>
+    public static void DisableIfPublication(long publication)
     {
+        if (Interlocked.Read(ref _publicationGeneration) != publication)
+            return;
+        try { DisableCore(force: false, expectedPublication: publication); }
+        catch { /* stale cleanup is best-effort when superseded */ }
+    }
+
+    private static void DisableCore(bool force, long? expectedPublication = null)
+    {
+        if (!force)
+        {
+            if (!expectedPublication.HasValue) return;
+            if (Interlocked.Read(ref _publicationGeneration) != expectedPublication.Value)
+                return;
+        }
+        else
+            Interlocked.Increment(ref _publicationGeneration);
         if (File.Exists(SecretPath)) File.Delete(SecretPath);
         if (File.Exists(MetaPath)) File.Delete(MetaPath);
     }

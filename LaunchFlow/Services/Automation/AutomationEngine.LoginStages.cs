@@ -221,6 +221,9 @@ public sealed partial class AutomationEngine
         CredentialFieldBinding owner, LoginAttemptState state, bool requiresPassword,
         bool discoverPassword, string rememberedRecipe, CancellationToken ct)
     {
+        // rememberedRecipe retained for call-site compatibility; SamePage must not
+        // veto owned auto-discovered continuation (AUTO-A4).
+        _ = rememberedRecipe;
         if (!requiresPassword)
         {
             if (!string.IsNullOrWhiteSpace(workflow.SubmitSelector))
@@ -313,15 +316,9 @@ public sealed partial class AutomationEngine
             return;
         }
 
-        // A remembered SamePage hint must not veto a deliberate current
-        // identifier-first continuation or classified multi-stage form.
-        if (rememberedRecipe == LoginRecipe.SamePage &&
-            string.IsNullOrWhiteSpace(workflow.UsernameContinueSelector))
-        {
-            state.FailureCode = "no-password-field";
-            state.StageReached = false;
-            return;
-        }
+        // A remembered SamePage hint must not veto a current classified
+        // identifier-first form: fall through so an owned/auto-discovered Next
+        // can still advance (AUTO-A4). Explicit continue selectors already win above.
 
         // No matching password belongs to the current form. Advancing requires
         // an owned first-stage action, not an unrelated page-wide password.
