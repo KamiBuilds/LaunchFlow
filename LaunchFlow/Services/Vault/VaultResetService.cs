@@ -1,4 +1,5 @@
 using System.IO;
+using Microsoft.Data.Sqlite;
 
 namespace LaunchFlow.Services;
 
@@ -26,6 +27,9 @@ public static class VaultResetService
         ArgumentNullException.ThrowIfNull(deleteFile);
         ArgumentNullException.ThrowIfNull(deleteProfiles);
         try { VaultDatabase.Current.Lock(); } catch { /* ignore */ }
+        // Lock clears pools; clear again immediately before delete in case a
+        // concurrent reader opened while wipe prepares the filesystem.
+        try { SqliteConnection.ClearAllPools(); } catch { /* ignore */ }
 
         var failures = new List<Exception>();
         var databaseRemoved = false;

@@ -204,32 +204,35 @@ public partial class MainWindow
             if (!StillOwnsEnable())
             {
                 // Only delete material belonging to this enable generation; a newer
-                // successful enable must keep its file (UI96-01).
-                try { WindowsHelloService.DisableIfPublication(ownedPublication); }
-                catch (Exception cleanupError)
+                // successful enable must keep its file (UI96-01 / F-097-04).
+                var cleanup = WindowsHelloService.DisableIfPublication(ownedPublication);
+                if (cleanup == WindowsHelloService.CleanupResult.RemovalFailed ||
+                    (cleanup == WindowsHelloService.CleanupResult.Removed && WindowsHelloService.IsEnabled) ||
+                    (cleanup != WindowsHelloService.CleanupResult.Superseded && WindowsHelloService.IsEnabled &&
+                     WindowsHelloService.PublicationGeneration == ownedPublication))
                 {
-                    AppendLog("Stale Windows Hello enable cleanup needs attention: " + cleanupError.GetType().Name);
-                    if (WindowsHelloService.IsEnabled &&
-                        WindowsHelloService.PublicationGeneration == ownedPublication)
-                    {
-                        MessageBox.Show(this,
-                            "Windows Hello unlock material could not be removed after the enable was cancelled. " +
-                            "Delete hello-unlock.bin under %LOCALAPPDATA%\\LaunchFlow, or use Disable Windows Hello after unlocking.",
-                            "Windows Hello cleanup incomplete", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    }
+                    AppendLog("Stale Windows Hello enable cleanup needs attention: " + cleanup);
+                    MessageBox.Show(this,
+                        "Windows Hello unlock material could not be removed after the enable was cancelled. " +
+                        "Delete hello-unlock.bin under %LOCALAPPDATA%\\LaunchFlow, or use Disable Windows Hello after unlocking.",
+                        "Windows Hello cleanup incomplete", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
                 return;
             }
             try
             {
                 _helloUnlock.TryPersistEnabled(ownedConfig, ownedVaultSession, _store.SaveDurable,
-                    WindowsHelloService.Disable);
+                    WindowsHelloService.DisableStrict);
             }
             catch (Exception persistError)
             {
                 AppendLog("Windows Hello unlock preference could not be saved: " + persistError.GetType().Name);
+                var leftover = WindowsHelloService.IsEnabled
+                    ? " Windows Hello unlock material may still be on disk — use Disable Windows Hello or delete hello-unlock.bin under %LOCALAPPDATA%\\LaunchFlow."
+                    : "";
                 MessageBox.Show(this,
-                    "Windows Hello was set up on this PC, but LaunchFlow could not save the preference. Try again after unlocking the vault.",
+                    "Windows Hello was set up on this PC, but LaunchFlow could not save the preference." + leftover +
+                    " Try again after unlocking the vault.",
                     "Windows Hello", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
@@ -242,12 +245,31 @@ public partial class MainWindow
     {
         var ownedConfig = _configuration;
         var ownedVaultSession = VaultDatabase.Current.SessionGeneration;
-        if (!_helloUnlock.TryDisableAndPersist(ownedConfig, _configuration, ownedVaultSession,
-                VaultDatabase.Current.SessionGeneration, VaultDatabase.Current.IsUnlocked,
-                _windowsLocked, _vaultLockInProgress, _exiting,
-                WindowsHelloService.Disable, _store.SaveDurable))
+        try
         {
-            AppendLog("Windows Hello unlock disabled locally; vault was unavailable to persist the preference.");
+            if (!_helloUnlock.TryDisableAndPersist(ownedConfig, _configuration, ownedVaultSession,
+                    VaultDatabase.Current.SessionGeneration, VaultDatabase.Current.IsUnlocked,
+                    _windowsLocked, _vaultLockInProgress, _exiting,
+                    WindowsHelloService.DisableStrict, _store.SaveDurable))
+            {
+                AppendLog("Windows Hello unlock disabled locally; vault was unavailable to persist the preference.");
+                if (WindowsHelloService.IsEnabled)
+                {
+                    MessageBox.Show(this,
+                        "Windows Hello preference could not be saved, and unlock material may still be present. " +
+                        "Delete hello-unlock.bin under %LOCALAPPDATA%\\LaunchFlow if unlock with Hello still appears.",
+                        "Windows Hello cleanup incomplete", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            AppendLog("Windows Hello disable failed: " + ex.GetType().Name);
+            MessageBox.Show(this,
+                "Windows Hello unlock material could not be removed. " +
+                "Delete hello-unlock.bin under %LOCALAPPDATA%\\LaunchFlow, then try Disable again after unlocking.",
+                "Windows Hello cleanup incomplete", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         AppendLog("Windows Hello unlock disabled.");

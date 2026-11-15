@@ -232,6 +232,8 @@ public sealed partial class VaultDatabase
             _configCache = null;
             _secretsCache = null;
         }
+        // Drop pooled handles so reset/delete can remove the DB file on Windows.
+        SqliteConnection.ClearAllPools();
     }
 
     public void ReplaceSnapshot(Configuration config, Dictionary<Guid, SiteCredential> credentials) =>
@@ -265,8 +267,8 @@ public sealed partial class VaultDatabase
             RequireExpectedStrictIdentity(connection);
             WriteConfigurationSealed(connection, candidateConfig);
             PersistCredentials(connection, candidateCredentials);
-            RefreshStrictIdentity(connection);
             transaction.Commit();
+            RefreshStrictIdentity(connection);
 
             foreach (var workflow in config.Workflows)
                 workflow.Enabled = false;
@@ -318,8 +320,8 @@ public sealed partial class VaultDatabase
         using var transaction = connection.BeginTransaction();
         RequireExpectedStrictIdentity(connection);
         WriteConfigurationSealed(connection, config);
-        RefreshStrictIdentity(connection);
         transaction.Commit();
+        RefreshStrictIdentity(connection);
         _configCache = CloneConfig(config);
     }
 
@@ -359,8 +361,8 @@ public sealed partial class VaultDatabase
             using var transaction = connection.BeginTransaction();
             RequireExpectedStrictIdentity(connection);
             PersistCredentials(connection, candidate);
-            RefreshStrictIdentity(connection);
             transaction.Commit();
+            RefreshStrictIdentity(connection);
             _secretsCache = candidate;
         }
     }
@@ -388,8 +390,8 @@ public sealed partial class VaultDatabase
             RequireExpectedStrictIdentity(connection);
             PersistCredentials(connection, candidateSecrets);
             WriteConfigurationSealed(connection, candidateConfig);
-            RefreshStrictIdentity(connection);
             transaction.Commit();
+            RefreshStrictIdentity(connection);
             _configCache = candidateConfig;
             _secretsCache = candidateSecrets;
         }
@@ -406,8 +408,8 @@ public sealed partial class VaultDatabase
             using var transaction = connection.BeginTransaction();
             RequireExpectedStrictIdentity(connection);
             PersistCredentials(connection, candidate);
-            RefreshStrictIdentity(connection);
             transaction.Commit();
+            RefreshStrictIdentity(connection);
             _secretsCache = candidate;
         }
     }
@@ -436,8 +438,8 @@ public sealed partial class VaultDatabase
             RequireExpectedStrictIdentity(connection);
             PersistCredentials(connection, candidateSecrets);
             WriteConfigurationSealed(connection, candidateConfig);
-            RefreshStrictIdentity(connection);
             transaction.Commit();
+            RefreshStrictIdentity(connection);
             _configCache = candidateConfig;
             _secretsCache = candidateSecrets;
         }
@@ -470,8 +472,8 @@ public sealed partial class VaultDatabase
             RequireExpectedStrictIdentity(connection);
             PersistCredentials(connection, candidateSecrets);
             WriteConfigurationSealed(connection, candidateConfig);
-            RefreshStrictIdentity(connection);
             transaction.Commit();
+            RefreshStrictIdentity(connection);
             _configCache = candidateConfig;
             _secretsCache = candidateSecrets;
         }

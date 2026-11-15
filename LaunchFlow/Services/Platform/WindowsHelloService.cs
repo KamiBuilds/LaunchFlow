@@ -13,7 +13,9 @@ namespace LaunchFlow.Services;
 /// </summary>
 public static class WindowsHelloService
 {
+    private static readonly object Gate = new();
     private static long _publicationGeneration;
+    private static long _disableEpoch;
 
     private static string SecretPath =>
         Path.Combine(VaultDatabase.Current.DataDirectory, "hello-unlock.bin");
@@ -24,7 +26,17 @@ public static class WindowsHelloService
     public static bool IsEnabled => File.Exists(SecretPath);
 
     /// <summary>Monotonic owner for hello-unlock.bin publication/cleanup.</summary>
-    public static long PublicationGeneration => Interlocked.Read(ref _publicationGeneration);
+    public static long PublicationGeneration
+    {
+        get { lock (Gate) return _publicationGeneration; }
+    }
+
+    public enum CleanupResult
+    {
+        Removed,
+        Superseded,
+        RemovalFailed
+    }
 
     public static async Task<bool> IsSupportedAsync()
     {
@@ -76,24 +88,54 @@ public static class WindowsHelloService
         if (!await VerifyUserAsync("Enable Windows Hello unlock for LaunchFlow").ConfigureAwait(true))
             return null;
 
+        long disableEpoch;
+        lock (Gate) disableEpoch = _disableEpoch;
+
         var protectedBytes = ProtectedData.Protect(
             Encoding.UTF8.GetBytes(masterPassword),
             optionalEntropy: Encoding.UTF8.GetBytes("LaunchFlow.Hello.v1"),
             scope: DataProtectionScope.CurrentUser);
         Directory.CreateDirectory(VaultDatabase.Current.DataDirectory);
-        // Claim publication before writing so a superseded enable cannot delete
-        // a newer successful file during stale cleanup (UI96-01).
-        var ownedPublication = Interlocked.Increment(ref _publicationGeneration);
-        await File.WriteAllBytesAsync(SecretPath, protectedBytes).ConfigureAwait(true);
-        if (Interlocked.Read(ref _publicationGeneration) != ownedPublication)
+        var staging = Path.Combine(
+            VaultDatabase.Current.DataDirectory,
+            "hello-unlock." + Guid.NewGuid().ToString("N") + ".tmp");
+        try
+        {
+            await File.WriteAllBytesAsync(staging, protectedBytes).ConfigureAwait(true);
+            CryptographicOperations.ZeroMemory(protectedBytes);
+            protectedBytes = Array.Empty<byte>();
+
+            long ownedPublication;
+            lock (Gate)
+            {
+                // Reset/disable that finished while we staged must win (F-097-05).
+                if (_disableEpoch != disableEpoch)
+                    return null;
+                ownedPublication = ++_publicationGeneration;
+                File.Move(staging, SecretPath, overwrite: true);
+                staging = string.Empty;
+            }
+            MarkPasswordVerified();
+            return ownedPublication;
+        }
+        catch
+        {
             return null;
-        MarkPasswordVerified();
-        return ownedPublication;
+        }
+        finally
+        {
+            if (protectedBytes.Length > 0)
+                CryptographicOperations.ZeroMemory(protectedBytes);
+            if (!string.IsNullOrEmpty(staging))
+            {
+                try { File.Delete(staging); } catch { /* ignore */ }
+            }
+        }
     }
 
     public static void Disable()
     {
-        try { DisableCore(force: true); }
+        try { ForceRemoveUnlocked(); }
         catch { /* best-effort UI path; reset uses DisableStrict */ }
     }
 
@@ -103,7 +145,7 @@ public static class WindowsHelloService
     /// </summary>
     public static void DisableStrict()
     {
-        try { DisableCore(force: true); }
+        try { ForceRemoveUnlocked(); }
         catch (Exception ex)
         {
             throw new IOException("Windows Hello unlock material could not be removed.", ex);
@@ -114,27 +156,40 @@ public static class WindowsHelloService
 
     /// <summary>
     /// Stale-enable cleanup: delete only while <paramref name="publication"/> still owns the file.
+    /// Propagates deletion outcomes so the UI can warn (F-097-04).
     /// </summary>
-    public static void DisableIfPublication(long publication)
+    public static CleanupResult DisableIfPublication(long publication)
     {
-        if (Interlocked.Read(ref _publicationGeneration) != publication)
-            return;
-        try { DisableCore(force: false, expectedPublication: publication); }
-        catch { /* stale cleanup is best-effort when superseded */ }
+        lock (Gate)
+        {
+            if (_publicationGeneration != publication)
+                return CleanupResult.Superseded;
+            try
+            {
+                if (File.Exists(SecretPath)) File.Delete(SecretPath);
+                if (File.Exists(MetaPath)) File.Delete(MetaPath);
+            }
+            catch
+            {
+                return CleanupResult.RemovalFailed;
+            }
+            if (_publicationGeneration != publication)
+                return CleanupResult.Superseded;
+            if (File.Exists(SecretPath))
+                return CleanupResult.RemovalFailed;
+            return CleanupResult.Removed;
+        }
     }
 
-    private static void DisableCore(bool force, long? expectedPublication = null)
+    private static void ForceRemoveUnlocked()
     {
-        if (!force)
+        lock (Gate)
         {
-            if (!expectedPublication.HasValue) return;
-            if (Interlocked.Read(ref _publicationGeneration) != expectedPublication.Value)
-                return;
+            checked { _disableEpoch++; }
+            checked { _publicationGeneration++; }
+            if (File.Exists(SecretPath)) File.Delete(SecretPath);
+            if (File.Exists(MetaPath)) File.Delete(MetaPath);
         }
-        else
-            Interlocked.Increment(ref _publicationGeneration);
-        if (File.Exists(SecretPath)) File.Delete(SecretPath);
-        if (File.Exists(MetaPath)) File.Delete(MetaPath);
     }
 
     public static async Task<string?> TryUnlockPasswordAsync(int reauthDays = 30)

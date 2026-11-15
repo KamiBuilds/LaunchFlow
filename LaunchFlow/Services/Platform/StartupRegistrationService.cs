@@ -24,11 +24,21 @@ public sealed class StartupRegistrationService
         {
             _runKey(false);
             _taskScheduler(startWithWindows);
+            return;
         }
-        else
+
+        // Prefer Run key: always apply it even if Task Scheduler cleanup fails,
+        // then surface the scheduler error so the preference is not silently OK.
+        Exception? schedulerError = null;
+        try { _taskScheduler(false); }
+        catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
         {
-            _taskScheduler(false);
-            _runKey(startWithWindows);
+            schedulerError = ex;
         }
+        _runKey(startWithWindows);
+        if (schedulerError is not null)
+            throw new InvalidOperationException(
+                "The Run-key startup setting was applied, but the LaunchFlow Scheduled Task could not be cleared. " +
+                schedulerError.Message, schedulerError);
     }
 }

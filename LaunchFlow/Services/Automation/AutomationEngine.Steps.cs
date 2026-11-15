@@ -110,22 +110,27 @@ public sealed partial class AutomationEngine
         // cross-origin grandchildren), not only top document or one iframe hop.
         var focusedUrl = await page.EvaluateAsync<string?>("""
             () => {
-              const deepest = (doc) => {
-                const active = doc.activeElement;
-                if (!active) return doc.location.href;
+              // Walk open shadowRoot.activeElement and nested iframe contentDocument.
+              // Shadow hosts are not frames: stop only when focus is a non-frame leaf.
+              const deepest = (root) => {
+                let active = root.activeElement;
+                while (active && active.shadowRoot && active.shadowRoot.activeElement)
+                  active = active.shadowRoot.activeElement;
+                if (!active) {
+                  try { return root.defaultView ? root.defaultView.location.href : null; }
+                  catch { return null; }
+                }
                 if (active.tagName === 'IFRAME' || active.tagName === 'FRAME') {
                   try {
                     const child = active.contentDocument;
-                    if (!child) return null;
+                    if (!child) return null; // cross-origin / unreadable — fail closed
                     return deepest(child);
                   } catch { return null; }
                 }
-                const root = active.getRootNode && active.getRootNode();
-                if (root && root instanceof ShadowRoot) {
-                  // Shadow hosts stay in the same document URL; still authorize the document.
-                  return doc.location.href;
-                }
-                return doc.location.href;
+                try {
+                  const doc = active.ownerDocument || root;
+                  return doc.defaultView ? doc.defaultView.location.href : doc.location.href;
+                } catch { return null; }
               };
               try { return deepest(document); }
               catch { return null; }

@@ -1,3 +1,34 @@
+# v0.8.0 — Minor milestone after ownership/reset/Hello hardening
+
+- Version milestone from the 0.7.x rescue line after F3/reset/confirmation/Hello/scheduler finish-path repairs through 0.7.100.
+- No installer AppId, vault format, or data-location change.
+- Native Windows interactive acceptance remains required before any stable public release claim.
+
+# v0.7.100 — Hello preference/secret consistency on abort paths
+
+- Password-change: if Hello file removal fails after Hello-off was saved, roll the preference back.
+- Enable Hello persist rollback uses DisableStrict and warns when unlock material remains.
+- Native Windows interactive acceptance remains required.
+
+# v0.7.99 — Finish-path hardening before native acceptance
+
+- Clear SQLite connection pools on Lock and before vault-reset deletes (Windows file-lock).
+- Aborted reset does not re-seal while browsers may still be live; post-wipe setup handoff cannot leave a headless process.
+- Hello disable / password-change use DisableStrict and verify the current password before removing Hello.
+- Scheduler presence uses CSV task-list name match (exit code 1 is not treated as Absent); Run-key still applies if task cleanup fails.
+- Structural challenge visibility no longer rejects opacity:0 OTP overlays.
+- Native Windows interactive acceptance remains required.
+
+# v0.7.98 — Cursor failure-audit repairs (F-097-01…08)
+
+- F-097-01/02: structural challenge snapshot pierces open Shadow DOM and uses computed visibility (not getClientRects alone).
+- F-097-03: Press walks open shadowRoot.activeElement into nested iframes; unreadable focus fails closed.
+- F-097-04/05: Hello stages to a temp file, publishes under a gate with disable-epoch barriers; DisableIfPublication returns Removed/Superseded/RemovalFailed and UI warns on retained secrets.
+- F-097-06: scheduler query is Present|Absent|UnknownError; access/query failures no longer look like “missing task”.
+- F-097-07: aborted reset (vault still present) attempts re-seal and warns if profiles may be plaintext.
+- F-097-08: strict snapshot token refreshes only after SQLite commit succeeds.
+- Native Windows interactive acceptance remains required.
+
 # v0.7.97 — Review P2 ownership repairs (F3 / reset / confirmation / Teach / Hello / scheduler / Firefox)
 
 - F3: vault writes require sealed config+credential snapshot freshness as well as key identity (same-key stale writers refuse).

@@ -79,11 +79,14 @@ actions.Clear();
 registrations.Apply(false, false);
 Check(actions.SequenceEqual(new[] { "task:False", "run:False" }),
     "disabled autostart removes both mechanisms");
+var runApplied = false;
 var registrationFailure = new StartupRegistrationService(
     _ => throw new InvalidOperationException("denied"),
-    _ => { });
+    enabled => { runApplied = enabled; });
 Throws<InvalidOperationException>(() => registrationFailure.Apply(true, false),
     "platform registration failures are not silently marked successful");
+Check(runApplied,
+    "Run-key preference still applies when Task Scheduler cleanup fails");
 
 var timeout = SessionLockPolicy.Timeout(10);
 Check(!SessionLockPolicy.RequiresVaultLock(TimeSpan.FromMinutes(9) + TimeSpan.FromSeconds(59), timeout),

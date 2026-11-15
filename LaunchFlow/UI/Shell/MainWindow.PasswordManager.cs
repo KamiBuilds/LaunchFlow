@@ -135,13 +135,31 @@ public partial class MainWindow
         UpdateRunButtons();
         var partialCleanupAfterWipe = false;
 
-        void AbortBeforeWipe(string title, string message)
+        async Task AbortBeforeWipeAsync(string title, string message, bool profilesMayBePlaintext)
         {
+            // Wipe skipped sealing so a failed DB delete must not leave plaintext
+            // profiles without an explicit recovery attempt/warning (F-097-07).
+            var sealNote = "";
+            if (profilesMayBePlaintext && _configuration.SealBrowserProfilesOnLock)
+            {
+                try
+                {
+                    await Task.Run(ProfileVaultService.SealAll);
+                    sealNote = " Browser profiles were re-encrypted after the aborted wipe.";
+                }
+                catch (Exception sealError)
+                {
+                    AppendLog("Post-abort profile seal needs attention: " + sealError.GetType().Name);
+                    sealNote =
+                        " Browser profiles may still be unencrypted on disk under LaunchFlow’s data directory. " +
+                        "Retry Lock vault or reset after closing other apps; do not treat profiles as sealed.";
+                }
+            }
             app.CancelVaultResetKeepAlive();
             _exiting = false;
             IsEnabled = true;
             UpdateRunButtons();
-            MessageBox.Show(this, message, title, MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, message + sealNote, title, MessageBoxButton.OK, MessageBoxImage.Warning);
         }
 
         try
@@ -154,8 +172,10 @@ public partial class MainWindow
                 sealProfiles: false);
             if (_vaultCleanupFailed || _vaultLockInProgress)
             {
-                AbortBeforeWipe("Reset paused",
-                    "Browser sessions could not be closed safely. Close any LaunchFlow browser windows and retry reset from Unlock.");
+                // Do not re-seal while browsers may still be live.
+                await AbortBeforeWipeAsync("Reset paused",
+                    "Browser sessions could not be closed safely. Close any LaunchFlow browser windows and retry reset from Unlock.",
+                    profilesMayBePlaintext: false);
                 return;
             }
             VaultResetService.ResetLocalVault(wipeProfiles: true);
@@ -164,9 +184,10 @@ public partial class MainWindow
         {
             if (VaultDatabase.Current.Exists)
             {
-                AbortBeforeWipe("Reset incomplete",
+                await AbortBeforeWipeAsync("Reset incomplete",
                     "Reset is incomplete. Some browser profiles, Windows Hello material, or vault files may still remain. " +
-                    "Close applications using those files and retry; no complete wipe is claimed.");
+                    "Close applications using those files and retry; no complete wipe is claimed.",
+                    profilesMayBePlaintext: true);
                 return;
             }
             // Database gone but profiles/Hello cleanup failed — disclose before setup.
@@ -176,8 +197,9 @@ public partial class MainWindow
         {
             if (VaultDatabase.Current.Exists)
             {
-                AbortBeforeWipe("Reset failed",
-                    "Reset could not finish. Existing files may remain.");
+                await AbortBeforeWipeAsync("Reset failed",
+                    "Reset could not finish. Existing files may remain.",
+                    profilesMayBePlaintext: true);
                 return;
             }
             partialCleanupAfterWipe = true;
@@ -185,8 +207,9 @@ public partial class MainWindow
 
         if (VaultDatabase.Current.Exists)
         {
-            AbortBeforeWipe("Reset failed",
-                "The vault is still present after reset. Close other apps using those files and retry.");
+            await AbortBeforeWipeAsync("Reset failed",
+                "The vault is still present after reset. Close other apps using those files and retry.",
+                profilesMayBePlaintext: true);
             return;
         }
 
@@ -273,6 +296,13 @@ public partial class MainWindow
                 "Password change paused", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
+        // Verify current password before disabling Hello or touching durable prefs.
+        if (!_master.Verify(current.Secret))
+        {
+            MessageBox.Show(this, "Current master password is incorrect.",
+                "Password change incomplete", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
         var changed = false;
         try
         {
@@ -302,7 +332,30 @@ public partial class MainWindow
                         "Password change paused", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
-                WindowsHelloService.Disable();
+                try { WindowsHelloService.DisableStrict(); }
+                catch (Exception helloError)
+                {
+                    // Preference was already written Hello-off; restore it so disk
+                    // preference cannot claim disabled while the secret file remains.
+                    _configuration.WindowsHelloUnlockEnabled = previousHello;
+                    try
+                    {
+                        if (VaultDatabase.Current.IsUnlocked &&
+                            VaultDatabase.Current.SessionGeneration == authorizedSession)
+                            _store.SaveDurable(_configuration, authorizedSession);
+                    }
+                    catch (Exception restoreError)
+                    {
+                        AppendLog("Windows Hello preference rollback failed: " + restoreError.GetType().Name);
+                    }
+                    AppendLog("Windows Hello material could not be removed before password change: " +
+                        helloError.GetType().Name);
+                    MessageBox.Show(this,
+                        "The master password was not changed because Windows Hello unlock material could not be removed. " +
+                        "Delete hello-unlock.bin under %LOCALAPPDATA%\\LaunchFlow if it remains, then try again.",
+                        "Password change paused", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
             }
             _master.Change(current.Secret, next.Secret);
             changed = true;

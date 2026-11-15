@@ -253,8 +253,8 @@ public sealed partial class VaultDatabase
                 WriteStrictUpgrade(connection, current, candidateKey, salt, vaultId);
                 if (System.Threading.Volatile.Read(ref _upgradeCancelEpoch) != cancelEpoch)
                     throw new OperationCanceledException("Vault authorization changed.");
-                RefreshStrictIdentity(connection);
                 transaction.Commit();
+                RefreshStrictIdentity(connection);
 
                 // Commit is already durable; a late lock revokes access but
                 // cannot turn an upgraded database back into a legacy file.

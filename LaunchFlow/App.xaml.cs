@@ -518,15 +518,32 @@ public partial class App : Application
 
     internal void ContinueVaultResetSetup()
     {
-        if (!InitializeVault())
+        try
         {
-            Shutdown();
-            return;
+            if (!InitializeVault())
+            {
+                Shutdown();
+                return;
+            }
+            var window = new MainWindow();
+            MainWindow = window;
+            ShutdownMode = ShutdownMode.OnMainWindowClose;
+            window.Show();
         }
-        var window = new MainWindow();
-        MainWindow = window;
-        ShutdownMode = ShutdownMode.OnMainWindowClose;
-        window.Show();
+        catch (Exception ex)
+        {
+            // Fire-and-forget reset handoff must not leave OnExplicitShutdown
+            // with no window while holding the single-instance mutex.
+            CrashLog.Write("ContinueVaultResetSetup", ex);
+            try
+            {
+                MessageBox.Show(
+                    "LaunchFlow could not finish setup after vault reset. The app will close; start LaunchFlow again to continue.",
+                    "Setup interrupted", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            catch { /* ignore */ }
+            Shutdown();
+        }
     }
 
     private static bool RequestExistingWindow(string? openPath, bool forInstaller = false)

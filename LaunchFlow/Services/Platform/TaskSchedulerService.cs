@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 
 namespace LaunchFlow.Services;
 
@@ -13,6 +14,13 @@ public static class TaskSchedulerService
     private static readonly object Gate = new();
     private static Process? _activeChild;
 
+    private enum QueryOutcome
+    {
+        Present,
+        Absent,
+        UnknownError
+    }
+
     public static void Apply(bool enabled)
     {
         var exe = Environment.ProcessPath
@@ -21,10 +29,12 @@ public static class TaskSchedulerService
 
         lock (Gate)
         {
-            // Own prior children before another mutation (PLAT-03).
             ReapActiveChild();
-            // Locale-independent absence: query first, skip delete when missing (PLAT96-01).
-            if (IsRegisteredUnlocked())
+            var presence = QueryUnlocked();
+            if (presence == QueryOutcome.UnknownError)
+                throw new InvalidOperationException(
+                    "Could not query the Windows Scheduled Task for LaunchFlow. Autostart was not changed.");
+            if (presence == QueryOutcome.Present)
                 DeleteExistingTaskUnlocked();
 
             if (!enabled) return;
@@ -38,28 +48,97 @@ public static class TaskSchedulerService
 
     public static bool IsRegistered()
     {
-        lock (Gate) return IsRegisteredUnlocked();
+        lock (Gate) return QueryUnlocked() == QueryOutcome.Present;
     }
 
-    private static bool IsRegisteredUnlocked()
+    private static QueryOutcome QueryUnlocked()
     {
         try
         {
-            var result = RunSchTasksUnlocked($"/Query /TN \"{TaskName}\"", throwOnFailure: false);
-            return result.ExitCode == 0;
+            var named = RunSchTasksUnlocked($"/Query /TN \"{TaskName}\"", throwOnFailure: false);
+            if (named.ExitCode == 0) return QueryOutcome.Present;
+
+            // Exit code 1 is ambiguous (missing vs access denied). Confirm via a
+            // full CSV task list and look for the exact task name — no English phrases.
+            var list = RunSchTasksUnlocked("/Query /FO CSV /NH", throwOnFailure: false);
+            if (list.ExitCode != 0)
+                return QueryOutcome.UnknownError;
+            return CsvListContainsTask(list.Output) ? QueryOutcome.Present : QueryOutcome.Absent;
         }
-        catch
+        catch (TimeoutException)
         {
-            return false;
+            return QueryOutcome.UnknownError;
         }
+        catch (InvalidOperationException)
+        {
+            return QueryOutcome.UnknownError;
+        }
+        catch (Exception ex) when (ex is IOException or System.ComponentModel.Win32Exception)
+        {
+            return QueryOutcome.UnknownError;
+        }
+    }
+
+    private static bool CsvListContainsTask(string csv)
+    {
+        if (string.IsNullOrWhiteSpace(csv)) return false;
+        using var reader = new StringReader(csv);
+        string? line;
+        while ((line = reader.ReadLine()) is not null)
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            // schtasks CSV: "TaskName","Next Run Time","Status",...
+            var name = ReadCsvFirstField(line);
+            if (string.Equals(name, TaskName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(name, @"\" + TaskName, StringComparison.OrdinalIgnoreCase) ||
+                name.EndsWith(@"\" + TaskName, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    private static string ReadCsvFirstField(string line)
+    {
+        line = line.Trim();
+        if (line.Length == 0) return string.Empty;
+        if (line[0] != '"')
+        {
+            var comma = line.IndexOf(',');
+            return comma < 0 ? line.Trim() : line[..comma].Trim();
+        }
+        var sb = new StringBuilder();
+        for (var i = 1; i < line.Length; i++)
+        {
+            if (line[i] == '"')
+            {
+                if (i + 1 < line.Length && line[i + 1] == '"')
+                {
+                    sb.Append('"');
+                    i++;
+                    continue;
+                }
+                break;
+            }
+            sb.Append(line[i]);
+        }
+        return sb.ToString().Trim();
     }
 
     private static void DeleteExistingTaskUnlocked()
     {
         var result = RunSchTasksUnlocked($"/Delete /TN \"{TaskName}\" /F", throwOnFailure: false);
-        if (result.ExitCode == 0) return;
-        // Race: removed between query and delete — treat as absent.
-        if (!IsRegisteredUnlocked()) return;
+        if (result.ExitCode == 0)
+        {
+            if (QueryUnlocked() == QueryOutcome.Present)
+                throw new InvalidOperationException(
+                    "Windows Scheduled Task delete reported success but the task is still present.");
+            return;
+        }
+        var after = QueryUnlocked();
+        if (after == QueryOutcome.Absent) return;
+        if (after == QueryOutcome.UnknownError)
+            throw new InvalidOperationException(
+                "Could not verify removal of the Windows Scheduled Task for LaunchFlow.");
         throw Failure(result);
     }
 

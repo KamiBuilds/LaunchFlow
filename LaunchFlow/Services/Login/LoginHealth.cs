@@ -190,12 +190,34 @@ public static class LoginHealth
         // One browser-side snapshot for inputs + authenticator buttons. Separate
         // awaited Locator counts leave a gap where a challenge can appear after a
         // negative input count and still miss the later button probe (F1).
+        // Single browser snapshot: pierce open shadow roots (Playwright locators do)
+        // and use computed visibility, not getClientRects alone (F-097-01 / F-097-02).
         return await page.EvaluateAsync<bool>("""
             () => {
-              const visible = el => !!(el && el.isConnected && el.getClientRects().length);
-              const inputs = Array.from(document.querySelectorAll('input, textarea, [role="textbox"]'))
-                .filter(visible).slice(0, 48);
-              for (const el of inputs) {
+              const isVisible = el => {
+                if (!el || !el.isConnected) return false;
+                const style = window.getComputedStyle(el);
+                // Match Playwright :visible for challenge detection: ignore
+                // opacity:0 OTP overlays (still interactive) but reject
+                // visibility/display-hidden and zero-area controls.
+                if (!style || style.visibility === 'hidden' || style.display === 'none')
+                  return false;
+                const rects = el.getClientRects();
+                return !!(rects && rects.length && rects[0].width + rects[0].height > 0);
+              };
+              const collect = (root, selector, into) => {
+                for (const el of root.querySelectorAll(selector)) {
+                  into.push(el);
+                  if (into.length >= 96) return;
+                }
+                for (const host of root.querySelectorAll('*')) {
+                  if (host.shadowRoot) collect(host.shadowRoot, selector, into);
+                  if (into.length >= 96) return;
+                }
+              };
+              const inputs = [];
+              collect(document, 'input, textarea, [role="textbox"]', inputs);
+              for (const el of inputs.filter(isVisible).slice(0, 48)) {
                 const type = (el.getAttribute('type') || '').toLowerCase();
                 const autocomplete = (el.getAttribute('autocomplete') || '').toLowerCase();
                 const name = (el.getAttribute('name') || '').toLowerCase();
@@ -209,9 +231,9 @@ public static class LoginHealth
                 const labels = ('labels' in el && el.labels)
                   ? Array.from(el.labels).map(x => x.innerText || '').join(' ').toLowerCase()
                   : '';
-                const root = ('form' in el && el.form) || el.closest('form,[role="dialog"],[role="form"]');
-                const rootText = root && visible(root)
-                  ? (root.innerText || '').slice(0, 350).toLowerCase()
+                const formRoot = ('form' in el && el.form) || el.closest('form,[role="dialog"],[role="form"]');
+                const rootText = formRoot && isVisible(formRoot)
+                  ? (formRoot.innerText || '').slice(0, 350).toLowerCase()
                   : '';
                 const combined = metadata + ' ' + labels;
                 const codeIdentity = /(?:otp|one[- ]?time|passcode|security.?code|verif(?:y|ication).?code|auth(?:entication)?.?code|mfa|2fa)/i;
@@ -224,10 +246,9 @@ public static class LoginHealth
                   /otp|one[- ]?time|security.?code|verification.?code|passcode/i.test(combined)))
                   return true;
               }
-              const buttons = Array.from(document.querySelectorAll(
-                'form button, [role="dialog"] button, [role="form"] button'))
-                .filter(visible).slice(0, 48);
-              for (const button of buttons) {
+              const buttons = [];
+              collect(document, 'form button, [role="dialog"] button, [role="form"] button, button', buttons);
+              for (const button of buttons.filter(isVisible).slice(0, 48)) {
                 if (button.disabled) continue;
                 const label = (button.getAttribute('aria-label') || button.innerText || '').trim();
                 if (/^(?:approve sign[- ]?in|use passkey|verify with security key|enter verification code|complete captcha)$/i.test(label))
