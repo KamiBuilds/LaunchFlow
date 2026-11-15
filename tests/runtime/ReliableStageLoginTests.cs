@@ -1,0 +1,492 @@
+using LaunchFlow.Models;
+using LaunchFlow.Services;
+using Microsoft.Playwright;
+
+internal static class ReliableStageLoginTests
+{
+    private static readonly string TestUsername = "test@example.invalid";
+    private static readonly string TestPassword = "synthetic-password-never-send-outside-test";
+
+    public static async Task RunAsync(IPlaywright playwright)
+    {
+        await TwoDocumentAsync(playwright, "log-in", "Log In", "Log In", false, false);
+        await TwoDocumentAsync(playwright, "sign-in", "Sign in", "Sign in", false, false);
+        await TwoDocumentAsync(playwright, "next", "Next", "Next", false, false);
+        await TwoDocumentAsync(playwright, "continue", "Continue", "Continue", false, false);
+        await TwoDocumentAsync(playwright, "thousandeyes-shape", "Log In", "Next", true, false);
+        await TwoDocumentAsync(playwright, "delayed-action", "Log In", "Next", true, true);
+        await ThousandEyesLiveDomAsync(playwright, legacySubmitSelector: false);
+        await ThousandEyesLiveDomAsync(playwright, legacySubmitSelector: true);
+        await OwnedNeutralPasswordStageAsync(playwright, registrationForm: false);
+        await OwnedNeutralPasswordStageAsync(playwright, registrationForm: true);
+        await PasswordOnlyNextAsync(playwright);
+        await SameUrlAppAsync(playwright);
+        await FalseSuccessAsync(playwright);
+        await ReusedAuthenticatedSessionAsync(playwright);
+        await SsoWithoutEvidenceAsync(playwright);
+        await LockedAccountDoesNotCompleteAsync(playwright);
+        Console.WriteLine("PASS stage-aware real Chromium login suite");
+    }
+
+    private static WebsiteWorkflow Workflow(string url) => new()
+    {
+        Name = "Synthetic stage-aware", StartUrl = url, LoginWaitSeconds = 5,
+        LoginSuccessSelector = "", LoginSuccessUrlContains = ""
+    };
+
+    private static CredentialVault Vault() => new()
+    {
+        Credential = new SiteCredential(TestUsername, TestPassword)
+    };
+
+    private static async Task TwoDocumentAsync(
+        IPlaywright playwright, string scenario, string firstLabel, string lastLabel,
+        bool thousandEyesForm, bool delayed)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(4000);
+        var firstCount = 0;
+        var lastCount = 0;
+        var origin = "https://" + scenario + ".stage-test";
+        await context.RouteAsync(origin + "/**", async route =>
+        {
+            var path = new Uri(route.Request.Url).AbsolutePath;
+            if (path == "/identifier-action")
+            {
+                Interlocked.Increment(ref firstCount);
+                await route.FulfillAsync(new() { Status = 204 });
+                return;
+            }
+            if (path == "/password-action")
+            {
+                Interlocked.Increment(ref lastCount);
+                await route.FulfillAsync(new() { Status = 204 });
+                return;
+            }
+            var firstForm = thousandEyesForm
+                ? "<form id='ssoForm' action='/v2/login'>"
+                : "<form id='identifier' action='/login'>";
+            var firstInput = thousandEyesForm
+                ? "<input type='text' id='email'>"
+                : "<input type='email' id='email'>";
+            var first = firstForm + firstInput +
+                "<button id='submit-button' type='button' " + (delayed ? "disabled " : "") +
+                "onclick=\"sessionStorage.setItem('identifier-ok',document.getElementById('email').value==='test@example.invalid'?'1':'0');fetch('/identifier-action',{method:'POST'});location.href='/password'\">" +
+                firstLabel + "</button></form>" +
+                (delayed ? "<script>setTimeout(()=>document.getElementById('submit-button').disabled=false,450)</script>" : "");
+            var button = "<button type='button' id='password-next' " +
+                (delayed ? "disabled " : "") +
+                "onclick=\"sessionStorage.setItem('password-ok',document.getElementById('secret').value==='synthetic-password-never-send-outside-test'?'1':'0');fetch('/password-action',{method:'POST'});location.href='/application'\">" +
+                lastLabel + "</button>";
+            var delay = delayed
+                ? "<script>setTimeout(()=>document.getElementById('password-next').disabled=false,450)</script>"
+                : "";
+            var password = "<form id='login-password' action='/v2/login'>" +
+                "<input id='secret' type='password' autocomplete='current-password'>" +
+                button + "</form>" + delay;
+            var app = "<nav><button aria-label='Account' type='button'>Account menu</button>" +
+                "<a href='/logout'>Sign out</a></nav>" +
+                "<button id='followup' onclick=\"document.body.dataset.followed='yes'\">Next workflow step</button>";
+            await route.FulfillAsync(new()
+            {
+                ContentType = "text/html",
+                Body = path == "/login" ? first : path == "/password" ? password : app
+            });
+        });
+
+        var page = await context.NewPageAsync();
+        await page.GotoAsync(origin + "/login");
+        var workflow = Workflow(origin + "/login");
+        workflow.Steps.Add(new WorkflowStep { Type = "Click", Target = "#followup" });
+        var vault = Vault();
+        await using var engine = new AutomationEngine(vault);
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        var followed = await page.GetAttributeAsync("body", "data-followed") == "yes";
+        var identifierMatched = await page.EvaluateAsync<string>("() => sessionStorage.getItem('identifier-ok')") == "1";
+        var passwordMatched = await page.EvaluateAsync<string>("() => sessionStorage.getItem('password-ok')") == "1";
+        var ok = identifierMatched && passwordMatched &&
+            result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
+            page.Url == origin + "/application" &&
+            firstCount == 1 && lastCount == 1 && vault.ReadCount == 1 && followed;
+        Console.WriteLine($"STAGE_LF {scenario} first={firstCount} last={lastCount} path={new Uri(page.Url).AbsolutePath} finished={result.FinishedCount} attention={result.LoginNeedsAttention.Count} followed={followed}");
+        EngineBehaviorTests.Check(ok,
+            $"LF multi-step {scenario}: both owned buttons fired exactly once and app verification permitted follow-up");
+    }
+
+    // Neutral second-stage form names are common after identifier-first routing.
+    // Without the owned-Next proof, these forms must not become global password
+    // candidates; a registration password remains forbidden even after Next.
+    private static async Task OwnedNeutralPasswordStageAsync(
+        IPlaywright playwright, bool registrationForm)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(4_000);
+        const string origin = "https://neutral-stage.stage-test";
+        var nextClicks = 0;
+        var submits = 0;
+        var wrongInput = 0;
+        await context.RouteAsync(origin + "/**", async route =>
+        {
+            var path = new Uri(route.Request.Url).AbsolutePath;
+            if (path == "/next-hit")
+            {
+                Interlocked.Increment(ref nextClicks);
+                await route.FulfillAsync(new() { Status = 204 });
+                return;
+            }
+            if (path == "/submit-hit")
+            {
+                Interlocked.Increment(ref submits);
+                await route.FulfillAsync(new() { Status = 204 });
+                return;
+            }
+            var body = path switch
+            {
+                "/login" => """
+                    <form id="ssoForm" action="/v2/login">
+                      <input id="email" type="text">
+                      <button type="button" id="first" onclick="sessionStorage.setItem('email-ok',document.getElementById('email').value==='test@example.invalid'?'1':'0');fetch('/next-hit',{method:'POST'});location.href='/step-two'">Log In</button>
+                    </form>
+                    """,
+                "/step-two" when registrationForm => """
+                    <form id="register" action="/create-account">
+                      <input id="secret" type="password" autocomplete="new-password"
+                             oninput="document.body.dataset.wrong='yes'">
+                      <button type="button" onclick="location.href='/oops'">Log In</button>
+                    </form>
+                    """,
+                "/step-two" => """
+                    <form id="checkpoint" action="/continue">
+                      <input id="secret" type="password" autocomplete="off">
+                      <button type="button" id="last" onclick="sessionStorage.setItem('pass-ok',document.getElementById('secret').value==='synthetic-password-never-send-outside-test'?'1':'0');fetch('/submit-hit',{method:'POST'});location.href='/application'">Log In</button>
+                    </form>
+                    """,
+                _ => "<nav><button aria-label='Account'>Account</button><a href='/logout'>Sign out</a></nav>"
+            };
+            await route.FulfillAsync(new() { ContentType = "text/html", Body = body });
+        });
+        var page = await context.NewPageAsync();
+        await page.GotoAsync(origin + "/login");
+        var workflow = Workflow(origin + "/login");
+        await using var engine = new AutomationEngine(Vault());
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        var emailOk = await page.EvaluateAsync<string>(
+            "() => sessionStorage.getItem('email-ok')") == "1";
+        var passwordOk = await page.EvaluateAsync<string>(
+            "() => sessionStorage.getItem('pass-ok')") == "1";
+        if (registrationForm)
+        {
+            if (page.Url == origin + "/step-two")
+                wrongInput = await page.GetAttributeAsync("body", "data-wrong") == "yes" ? 1 : 0;
+            EngineBehaviorTests.Check(emailOk && !passwordOk && nextClicks == 1 &&
+                submits == 0 && wrongInput == 0 && result.FinishedCount == 0 &&
+                result.LoginNeedsAttention.Count == 1,
+                "LF staged discovery rejects registration password after the owned email Next");
+        }
+        else
+        {
+            EngineBehaviorTests.Check(emailOk && passwordOk && nextClicks == 1 &&
+                submits == 1 && result.FinishedCount == 1 &&
+                result.LoginNeedsAttention.Count == 0 && page.Url == origin + "/application",
+                "LF local second stage completes in a neutral named form after an owned email Next");
+        }
+    }
+
+    /// <summary>
+    /// Mirrors the live ThousandEyes DOM observed 2026-11-09:
+    /// email-only #ssoForm with region dropdown + type=button Log In, then
+    /// /v2/login/password with empty-autocomplete #password and type=button#submit-button.
+    /// </summary>
+    private static async Task ThousandEyesLiveDomAsync(IPlaywright playwright, bool legacySubmitSelector)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(5000);
+        var origin = "https://app.thousandeyes" + (legacySubmitSelector ? "-legacy" : "") + ".stage-test";
+        var firstHits = 0;
+        var lastHits = 0;
+        await context.RouteAsync(origin + "/**", async route =>
+        {
+            var path = new Uri(route.Request.Url).AbsolutePath;
+            if (path == "/identifier-hit")
+            {
+                Interlocked.Increment(ref firstHits);
+                await route.FulfillAsync(new() { Status = 204 });
+                return;
+            }
+            if (path == "/password-hit")
+            {
+                Interlocked.Increment(ref lastHits);
+                await route.FulfillAsync(new() { Status = 204 });
+                return;
+            }
+            string body;
+            if (path is "/login" or "/v2/login")
+            {
+                // Vue 3-style: Log In only advances when the model was updated via InputEvent
+                // (plain .value writes / Event('input') alone leave the SPA stuck — live TE behavior).
+                body = """
+                    <form id="ssoForm" class="ui-form" action="/v2/login" method="POST">
+                      <div class="row email-row">
+                        <input id="email" name="email" type="text" placeholder="Email">
+                      </div>
+                      <div class="region-row">
+                        <div class="label-row">Region (Optional)</div>
+                        <button type="button" id="dropdown-trigger3" class="te-cc-dropdown-button">Default (Recommended)</button>
+                        <input type="hidden" name="region" value="-1">
+                      </div>
+                      <button id="submit-button" type="button" class="btn submit-button"
+                        onclick="const v=window.__teEmail||''; if(!v.includes('@')){document.body.dataset.err='invalid';return;} sessionStorage.setItem('email-ok',v==='test@example.invalid'?'1':'0'); fetch('/identifier-hit',{method:'POST'}); location.href='/v2/login/password?email='+encodeURIComponent(v);">Log In</button>
+                    </form>
+                    <script>
+                      window.__teEmail = '';
+                      document.getElementById('email').addEventListener('input', (e) => {
+                        if (e instanceof InputEvent) window.__teEmail = e.target.value;
+                      });
+                    </script>
+                    """;
+            }
+            else if (path.StartsWith("/v2/login/password", StringComparison.Ordinal))
+            {
+                body = """
+                    <form id="login" class="ui-form" action="/v2/login/password" method="POST">
+                      <input name="locale" type="hidden" value="en">
+                      <div class="row email-row">
+                        <input id="email" name="email" type="text" placeholder="Email" disabled value="test@example.invalid">
+                      </div>
+                      <div class="row password-row">
+                        <input id="password" name="password" type="password" placeholder="Password" autocomplete="">
+                      </div>
+                      <div class="region-row">
+                        <button type="button" id="dropdown-trigger3" class="te-cc-dropdown-button" disabled>US1</button>
+                      </div>
+                      <button id="submit-button" type="button" class="btn btn-inverse submit submit-button"
+                        onclick="sessionStorage.setItem('pass-ok',(window.__tePass||'')==='synthetic-password-never-send-outside-test'?'1':'0'); fetch('/password-hit',{method:'POST'}); location.href='/application';">Log In</button>
+                    </form>
+                    <script>
+                      window.__tePass = '';
+                      document.getElementById('password').addEventListener('input', (e) => {
+                        if (e instanceof InputEvent) window.__tePass = e.target.value;
+                      });
+                    </script>
+                    """;
+            }
+            else
+            {
+                body = "<nav><button aria-label='Account'>Account</button><a href='/logout'>Sign out</a></nav>" +
+                       "<button id='followup' onclick=\"document.body.dataset.followed='yes'\">Next</button>";
+            }
+            await route.FulfillAsync(new() { ContentType = "text/html", Body = body });
+        });
+
+        var page = await context.NewPageAsync();
+        await page.GotoAsync(origin + "/login");
+        var workflow = Workflow(origin + "/login");
+        if (legacySubmitSelector)
+            workflow.SubmitSelector = LoginFieldDefaults.LegacySubmitSelector;
+        workflow.Steps.Add(new WorkflowStep { Type = "Click", Target = "#followup" });
+        var vault = Vault();
+        await using var engine = new AutomationEngine(vault);
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        var emailOk = await page.EvaluateAsync<string>("() => sessionStorage.getItem('email-ok')") == "1";
+        var passOk = await page.EvaluateAsync<string>("() => sessionStorage.getItem('pass-ok')") == "1";
+        var followed = await page.GetAttributeAsync("body", "data-followed") == "yes";
+        EngineBehaviorTests.Check(emailOk && passOk && firstHits == 1 && lastHits == 1 &&
+            result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 && followed &&
+            page.Url == origin + "/application" && vault.ReadCount == 1,
+            "ThousandEyes live DOM" + (legacySubmitSelector ? " (legacy submit selector)" : "") +
+            ": email→password type=button stages finish");
+    }
+
+    private static async Task PasswordOnlyNextAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(4000);
+        var count = 0;
+        await context.RouteAsync("https://password-next.stage-test/**", async route =>
+        {
+            var path = new Uri(route.Request.Url).AbsolutePath;
+            if (path == "/finish")
+            {
+                Interlocked.Increment(ref count);
+                await route.FulfillAsync(new() { Status = 204 });
+                return;
+            }
+            var body = path == "/password" ?
+                "<form id='local-login'><input id='secret' type='password' autocomplete='current-password'>" +
+                "<button type='button' onclick=\"fetch('/finish',{method:'POST'});location.href='/application'\">Next</button></form>" :
+                "<nav><button aria-label='Account'>Account</button><a href='/logout'>Sign out</a></nav>";
+            await route.FulfillAsync(new() { ContentType = "text/html", Body = body });
+        });
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://password-next.stage-test/password");
+        var workflow = Workflow("https://password-next.stage-test/login");
+        await using var engine = new AutomationEngine(Vault());
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        EngineBehaviorTests.Check(count == 1 && result.FinishedCount == 1 && page.Url.EndsWith("/application"),
+            "LF-08 resumed password stage accepts owned Next type=button");
+    }
+
+    private static async Task SameUrlAppAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(4000);
+        await context.RouteAsync("https://spa-stage.stage-test/**", route => route.FulfillAsync(new()
+        {
+            ContentType = "text/html",
+            Body = """
+                <div id="root">
+                  <form id="identifier" action="/login">
+                    <input id="email" type="email">
+                    <button id="first" type="button" onclick="identifierStage()">Sign in</button>
+                  </form>
+                </div>
+                <script>
+                let firstCount=0, lastCount=0, identifierMatched=false, passwordMatched=false;
+                function identifierStage() {
+                  firstCount++;
+                  identifierMatched = document.getElementById('email').value === 'test@example.invalid';
+                  document.getElementById('root').innerHTML =
+                    '<form id="auth-password"><input id="secret" type="password" autocomplete="current-password">' +
+                    '<button type="button" id="last" onclick="passwordStage()">Next</button></form>';
+                }
+                function passwordStage() {
+                  lastCount++;
+                  passwordMatched = document.getElementById('secret').value === 'synthetic-password-never-send-outside-test';
+                  document.getElementById('root').innerHTML =
+                    '<nav><button aria-label="Account">Account menu</button><a href="/logout">Sign out</a></nav>' +
+                    '<button id="followup" onclick="document.body.dataset.followed=\'yes\'">Follow up</button>';
+                }
+                </script>
+                """
+        }));
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://spa-stage.stage-test/login");
+        var workflow = Workflow(page.Url);
+        workflow.Steps.Add(new WorkflowStep { Type = "Click", Target = "#followup" });
+        await using var engine = new AutomationEngine(Vault());
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        var counts = await page.EvaluateAsync<int[]>("() => [firstCount,lastCount]");
+        var valuesMatched = await page.EvaluateAsync<bool>("() => identifierMatched && passwordMatched");
+        var followed = await page.GetAttributeAsync("body", "data-followed") == "yes";
+        EngineBehaviorTests.Check(counts.SequenceEqual(new[] { 1, 1 }) && valuesMatched && followed &&
+            result.FinishedCount == 1 && result.LoginNeedsAttention.Count == 0 &&
+            page.Url == "https://spa-stage.stage-test/login",
+            "LF-10/18 same-URL SPA verifies authenticated application and continues once");
+    }
+
+    private static async Task FalseSuccessAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(4000);
+        await context.RouteAsync("https://no-proof.stage-test/**", route => route.FulfillAsync(new()
+        {
+            ContentType = "text/html",
+            Body = route.Request.Url.EndsWith("/login") ?
+                "<form id='login'><input id='email' type='email'><input id='secret' type='password'>" +
+                "<button type='submit' onclick=\"event.preventDefault();location.href='/welcome'\">Sign in</button></form>"
+                : "<h1>Welcome</h1><p>Please finish signing in.</p><a href='/account'>Account</a>" +
+                  "<button id='followup' onclick=\"document.body.dataset.acted='yes'\">Do not click</button>"
+        }));
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://no-proof.stage-test/login");
+        var workflow = Workflow(page.Url);
+        workflow.Steps.Add(new WorkflowStep { Type = "Click", Target = "#followup" });
+        await using var engine = new AutomationEngine(Vault());
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        EngineBehaviorTests.Check(result.FinishedCount == 0 && result.LoginNeedsAttention.Count == 1 &&
+            await page.GetAttributeAsync("body", "data-acted") is null,
+            "LF-30 changed URL, welcome text and generic account link do not verify success");
+    }
+    private static async Task ReusedAuthenticatedSessionAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        await context.RouteAsync("https://already.stage-test/**", route => route.FulfillAsync(new()
+        {
+            ContentType = "text/html",
+            Body = "<nav><button aria-label='Account'>Settings</button><a href='/logout'>Sign out</a></nav>"
+        }));
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://already.stage-test/login");
+        var vault = Vault();
+        var workflow = Workflow(page.Url);
+        await using var engine = new AutomationEngine(vault);
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        EngineBehaviorTests.Check(result.FinishedCount == 1 && vault.ReadCount == 0,
+            "LF-17 existing authenticated application does not re-read or re-submit stored credentials");
+    }
+
+    private static async Task SsoWithoutEvidenceAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        await context.RouteAsync("https://sso-unverified.stage-test/**", route => route.FulfillAsync(new()
+        {
+            ContentType = "text/html",
+            Body = "<h1>Welcome</h1><button id='followup' onclick=\"document.body.dataset.followed='yes'\">Continue</button>"
+        }));
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://sso-unverified.stage-test/");
+        var workflow = Workflow(page.Url);
+        workflow.LoginMode = "SSO";
+        workflow.Steps.Add(new WorkflowStep { Type = "Click", Target = "#followup" });
+        var vault = Vault();
+        await using var engine = new AutomationEngine(vault);
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        EngineBehaviorTests.Check(result.FinishedCount == 0 && result.LoginNeedsAttention.Count == 1 &&
+            vault.ReadCount == 0 && await page.GetAttributeAsync("body", "data-followed") is null,
+            "LF-31 browser-led SSO without target application proof never authorizes downstream actions");
+    }
+
+    private static async Task LockedAccountDoesNotCompleteAsync(IPlaywright playwright)
+    {
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        context.SetDefaultTimeout(4000);
+        var submissions = 0;
+        await context.RouteAsync("https://locked.stage-test/**", async route =>
+        {
+            var path = new Uri(route.Request.Url).AbsolutePath;
+            if (path == "/submitted")
+            {
+                Interlocked.Increment(ref submissions);
+                await route.FulfillAsync(new() { Status = 204 });
+                return;
+            }
+            var html = path == "/login" ?
+                "<form id='login'><input id='email' type='email'><input id='secret' type='password' " +
+                "autocomplete='current-password'><button type='button' " +
+                "onclick=\"fetch('/submitted',{method:'POST'});location.href='/locked'\">Sign in</button></form>"
+                : "<h1>Account locked</h1><nav><button aria-label='Account'>Account</button>" +
+                  "<a href='/logout'>Sign out</a></nav>" +
+                  "<button id='followup' onclick=\"document.body.dataset.followed='yes'\">Followup</button>";
+            await route.FulfillAsync(new() { ContentType = "text/html", Body = html });
+        });
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://locked.stage-test/login");
+        var workflow = Workflow(page.Url);
+        workflow.Steps.Add(new WorkflowStep { Type = "Click", Target = "#followup" });
+        await using var engine = new AutomationEngine(Vault());
+        EngineBehaviorTests.Track(engine, workflow, context, page);
+        var result = await engine.RunAsync(new[] { workflow }, CancellationToken.None);
+        EngineBehaviorTests.Check(submissions == 1 && result.FinishedCount == 0 &&
+            result.LoginNeedsAttention.Count == 1 &&
+            await page.GetAttributeAsync("body", "data-followed") is null,
+            "LF-27 account lockout never counts as authenticated, even with counterfeit account controls");
+    }
+
+}
