@@ -102,6 +102,10 @@ jobs:
         run: dotnet run --project tests/runtime/RuntimeTests.csproj -c Release --no-build
       - name: Exercise privacy-safe diagnostic export
         run: dotnet run --project tests/diagnostics/DiagnosticTests.csproj -c Release
+      - name: Exercise Hello consent ordering and reset admission (synthetic)
+        run: dotnet run --project tests/hello-080/HelloOwnershipTests.csproj -c Release -p:TreatWarningsAsErrors=true
+      - name: Exercise scheduler redirected-pipe draining (synthetic)
+        run: dotnet run --project tests/scheduler-080/SchedulerPipesTests.csproj -c Release -p:TreatWarningsAsErrors=true
       - name: Exercise profile recovery with simulated DPAPI
         run: dotnet run --project tests/profiles/ProfileTests.csproj -c Release -p:TreatWarningsAsErrors=true
       - name: Preserve encrypted profiles across partial filesystem cleanup failures
