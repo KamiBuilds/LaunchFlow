@@ -146,6 +146,29 @@ public sealed partial class AutomationEngine
         if (string.IsNullOrWhiteSpace(focusedUrl))
             throw new InvalidOperationException("Keyboard focus is in a frame LaunchFlow cannot authorize.");
         RequireAutomationUrl(focusedUrl);
+        // page.evaluate cannot enter a closed shadow root or reliably identify
+        // its focused iframe. Playwright's frame tree is browser-owned and
+        // includes those opaque descendants. A frame whose document actually
+        // owns focus must independently pass the URL policy before keyboard
+        // dispatch, even if focus was retargeted to a benign top-level host.
+        foreach (var frame in page.Frames)
+        {
+            if (frame == page.MainFrame) continue;
+            ct.ThrowIfCancellationRequested();
+            bool frameOwnsFocus;
+            try
+            {
+                frameOwnsFocus = await frame.EvaluateAsync<bool>(
+                    "() => document.hasFocus()").ConfigureAwait(false);
+            }
+            catch (PlaywrightException)
+            {
+                // An unreadable frame might be the focused owner. Fail closed.
+                throw new InvalidOperationException(
+                    "Keyboard focus is in a frame LaunchFlow cannot authorize.");
+            }
+            if (frameOwnsFocus) RequireAutomationUrl(frame.Url);
+        }
         ct.ThrowIfCancellationRequested();
         await page.Keyboard.PressAsync(step.Target).ConfigureAwait(false);
     }

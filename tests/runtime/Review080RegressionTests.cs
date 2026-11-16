@@ -72,6 +72,8 @@ internal static class Review080RegressionTests
         await deniedFrame.Locator("#denied").FocusAsync();
         Check(await page.EvaluateAsync<bool>("() => document.activeElement?.id === 'opaque-shadow-host'"),
             "closed-shadow iframe focus is retargeted to the opaque top-document host");
+        Check(await deniedFrame.EvaluateAsync<bool>("() => document.hasFocus()"),
+            "actual browser frame identifies the focused closed-shadow descendant");
 
         using (EnterprisePolicy.UseProviderForTesting(() =>
             new Dictionary<string, object?> { ["AllowedHosts"] = "allowed.test" }))
@@ -89,6 +91,12 @@ internal static class Review080RegressionTests
             catch (InvalidOperationException) { denied = true; }
             Check(denied && await deniedFrame.GetAttributeAsync("body", "data-pressed") is null,
                 "closed-shadow denied iframe cannot receive a keyboard press");
+            await page.Locator("#allowed").FocusAsync();
+            await (Task)method.Invoke(null,
+                new object[] { page, new WorkflowStep { Type = "Press", Target = "Enter" },
+                    CancellationToken.None })!;
+            Check(await deniedFrame.GetAttributeAsync("body", "data-pressed") is null,
+                "inactive denied iframe does not block an allowed top-document keyboard action");
             await page.SetContentAsync(
                 "<input id='allowed' onkeydown=\"if(event.key==='Enter') document.body.dataset.pressed='yes'\">");
             await page.Locator("#allowed").FocusAsync();
