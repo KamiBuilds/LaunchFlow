@@ -1,3 +1,15 @@
+# v0.8.1 — P2 source-pinned repair for v0.8.0 review
+
+- AUTO080-01: complete same-snapshot challenge enumeration, including visible passwords after large/hidden input populations and open shadow roots.
+- AUTO080-02: refuse keyboard press when focus is retargeted through an opaque (closed) shadow root.
+- AUTO080-03: recorder synchronization no longer consumes the navigation since the last represented taught action.
+- PLAT080-01: drain schtasks stdout and stderr concurrently, avoiding a redirected-pipe deadlock for large CSV output.
+- HELLO080-01/02: admit Hello enable ownership before any asynchronous consent; newer enables and strict disable/reset revoke older operations before publication.
+- STARTUP080-01: first-run and post-reset setup reconcile both scheduled task and Run-key registrations; disclose partial OS failures after durable vault setup.
+- SCHED080-02: keep ownership of unconfirmed-live task scheduler children and refuse conflicting retries.
+- TEST080-01: link the matching SQLite dependency in the profile recovery test project.
+- No vault format, installer AppId, data directory or credential destination policy changes. Native Windows and real-account acceptance remain required.
+
 # v0.8.0 — Minor milestone after ownership/reset/Hello hardening
 
 - Version milestone from the 0.7.x rescue line after F3/reset/confirmation/Hello/scheduler finish-path repairs through 0.7.100.

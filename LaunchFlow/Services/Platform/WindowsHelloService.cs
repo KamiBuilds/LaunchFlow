@@ -16,6 +16,7 @@ public static class WindowsHelloService
     private static readonly object Gate = new();
     private static long _publicationGeneration;
     private static long _disableEpoch;
+    private static long _latestEnableAdmission;
 
     private static string SecretPath =>
         Path.Combine(VaultDatabase.Current.DataDirectory, "hello-unlock.bin");
@@ -81,15 +82,32 @@ public static class WindowsHelloService
         catch { /* ignore */ }
     }
 
+    /// <summary>
+    /// Admit the enable operation BEFORE any support check, password prompt,
+    /// consent, or staging await. Newer enables and strict disables/reset
+    /// invalidate this owner; late consent cannot overwrite a newer secret.
+    /// </summary>
+    public static long BeginEnable()
+    {
+        lock (Gate) { checked { return ++_latestEnableAdmission; } }
+    }
+
+    /// <summary>Compatibility entry point: admit synchronously before first await.</summary>
+    public static Task<long?> EnableAsync(string masterPassword) =>
+        EnableAsync(masterPassword, BeginEnable());
+
     /// <returns>Publication generation that owns the written file, or null on failure/supersession.</returns>
-    public static async Task<long?> EnableAsync(string masterPassword)
+    public static async Task<long?> EnableAsync(string masterPassword, long enableAdmission)
     {
         if (string.IsNullOrEmpty(masterPassword)) return null;
+        long disableEpoch;
+        lock (Gate)
+        {
+            if (enableAdmission != _latestEnableAdmission) return null;
+            disableEpoch = _disableEpoch;
+        }
         if (!await VerifyUserAsync("Enable Windows Hello unlock for LaunchFlow").ConfigureAwait(true))
             return null;
-
-        long disableEpoch;
-        lock (Gate) disableEpoch = _disableEpoch;
 
         var protectedBytes = ProtectedData.Protect(
             Encoding.UTF8.GetBytes(masterPassword),
@@ -108,14 +126,17 @@ public static class WindowsHelloService
             long ownedPublication;
             lock (Gate)
             {
-                // Reset/disable that finished while we staged must win (F-097-05).
-                if (_disableEpoch != disableEpoch)
+                // The admission owner predates the consent await. Either a
+                // newer enable or ANY strict disable/reset revokes old consent.
+                if (_disableEpoch != disableEpoch ||
+                    enableAdmission != _latestEnableAdmission)
                     return null;
-                ownedPublication = ++_publicationGeneration;
                 File.Move(staging, SecretPath, overwrite: true);
                 staging = string.Empty;
+                ownedPublication = ++_publicationGeneration;
+                // No post-publication metadata write can race a strict wipe.
+                MarkPasswordVerified();
             }
-            MarkPasswordVerified();
             return ownedPublication;
         }
         catch
@@ -186,6 +207,7 @@ public static class WindowsHelloService
         lock (Gate)
         {
             checked { _disableEpoch++; }
+            checked { _latestEnableAdmission++; }
             checked { _publicationGeneration++; }
             if (File.Exists(SecretPath)) File.Delete(SecretPath);
             if (File.Exists(MetaPath)) File.Delete(MetaPath);

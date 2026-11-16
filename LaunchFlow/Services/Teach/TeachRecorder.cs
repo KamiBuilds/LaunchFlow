@@ -70,8 +70,10 @@ public sealed class TeachRecorder : IDisposable
     public Task SynchronizeAsync()
     {
         CheckPolicy();
-        lock (_bridge.Gate)
-            _lastCapturedPageUrl = _page.Url;
+        // Synchronization installs/refreshes the browser bridge only. Do not
+        // advance _lastCapturedPageUrl: resume/readiness may follow navigation
+        // while paused, and the first taught action must record its Navigate.
+        // The represented URL advances only at accepted action dispatch.
         return _bridge.SynchronizeAsync();
     }
 

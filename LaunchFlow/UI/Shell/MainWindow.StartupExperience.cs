@@ -173,6 +173,9 @@ public partial class MainWindow
         var ownedConfig = _configuration;
         var ownedVaultSession = VaultDatabase.Current.SessionGeneration;
         var enableEpoch = _helloUnlock.BeginEnable();
+        // Service admission must happen before any async support/consent wait,
+        // not only at the final file-publication boundary.
+        var helloAdmission = WindowsHelloService.BeginEnable();
         bool StillOwnsEnable() =>
             _helloUnlock.StillOwnsEnable(enableEpoch, ownedConfig, _configuration, ownedVaultSession,
                 VaultDatabase.Current.SessionGeneration, VaultDatabase.Current.IsUnlocked,
@@ -198,7 +201,7 @@ public partial class MainWindow
             return;
         }
         if (!StillOwnsEnable()) return;
-        var published = await WindowsHelloService.EnableAsync(prompt.Secret);
+        var published = await WindowsHelloService.EnableAsync(prompt.Secret, helloAdmission);
         if (published is long ownedPublication)
         {
             if (!StillOwnsEnable())

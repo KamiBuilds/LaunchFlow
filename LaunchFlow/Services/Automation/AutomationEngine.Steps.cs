@@ -116,6 +116,13 @@ public sealed partial class AutomationEngine
                 let active = root.activeElement;
                 while (active && active.shadowRoot && active.shadowRoot.activeElement)
                   active = active.shadowRoot.activeElement;
+                // A closed shadow root hides its active element from JS. The
+                // host is :focus-within but not :focus; treating it as a
+                // top-document leaf would authorize a denied nested frame.
+                // Refuse opaque focus rather than guessing its frame origin.
+                if (active && active.matches(':focus-within') && !active.matches(':focus') &&
+                    active.tagName !== 'IFRAME' && active.tagName !== 'FRAME')
+                  return null;
                 if (!active) {
                   try { return root.defaultView ? root.defaultView.location.href : null; }
                   catch { return null; }

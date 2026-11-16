@@ -205,19 +205,19 @@ public static class LoginHealth
                 const rects = el.getClientRects();
                 return !!(rects && rects.length && rects[0].width + rects[0].height > 0);
               };
+              // A challenge is safety-critical evidence, not a best-effort
+              // sample. Hidden fields and busy forms must not consume a fixed
+              // budget before a visible password or OTP in an open shadow root.
               const collect = (root, selector, into) => {
-                for (const el of root.querySelectorAll(selector)) {
-                  into.push(el);
-                  if (into.length >= 96) return;
-                }
+                for (const el of root.querySelectorAll(selector)) into.push(el);
                 for (const host of root.querySelectorAll('*')) {
                   if (host.shadowRoot) collect(host.shadowRoot, selector, into);
-                  if (into.length >= 96) return;
                 }
               };
               const inputs = [];
               collect(document, 'input, textarea, [role="textbox"]', inputs);
-              for (const el of inputs.filter(isVisible).slice(0, 48)) {
+              for (const el of inputs) {
+                if (!isVisible(el)) continue;
                 const type = (el.getAttribute('type') || '').toLowerCase();
                 const autocomplete = (el.getAttribute('autocomplete') || '').toLowerCase();
                 const name = (el.getAttribute('name') || '').toLowerCase();
@@ -248,8 +248,8 @@ public static class LoginHealth
               }
               const buttons = [];
               collect(document, 'form button, [role="dialog"] button, [role="form"] button, button', buttons);
-              for (const button of buttons.filter(isVisible).slice(0, 48)) {
-                if (button.disabled) continue;
+              for (const button of buttons) {
+                if (!isVisible(button) || button.disabled) continue;
                 const label = (button.getAttribute('aria-label') || button.innerText || '').trim();
                 if (/^(?:approve sign[- ]?in|use passkey|verify with security key|enter verification code|complete captcha)$/i.test(label))
                   return true;

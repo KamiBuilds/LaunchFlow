@@ -493,10 +493,21 @@ public partial class App : Application
                 SealBrowserProfilesOnLock = true
             };
             db.Initialize(setup.ChosenPassword, settings);
-            try { StartupService.Apply(settings.StartWithWindows); }
+            try
+            {
+                // First-run setup (also after vault reset) must reconcile BOTH
+                // startup mechanisms. Persisted preference was committed above;
+                // an OS registration error must be disclosed, not hidden.
+                new StartupRegistrationService(TaskSchedulerService.Apply, StartupService.Apply)
+                    .Apply(settings.StartWithWindows, settings.PreferTaskSchedulerAutostart);
+            }
             catch (Exception ex)
             {
-                Debug.WriteLine("Could not register Windows startup: " + RunIssueNotice.SafeExceptionReason(ex));
+                CrashLog.Write("StartupRegistrationSetup", ex);
+                MessageBox.Show(
+                    "Your vault settings were saved, but Windows startup registration could not be fully updated. " +
+                    "Check Settings → Start with Windows after opening LaunchFlow.",
+                    "Windows startup needs attention", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
             return true;
         }

@@ -161,21 +161,32 @@ public static class TaskSchedulerService
         _activeChild = p;
         try
         {
+            // Drain BOTH redirected pipes while the child is running. Waiting
+            // for exit first can deadlock once schtasks prints a large CSV list.
+            var stdout = p.StandardOutput.ReadToEndAsync();
+            var stderr = p.StandardError.ReadToEndAsync();
             if (!p.WaitForExit(15_000))
             {
-                try { p.Kill(entireProcessTree: true); } catch { /* best effort */ }
-                try { p.WaitForExit(5_000); } catch { /* ignore */ }
+                try { p.Kill(entireProcessTree: true); } catch { /* retry on next call */ }
+                try { p.WaitForExit(5_000); } catch { /* inspect below */ }
                 throw new TimeoutException("Windows Task Scheduler did not finish the LaunchFlow request.");
             }
-            var result = new SchTasksResult(p.ExitCode, p.StandardOutput.ReadToEnd(), p.StandardError.ReadToEnd());
+            var result = new SchTasksResult(p.ExitCode,
+                stdout.GetAwaiter().GetResult(), stderr.GetAwaiter().GetResult());
             if (throwOnFailure && result.ExitCode != 0) throw Failure(result);
             return result;
         }
         finally
         {
-            if (ReferenceEquals(_activeChild, p))
-                _activeChild = null;
-            p.Dispose();
+            // A failed Kill with an incomplete Wait means a live task mutation
+            // may still be pending. Keep ownership and block conflicting retry.
+            // Never dispose/forget an unconfirmed-live Process.
+            if (p.HasExited)
+            {
+                if (ReferenceEquals(_activeChild, p))
+                    _activeChild = null;
+                p.Dispose();
+            }
         }
     }
 
@@ -183,20 +194,22 @@ public static class TaskSchedulerService
     {
         var prior = _activeChild;
         if (prior is null) return;
-        try
+        if (!prior.HasExited)
         {
-            if (!prior.HasExited)
+            try { prior.Kill(entireProcessTree: true); }
+            catch (Exception ex)
             {
-                try { prior.Kill(entireProcessTree: true); } catch { /* best effort */ }
-                try { prior.WaitForExit(5_000); } catch { /* ignore */ }
+                if (!prior.HasExited)
+                    throw new InvalidOperationException(
+                        "A prior Scheduled Task request may still be running. Refusing another registration change.", ex);
             }
+            if (!prior.WaitForExit(5_000) || !prior.HasExited)
+                throw new InvalidOperationException(
+                    "A prior Scheduled Task request has not terminated. Refusing another registration change.");
         }
-        finally
-        {
-            try { prior.Dispose(); } catch { /* ignore */ }
-            if (ReferenceEquals(_activeChild, prior))
-                _activeChild = null;
-        }
+        prior.Dispose();
+        if (ReferenceEquals(_activeChild, prior))
+            _activeChild = null;
     }
 
     private static InvalidOperationException Failure(SchTasksResult result) =>

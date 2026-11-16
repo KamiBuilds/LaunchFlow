@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.31" />
     <Compile Include="../../LaunchFlow/Services/Vault/ProfileVaultService.cs" Link="ProfileVaultService.cs" />
     <Compile Include="../../LaunchFlow/Services/Vault/VaultResetService.cs" Link="VaultResetService.cs" />
   </ItemGroup>
