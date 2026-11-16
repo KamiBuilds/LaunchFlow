@@ -619,6 +619,44 @@ foreach (var step in replayWindow.RecordedSteps)
 Assert(await page.EvaluateAsync<int>("window.rightClicks || 0") == 1, "saved click replays through the real engine against the intended element");
 Assert(await page.EvaluateAsync<int>("window.wrong || 0") == 0, "engine replay never clicks the neighboring fixture control");
 
+
+await context.RouteAsync("https://recorder.test/pause080/**", route =>
+{
+    var destination = route.Request.Url.EndsWith("/next", StringComparison.Ordinal) ? "next" : "start";
+    return route.FulfillAsync(new()
+    {
+        ContentType = "text/html",
+        Body = "<button id='target' onclick=\"document.body.dataset.clicked='" + destination +
+            "'\">Continue</button>"
+    });
+});
+var resumedPage = await context.NewPageAsync();
+await resumedPage.GotoAsync("https://recorder.test/pause080/start");
+using (var pausedNavigation = new TeachRecorder(resumedPage))
+{
+    await pausedNavigation.SynchronizeAsync();
+    pausedNavigation.Pause();
+    await resumedPage.GotoAsync("https://recorder.test/pause080/next");
+    pausedNavigation.Resume();
+    await pausedNavigation.SynchronizeAsync(); // native Resume/readiness path
+    await resumedPage.ClickAsync("#target");
+    await Flush(resumedPage);
+    var actions = pausedNavigation.DrainActions();
+    Assert(actions.Count == 2 && actions[0].Type == "Navigate" &&
+           actions[0].Target == "https://recorder.test/pause080/next" &&
+           actions[1].Type == "Click",
+        "pause, navigate, resume records Navigate before Click instead of losing represented history");
+    await resumedPage.GotoAsync("https://recorder.test/pause080/start");
+    foreach (var action in actions)
+        await (Task)execute.Invoke(null, new object[] {
+            resumedPage, new LaunchFlow.Models.WorkflowStep { Type = action.Type, Target = action.Target },
+            CancellationToken.None })!;
+    Assert(await resumedPage.GetAttributeAsync("body", "data-clicked") == "next" &&
+           resumedPage.Url.EndsWith("/next", StringComparison.Ordinal),
+        "pause/navigation/resume replay reaches the correct destination before clicking");
+}
+await resumedPage.CloseAsync();
+
 var weak = CreateDisposedSession(page);
 GC.Collect();
 GC.WaitForPendingFinalizers();

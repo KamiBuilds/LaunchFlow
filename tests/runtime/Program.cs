@@ -5,6 +5,12 @@ using LaunchFlow.Services;
 using Microsoft.Playwright;
 
 using var playwright = await Playwright.CreateAsync();
+if (args.Contains("--review-080-only")) { await Review080RegressionTests.RunAsync(playwright); return; }
+if (!args.Contains("--auto-login-only") && !args.Contains("--staged-login-only") &&
+    !args.Contains("--monitor-only") && !args.Contains("--document-bound-only") &&
+    !args.Contains("--policy-only") && !args.Contains("--dispatch-only") &&
+    !args.Contains("--profile-only"))
+    await Review080RegressionTests.RunAsync(playwright);
 if (args.Contains("--independent-stage-probes-only")) { await IndependentStageProbes.RunAsync(playwright); return; }
 if (args.Contains("--review-probes-only")) { await ReviewLoginProbes.RunAsync(playwright); return; }
 if (args.Contains("--auto-login-only")) { await AutomaticEntryTests.RunAsync(playwright); return; }
