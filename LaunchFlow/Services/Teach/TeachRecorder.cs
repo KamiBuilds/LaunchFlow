@@ -24,6 +24,7 @@ public sealed class TeachRecorder : IDisposable
     private bool _unsupportedTargetObserved;
     private bool _policyDenied;
     private string _lastCapturedPageUrl;
+    private bool _initialSynchronizationComplete;
 
     public TeachRecorder(IPage page)
     {
@@ -70,10 +71,18 @@ public sealed class TeachRecorder : IDisposable
     public Task SynchronizeAsync()
     {
         CheckPolicy();
-        // Synchronization installs/refreshes the browser bridge only. Do not
-        // advance _lastCapturedPageUrl: resume/readiness may follow navigation
-        // while paused, and the first taught action must record its Navigate.
-        // The represented URL advances only at accepted action dispatch.
+        lock (_bridge.Gate)
+        {
+            // First readiness sync establishes the recording baseline: a user
+            // may have navigated between constructing the recorder and starting
+            // capture. Every later sync (notably Pause/Resume) must preserve
+            // represented navigation history for the next taught action.
+            if (!_initialSynchronizationComplete && !_disposed && !_policyDenied)
+            {
+                _lastCapturedPageUrl = _page.Url;
+                _initialSynchronizationComplete = true;
+            }
+        }
         return _bridge.SynchronizeAsync();
     }
 
