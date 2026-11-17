@@ -492,7 +492,15 @@ public partial class App : Application
                 VaultLockMinutes = 10,
                 SealBrowserProfilesOnLock = true
             };
+            // Treat the new user's password as authoritative: prove that the
+            // persisted vault can be opened from a *cold locked state* with
+            // exactly the password entered in this wizard. Do not silently
+            // replace or reset the on-disk vault if verification fails.
             db.Initialize(setup.ChosenPassword, settings);
+            db.Lock();
+            if (!db.Unlock(setup.ChosenPassword))
+                throw new InvalidOperationException(
+                    "New vault could not be reopened with the chosen password. The encrypted file was preserved.");
             try
             {
                 // First-run setup (also after vault reset) must reconcile BOTH
