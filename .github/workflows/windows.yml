@@ -170,6 +170,22 @@ jobs:
         run: |
           dotnet run --project ./tests/storage-integrity/StorageIntegrity.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
           if ($LASTEXITCODE -ne 0) { throw 'Windows encrypted SQLite/recovery regression tests failed' }
+      - name: Verify fresh owners have different master passwords on native Windows
+        shell: pwsh
+        run: |
+          $root = Join-Path ([IO.Path]::GetTempPath()) ("LaunchFlow-Owners-" + [guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $root -Force | Out-Null
+          try {
+            $env:LAUNCHFLOW_POLICY_TEST_ROOT = $root
+            $env:LAUNCHFLOW_TEST_VAULT_PATH = Join-Path $root 'policy-owned.db'
+            dotnet run --project ./tests/policy/PolicyTests.csproj -c Release -p:TreatWarningsAsErrors=true
+            if ($LASTEXITCODE -ne 0) { throw 'Native Windows independent master-password/vault regression failed' }
+          }
+          finally {
+            Remove-Item Env:LAUNCHFLOW_POLICY_TEST_ROOT -ErrorAction SilentlyContinue
+            Remove-Item Env:LAUNCHFLOW_TEST_VAULT_PATH -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+          }
       - name: Install Inno Setup (builder only)
         shell: pwsh
         run: |
