@@ -51,11 +51,10 @@ try {
         Assert-LaunchFlowPayload -PublishDirectory $publish
         Assert-LaunchFlowFirefoxBrowsers -PublishDirectory $publish
         # Recurse including hidden Playwright .playwright/ files.
-        Copy-Item -LiteralPath (Join-Path $publish '*') -Destination $staging -Recurse -Force
+        Copy-Item -Path (Join-Path $publish '*') -Destination $staging -Recurse -Force
     }
 
     Assert-LaunchFlowNoUserData -PublishDirectory $staging
-    [IO.Compression.ZipFile] | Out-Null
     Add-Type -AssemblyName System.IO.Compression
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $parent = Split-Path -Parent $output
