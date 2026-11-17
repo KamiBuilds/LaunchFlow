@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Playwright" Version="1.63.0" />
+    <Compile Include="../../LaunchFlow/Services/Teach/TeachRecorder*.cs" Link="Services/%(Filename)%(Extension)" />
+    <Compile Include="../../LaunchFlow/UI/Dialogs/VisualRecorderWindow.xaml.cs" Link="VisualRecorderWindow.xaml.cs" />
+    <!-- Compile exactly the production engine partials, not a core-only approximation. -->
+    <Compile Include="../../LaunchFlow/Services/Automation/AutomationEngine*.cs" Link="Services/%(Filename)%(Extension)" />
+    <Compile Include="../../LaunchFlow/Services/Browser/BrowserInstallations.cs" Link="Services/BrowserInstallations.cs" />
+    <Compile Include="../../LaunchFlow/Services/Browser/PlaywrightFirefoxSupport.cs" Link="Services/PlaywrightFirefoxSupport.cs" />
+    <Compile Include="../../LaunchFlow/Services/Login/LoginHealth.cs" Link="Services/LoginHealth.cs" />
+    <Compile Include="../../LaunchFlow/Services/Login/LoginRecipe.cs" Link="Services/LoginRecipe.cs" />
+    <Compile Include="../../LaunchFlow/Services/Workspaces/RunIssueNotice.cs" Link="Services/RunIssueNotice.cs" />
+    <Compile Include="../../LaunchFlow/Services/Login/LoginFieldDiscovery.cs" Link="Services/LoginFieldDiscovery.cs" />
+    <Compile Include="../../LaunchFlow/Services/Login/LoginCompletionObserver.cs" Link="Services/LoginCompletionObserver.cs" />
+    <Compile Include="../../LaunchFlow/Services/Login/LoginFlowCoordinator.cs" Link="Services/LoginFlowCoordinator.cs" />
+    <Compile Include="../../LaunchFlow/Services/Policy/EnterprisePolicy.cs" Link="Services/EnterprisePolicy.cs" />
+    <Compile Include="../../LaunchFlow/Services/Browser/MonitorService.cs" Link="Services/MonitorService.cs" />
+    <Compile Include="../../LaunchFlow/Domain/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

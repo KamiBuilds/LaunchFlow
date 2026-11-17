@@ -1,4 +1,4 @@
-# LaunchFlow v0.7.8 - one-click Windows installer builder.
+# LaunchFlow - Windows installer builder. Uses the version in LaunchFlow.csproj.
 # Checks .NET 8 SDK and Inno Setup. With explicit consent, installs missing
 # build tools through the official Windows Package Manager (WinGet) catalog.
 # This script builds the distributable installer; end users only need the .exe.
@@ -8,15 +8,60 @@ param(
     [string]$InnoCompiler = '',
     [switch]$NoAutoInstall,
     [switch]$Yes,
-    [switch]$LaunchSetup
+    [switch]$LaunchSetup,
+    [switch]$RequireSignedDistribution
 )
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
 . (Join-Path $PSScriptRoot 'tools\Sign-LaunchFlow.ps1')
+. (Join-Path $PSScriptRoot 'BUILD-PACKAGING-HELPERS.ps1')
+
+# Reject inconsistent application and setup versions before packaging.
+[xml]$manifest = Get-Content (Join-Path $PSScriptRoot 'LaunchFlow\LaunchFlow.csproj')
+$projectVersion = [string](@($manifest.Project.PropertyGroup.Version | Where-Object { $_ })[0])
+$issText = Get-Content (Join-Path $PSScriptRoot 'installer\LaunchFlow.iss') -Raw
+$expected = '(?m)^#define AppVersion "' + [regex]::Escape($projectVersion) + '"\s*$'
+if ($projectVersion -cnotmatch '\A(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\z' -or $issText -notmatch $expected) {
+    throw 'LaunchFlow application and Windows Setup versions are inconsistent.'
+}
+$appInfo = Get-Content (Join-Path $PSScriptRoot 'LaunchFlow\Services\Platform\AppInfo.cs') -Raw
+$readme = Get-Content (Join-Path $PSScriptRoot 'README.md') -Raw
+$changelog = Get-Content (Join-Path $PSScriptRoot 'CHANGELOG.md') -Raw
+if ($appInfo -notmatch [regex]::Escape('return v is null ? "' + $projectVersion + '"')) {
+    throw 'AppInfo display-version fallback does not match LaunchFlow.csproj.'
+}
+if ($readme -notmatch [regex]::Escape("Current build: **v$projectVersion**")) {
+    throw 'README current-build line does not match LaunchFlow.csproj.'
+}
+if ($changelog -notmatch ('(?m)^#+ v' + [regex]::Escape($projectVersion) + '\b')) {
+    throw 'CHANGELOG is missing a top-level entry for the current LaunchFlow.csproj version.'
+}
+# Setup exit wait must cover owned browser-close + seal budgets (~139s worst case).
+if ($issText -notmatch '(?m)for Attempt := 1 to (\d+) do') {
+    throw 'installer/LaunchFlow.iss is missing the mutex wait loop for --exit-for-install.'
+}
+$attemptMax = [int]$Matches[1]
+if ($attemptMax -lt 960) {
+    throw "installer exit wait attempts ($attemptMax) are below the 960 × 250ms (240s) seal/close budget."
+}
+$installer = Get-LaunchFlowSetupPath -Root $PSScriptRoot -Version $projectVersion
+
+# The distribution gate runs before any published output is removed or replaced.
+# A successful unsigned CI smoke build is not proof of App Control compatibility.
+if ($RequireSignedDistribution) {
+    if (-not (Test-LaunchFlowSigningConfigured)) {
+        throw 'A trusted signed distribution was requested, but no publisher signing certificate is configured. Unsigned installers must not be labelled compatible with Windows Application Control.'
+    }
+    if (-not (Get-LaunchFlowSignTool)) {
+        throw 'A trusted signed distribution was requested, but signtool.exe is unavailable.'
+    }
+}
 
 if ($env:OS -ne 'Windows_NT') {
     throw 'LaunchFlow installer builds require Windows 10 or Windows 11 (x64).'
 }
+
+# Building artifacts must not stop the installed app. Windows Setup handles application closure when explicitly run.
 
 function Refresh-ProcessPath {
     $parts = @(
@@ -123,7 +168,7 @@ function Install-FromWinGet {
     Write-Host "Installing $PackageId from the official WinGet package catalog..." -ForegroundColor Cyan
     # WinGet checks each package against the manifest's installer hash.
     # It may display a Windows UAC prompt. No security controls are bypassed.
-    & $WinGet install --id $PackageId --exact --source winget --accept-package-agreements --accept-source-agreements --silent
+    & $WinGet install --id $PackageId --exact --source winget
     if ($LASTEXITCODE -ne 0) {
         throw "WinGet could not install $PackageId (exit code $LASTEXITCODE). Check the WinGet output above, the network connection, and Windows permissions."
     }
@@ -132,7 +177,7 @@ function Install-FromWinGet {
 
 Write-Host ''
 Write-Host '===========================================' -ForegroundColor Cyan
-Write-Host '  LaunchFlow v0.7.8 - Installer Builder' -ForegroundColor Cyan
+Write-Host "  LaunchFlow v$projectVersion - Installer Builder" -ForegroundColor Cyan
 Write-Host '===========================================' -ForegroundColor Cyan
 Write-Host 'Checking tools required to BUILD the installer...'
 Refresh-ProcessPath
@@ -185,7 +230,7 @@ BUILD-INSTALLER.cmd. On company-managed computers, ask your administrator.
         }
     }
     else {
-        Write-Host 'Auto-accepted (-Yes). Continuing…' -ForegroundColor Cyan
+        Write-Host 'Build-tool installation confirmed (-Yes). Vendor agreement prompts remain interactive.' -ForegroundColor Cyan
     }
     if (-not $hasSdk) {
         Install-FromWinGet -WinGet $winget -PackageId 'Microsoft.DotNet.SDK.8'
@@ -219,11 +264,22 @@ if (Test-Path -LiteralPath $publishDir) {
 & $dotnet publish (Join-Path $PSScriptRoot 'LaunchFlow\LaunchFlow.csproj') `
     -c Release -r win-x64 --self-contained true `
     -p:PublishSingleFile=false `
+    -p:PublishTrimmed=false `
+    -p:PlaywrightPlatform=win `
     -p:PublishReadyToRun=true `
     -p:DebugType=None `
     -p:DebugSymbols=false `
     -o $publishDir
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed. Check build errors above.' }
+Assert-LaunchFlowPayload -PublishDirectory $publishDir
+Install-LaunchFlowFirefoxBrowsers -PublishDirectory $publishDir -DotNetPath $dotnet
+
+# Ensure the setup contains the runtime and required automation library.
+foreach ($requiredFile in @('LaunchFlow.exe', 'coreclr.dll', 'hostpolicy.dll', 'Microsoft.Playwright.dll')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $publishDir $requiredFile) -PathType Leaf)) {
+        throw "The publish is missing $requiredFile. Refusing to package an incomplete installer."
+    }
+}
 
 # Optional Authenticode (SmartScreen). See CODE-SIGNING.md.
 #   LAUNCHFLOW_SIGN_PFX + LAUNCHFLOW_SIGN_PFX_PASSWORD
@@ -233,7 +289,38 @@ $appExe = Join-Path $publishDir 'LaunchFlow.exe'
 if (-not (Test-Path -LiteralPath $appExe -PathType Leaf)) {
     throw "Publish succeeded but LaunchFlow.exe was not found in $publishDir"
 }
-Invoke-LaunchFlowSign -PathToSign $appExe | Out-Null
+if (Test-LaunchFlowSigningConfigured) {
+    if (-not (Get-LaunchFlowSignTool)) {
+        throw "Code signing was configured, but signtool.exe is unavailable. Refusing an unexpectedly unsigned build."
+    }
+    # WDAC / Smart App Control evaluates DLL loads separately from LaunchFlow.exe.
+    # Sign redistributed unsigned .exe/.dll payloads (including managed SQLite),
+    # but preserve existing valid vendor signatures instead of replacing them.
+    # Signing does not itself grant policy permission: administrator approval or
+    # a trusted publisher rule may still be required on a managed computer.
+    # Browser runtimes and native dependencies can live under subfolders.
+    # Scan every nested published PE, not just DLLs beside LaunchFlow.exe.
+    $binaryFiles = @(Get-ChildItem -LiteralPath $publishDir -Recurse -File | Where-Object {
+        $_.Extension -in @('.dll', '.exe')
+    })
+    foreach ($binary in $binaryFiles) {
+        $signature = Get-AuthenticodeSignature -LiteralPath $binary.FullName
+        if ($signature.Status -eq 'Valid') { continue }
+        if ($signature.Status -ne 'NotSigned') {
+            throw "Cannot distribute a binary with an invalid/untrusted existing signature: $($binary.Name) [$($signature.Status)]."
+        }
+        if (-not (Invoke-LaunchFlowSign -PathToSign $binary.FullName)) {
+            throw "A signing certificate is configured but the binary was not signed: $($binary.Name)."
+        }
+        $verified = Get-AuthenticodeSignature -LiteralPath $binary.FullName
+        if ($verified.Status -ne 'Valid') {
+            throw "The signed binary failed Authenticode validation: $($binary.Name) [$($verified.Status)]."
+        }
+    }
+} else {
+    Write-Host '[WARN] Unsigned development build. A Windows Application Control policy may block its managed or native DLLs.' -ForegroundColor Yellow
+    Write-Host 'A trusted publisher signature and/or an administrator-approved policy is required on controlled PCs.' -ForegroundColor Yellow
+}
 
 Write-Host 'Creating LaunchFlow Windows setup executable...'
 $iss = Join-Path $PSScriptRoot 'installer\LaunchFlow.iss'
@@ -249,17 +336,25 @@ else {
     Write-Host 'Inno SignTool skipped (no cert or signtool) — unsigned setup is OK for local use.' -ForegroundColor DarkGray
 }
 $innoArgs.Add($iss)
+# Remove only the expected target: a successful compiler exit must not reuse stale output.
+if (Test-Path -LiteralPath $installer) { Remove-Item -LiteralPath $installer -Force }
 & $inno @innoArgs
 if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed. Check errors above.' }
 
-$installer = Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'dist') -Filter 'LaunchFlow-Setup-*.exe' -File |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1 -ExpandProperty FullName
-if (-not $installer) {
-    throw "Inno Setup returned successfully but no LaunchFlow-Setup-*.exe was found in dist\"
+if (-not (Test-Path -LiteralPath $installer -PathType Leaf) -or (Get-Item -LiteralPath $installer).Length -eq 0) {
+    throw "Inno Setup returned successfully but the expected artifact is missing or empty: $installer"
 }
 # Fallback if Inno did not sign (no /Slfsign=): sign the outer setup.exe here.
 Invoke-LaunchFlowSign -PathToSign $installer -QuietIfUnsigned | Out-Null
+
+if ($RequireSignedDistribution) {
+    $setupSignature = Get-AuthenticodeSignature -LiteralPath $installer
+    if ($setupSignature.Status -ne 'Valid') {
+        throw "Signed distribution requested but the Setup signature is not valid [$($setupSignature.Status)]."
+    }
+    Write-Host '[OK] Published PE files and Setup passed local signature verification.' -ForegroundColor Green
+    Write-Host 'Target-device App Control approval and native acceptance tests are still required.' -ForegroundColor Yellow
+}
 
 Write-Host ''
 Write-Host '===========================================' -ForegroundColor Green
