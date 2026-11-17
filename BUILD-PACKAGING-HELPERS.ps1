@@ -19,6 +19,24 @@ function Assert-LaunchFlowDraftRelease {
     }
 }
 
+# Reject private user data in distributable payloads. Never delete it silently.
+function Assert-LaunchFlowNoUserData {
+    param([Parameter(Mandatory=$true)][string]$PublishDirectory)
+    if (-not (Test-Path -LiteralPath $PublishDirectory -PathType Container)) {
+        throw 'Publish output directory is missing.'
+    }
+    foreach ($file in (Get-ChildItem -LiteralPath $PublishDirectory -Recurse -File -Force)) {
+        $relative = [IO.Path]::GetRelativePath($PublishDirectory, $file.FullName).Replace('\', '/')
+        $name = $file.Name
+        if ($relative -match '(?i)(^|/)(profiles-v2|profiles-sealed|recovery)(/|$)' -or
+            $name -match '(?i)^(launchflow|vault|credentials|passwords|secrets)\.(db|sqlite|sqlite3)(-wal|-shm)?$' -or
+            $name -match '(?i)\.(launchflow|kdbx|profile\.aes|dpapi)$' -or
+            $name -match '(?i)^(hello-unlock\.bin|startup-diagnostics\.log|crash\.log|credentials\.json|passwords\.json|secrets\.json|\.env(?:\..+)?)$') {
+            throw "Publish payload contains private user data or a vault fixture ($relative). Refusing distribution."
+        }
+    }
+}
+
 function Assert-LaunchFlowPayload {
     param([string]$PublishDirectory)
     $required = @(
@@ -63,6 +81,7 @@ function Assert-LaunchFlowPayload {
     $sqlite = @('e_sqlite3.dll', 'runtimes/win-x64/native/e_sqlite3.dll') |
         Where-Object { $p = Join-Path $PublishDirectory $_; (Test-Path -LiteralPath $p -PathType Leaf) -and (Get-Item -LiteralPath $p).Length -gt 0 }
     if (@($sqlite).Count -eq 0) { throw 'Publish output is missing the native SQLite runtime.' }
+    Assert-LaunchFlowNoUserData -PublishDirectory $PublishDirectory
 }
 
 function Assert-LaunchFlowFirefoxBrowsers {

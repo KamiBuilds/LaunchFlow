@@ -43,6 +43,30 @@ try {
     foreach ($version in @('00.7.11', 'v0.7.11', "0.7.11`n", '0.7', '0.7.11.0', '../setup', '2147483648.7.11')) {
         Test-Case "rejects invalid artifact version $version" { Expect-Failure { Get-LaunchFlowSetupPath -Root $root -Version $version } }
     }
+    Test-Case 'clean source archive contains tracked files and no private vault' {
+        $safeZip = Join-Path $root 'safe-source.zip'
+        & (Join-Path $PSScriptRoot '../../MAKE-SAFE-ZIP.ps1') -Kind Source -OutputPath $safeZip
+        if (-not (Test-Path -LiteralPath $safeZip -PathType Leaf)) {
+            throw 'Share-ZIP creator did not produce an archive.'
+        }
+        Add-Type -AssemblyName System.IO.Compression
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $archive = [IO.Compression.ZipFile]::OpenRead($safeZip)
+        try {
+            $entries = @($archive.Entries | ForEach-Object FullName)
+            if ($entries -notcontains 'LaunchFlow/LaunchFlow.csproj' -or
+                $entries -notcontains 'MAKE-SAFE-ZIP.ps1') {
+                throw 'Source archive did not contain complete tracked source.'
+            }
+            foreach ($entry in $entries) {
+                if ($entry -match '(?i)(^|/)(profiles-v2|profiles-sealed|recovery)(/|$)' -or
+                    $entry -match '(?i)\.(db|db-wal|db-shm|launchflow|kdbx)$') {
+                    throw "Private vault or credential backup appeared in source ZIP: $entry"
+                }
+            }
+        }
+        finally { $archive.Dispose() }
+    }
     # Tiny synthetic files exercise the assertions, not a deployable Windows payload.
     $payload = Join-Path $root 'payload'
     $required = @(
@@ -67,6 +91,32 @@ try {
     Set-Content -LiteralPath (Join-Path $payload 'LaunchFlow.runtimeconfig.json') -Value $config
     Set-Content -LiteralPath (Join-Path $payload 'LaunchFlow.deps.json') -Value '{"runtimeTarget":{"name":".NETCoreApp,Version=v8.0/win-x64"}}'
     Test-Case 'accepts complete self-contained fixture' { Assert-LaunchFlowPayload -PublishDirectory $payload }
+    # No portable archive or setup may accidentally redistribute a developer's
+    # vault, saved credentials, recovery copy or browser session.
+    foreach ($relative in @(
+        'launchflow.db',
+        'launchflow.db-wal',
+        'subfolder/launchflow.db',
+        'backup.launchflow',
+        'someone.kdbx',
+        'hello-unlock.bin',
+        'profiles-v2/site/profile.json',
+        'profiles-sealed/site.profile.aes',
+        'recovery/vault.db',
+        'startup-diagnostics.log',
+        '.env'
+    )) {
+        Test-Case "rejects packaged private user data $relative" {
+            $bad = Join-Path $payload $relative
+            New-Item -ItemType Directory -Path (Split-Path $bad -Parent) -Force | Out-Null
+            Set-Content -LiteralPath $bad -Value 'synthetic-private-fixture'
+            try { Expect-Failure { Assert-LaunchFlowPayload -PublishDirectory $payload } }
+            finally { Remove-Item -LiteralPath $bad -Force }
+        }
+    }
+    Test-Case 'clean fixture remains distributable after private-file rejections' {
+        Assert-LaunchFlowPayload -PublishDirectory $payload
+    }
     foreach ($relative in $required) {
         Test-Case "rejects missing $relative" {
             $path = Join-Path $payload $relative

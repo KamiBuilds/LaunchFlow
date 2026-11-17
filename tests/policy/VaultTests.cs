@@ -33,6 +33,61 @@ internal static class VaultTests
                 foreach (var file in Directory.Exists(db.DataDirectory) ? Directory.GetFiles(db.DataDirectory) : Array.Empty<string>()) File.Delete(file);
             }
         });
+        test("two fresh installations use independent owner passwords and random vault identities", () =>
+        {
+            const string ownerA = "IsolatedOwner-A-Setup-57!";
+            const string ownerB = "IsolatedOwner-B-Setup-93!";
+            var first = new VaultDatabase(Path.Combine(root, "fresh-owner-a", "launchflow.db"));
+            var second = new VaultDatabase(Path.Combine(root, "fresh-owner-b", "launchflow.db"));
+            Check(!first.Exists && !second.Exists, "Synthetic owners must start without a vault.");
+            first.Initialize(ownerA, new Configuration
+            {
+                Workflows = new() { new WebsiteWorkflow { Name = "Owner A only" } }
+            });
+            second.Initialize(ownerB, new Configuration
+            {
+                Workflows = new() { new WebsiteWorkflow { Name = "Owner B only" } }
+            });
+            first.Lock();
+            second.Lock();
+
+            // A freshly created vault must never require the developer's or
+            // another user's password; authorization is bound to its own input.
+            Check(!first.Unlock(ownerB), "Another user's master password unlocked owner A.");
+            Check(!second.Unlock(ownerA), "Another user's master password unlocked owner B.");
+            Check(!first.Unlock(Master) && !second.Unlock(Master),
+                "A development fixture password unlocked an unrelated installation.");
+            Check(first.Unlock(ownerA) && second.Unlock(ownerB),
+                "A user could not cold-unlock their newly created vault.");
+            Check(first.LoadConfiguration().Workflows.Single().Name == "Owner A only");
+            Check(second.LoadConfiguration().Workflows.Single().Name == "Owner B only");
+            first.Lock();
+            second.Lock();
+
+            static (byte[] VaultId, byte[] Salt) ReadIdentity(string path)
+            {
+                using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+                {
+                    DataSource = path,
+                    Mode = SqliteOpenMode.ReadOnly
+                }.ToString());
+                connection.Open();
+                using var query = connection.CreateCommand();
+                query.CommandText = "SELECT vault_id, salt FROM secure_meta WHERE id=1";
+                using var reader = query.ExecuteReader();
+                Check(reader.Read(), "New vault has no secure metadata.");
+                return (reader.GetFieldValue<byte[]>(0), reader.GetFieldValue<byte[]>(1));
+            }
+            var a = ReadIdentity(first.DatabasePath);
+            var b = ReadIdentity(second.DatabasePath);
+            Check(!a.VaultId.SequenceEqual(b.VaultId) && !a.Salt.SequenceEqual(b.Salt),
+                "Two new installations reused a vault identity or Argon2id salt.");
+        });
+        // Native Windows credential-isolation smoke runs this focused fixture
+        // without reading the full policy suite's live SQLite/WAL snapshots.
+        // Those snapshots may be exclusively locked on Windows.
+        if (Environment.GetEnvironmentVariable("LAUNCHFLOW_FRESH_OWNER_ONLY") == "1")
+            return;
         db.Initialize(Master, config, secrets);
         test("confirmed workspace save is rejected when encrypted vault is locked", () =>
         {

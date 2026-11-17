@@ -68,6 +68,15 @@ public sealed partial class VaultDatabase
     // (Windows lacks Linux XDG_DATA_HOME redirection for LocalApplicationData).
     private static string? ResolveTestVaultPath()
     {
+        // A released LaunchFlow executable must *always* resolve its own
+        // current-Windows-user LocalAppData vault. An inherited test override
+        // could otherwise redirect a new user's setup to a shared fixture
+        // (or somebody else's vault). Only separately compiled test harnesses
+        // may use the synthetic-path environment override.
+        if (string.Equals(typeof(VaultDatabase).Assembly.GetName().Name, "LaunchFlow",
+                StringComparison.OrdinalIgnoreCase))
+            return null;
+
         var configured = Environment.GetEnvironmentVariable("LAUNCHFLOW_TEST_VAULT_PATH");
         if (string.IsNullOrWhiteSpace(configured)) return null;
         var full = Path.GetFullPath(configured.Trim());
