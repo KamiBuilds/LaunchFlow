@@ -50,6 +50,61 @@ if (-not $probe.WaitForExit(20000)) {
 if ($probe.ExitCode -ne 0) {
     throw "Installed application shutdown probe exited with code $($probe.ExitCode)."
 }
+# Exercise the REAL first-launch path. The --exit-for-install entrypoint
+# above deliberately exits before the SQLite probe, vault setup and WPF UI,
+# so passing it alone cannot prove fresh-PC LaunchFlow actually opens.
+# This fixture is an empty vault root; never type a master password or
+# create a vault in the test.
+$firstRun = $null
+try {
+    $firstRun = Start-Process -FilePath $exe -PassThru
+    $deadline = [DateTime]::UtcNow.AddSeconds(45)
+    $firstRunShown = $false
+    while ([DateTime]::UtcNow -lt $deadline) {
+        Start-Sleep -Milliseconds 250
+        $firstRun.Refresh()
+        if ($firstRun.HasExited) {
+            throw "Normal installed LaunchFlow exited before first-run setup (code $($firstRun.ExitCode))."
+        }
+        # MainWindowHandle/MainWindowTitle refer to the visible setup dialog
+        # while App.InitializeVault synchronously awaits ShowDialog().
+        if ($firstRun.MainWindowHandle -ne [IntPtr]::Zero -and
+            $firstRun.MainWindowTitle -eq 'Set up LaunchFlow') {
+            $firstRunShown = $true
+            break
+        }
+    }
+    if (-not $firstRunShown) {
+        throw 'Normal installed LaunchFlow never displayed the Set up LaunchFlow dialog.'
+    }
+    if (Test-Path -LiteralPath (Join-Path $data 'launchflow.db')) {
+        throw 'First-launch smoke unexpectedly created a vault before the user chose a password.'
+    }
+    Write-Host 'PASS native Windows: installed LaunchFlow starts normally and shows first-run WPF setup.'
+}
+catch {
+    $startupLog = Join-Path $data 'startup-diagnostics.log'
+    if (Test-Path -LiteralPath $startupLog) {
+        Write-Host 'Sanitized startup checkpoint log for failed first-launch smoke:'
+        Get-Content -LiteralPath $startupLog -Tail 25 | ForEach-Object { Write-Host $_ }
+    }
+    throw
+}
+finally {
+    # An empty first-run setup has no open vault, pending edits or browser
+    # profiles. Closing this exact synthetic process does not touch user data.
+    if ($null -ne $firstRun) {
+        $firstRun.Refresh()
+        if (-not $firstRun.HasExited) {
+            $firstRun.Kill()
+            if (-not $firstRun.WaitForExit(15000)) {
+                throw 'Could not terminate the owned synthetic first-run smoke process.'
+            }
+        }
+        $firstRun.Dispose()
+    }
+}
+
 Write-Host 'PASS native Windows: silent per-user install, installed identity and no-vault executable startup path.'
 if (Test-Path -LiteralPath $data) {
     $existing = @(Get-ChildItem -LiteralPath $data -Force | Where-Object { $_.Name -ne 'startup-diagnostics.log' })
