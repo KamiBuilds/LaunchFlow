@@ -44,7 +44,8 @@ FinishedLabel=LaunchFlow is installed.%n%nClick Finish to open it and create you
 
 [Files]
 ; Keep Playwright's private driver tree, including bundled Node and its licenses.
-Source: "..\publish\*"; DestDir: "{app}"; Excludes: ".playwright\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Defense in depth: never install local user vaults accidentally present in a publish tree.
+Source: "..\publish\*"; DestDir: "{app}"; Excludes: ".playwright\*,launchflow.db,launchflow.db-wal,launchflow.db-shm,*.launchflow,*.kdbx,*.profile.aes,*.dpapi,hello-unlock.bin,profiles-v2\*,profiles-sealed\*,recovery\*"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\publish\.playwright\*"; DestDir: "{app}\.playwright"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
