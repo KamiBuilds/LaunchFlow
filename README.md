@@ -8,6 +8,28 @@ LaunchFlow is a small Windows app for people who open the same sites every day (
 
 ---
 
+## Sharing LaunchFlow with another person — NO shared master password
+
+Do **not** ZIP your entire Windows user profile or `%LOCALAPPDATA%\\LaunchFlow`.
+That directory contains your personal encrypted vault (`launchflow.db`), which
+is tied to *your* chosen master password and never belongs in an installer or
+source ZIP. Anyone receiving a clean install must create their **own** master
+password and their **own empty vault** on first launch.
+
+- To share the app with a normal user, send the versioned
+  `LaunchFlow-Setup-v0.8.2-x64.exe` built by `BUILD-INSTALLER.ps1`.
+- To share all *source files*, run
+  `./MAKE-SAFE-ZIP.ps1 -Kind Source` rather than manually compressing your
+  working folder. This takes Git-tracked files only and refuses vault data.
+- To share the self-contained executable folder as a ZIP, run
+  `./MAKE-SAFE-ZIP.ps1 -Kind Portable` after `BUILD-INSTALLER.ps1`.
+  This validates the published files before archiving them.
+
+**Important:** Your existing vault is never automatically copied or reset.
+The setup does not contain a master password. If a recipient sees your old
+vault, the files they received were not a clean distribution; stop sharing
+that archive until its contents have been inspected.
+
 ## What you get as a normal user
 
 You only need the **installer EXE** (or the installed app shortcut).
