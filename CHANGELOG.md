@@ -1,3 +1,12 @@
+# v0.8.2 — Critical fresh-install vault isolation and distribution safety
+
+- First-run setup cold-reopens the newly created encrypted vault using the exact master password chosen by that user; failed verification preserves the vault without reset.
+- Distributed LaunchFlow ignores inherited `LAUNCHFLOW_TEST_VAULT_PATH` overrides, enforcing the current Windows user's local vault directory.
+- Packaging now fails closed if published binaries or browser payloads contain a local vault, encrypted backup, KeePass database, recovery data, browser session profiles or other user secrets; installer exclusions add defense in depth.
+- New independent-vault tests create two synthetic installations with distinct passwords and check cross-owner rejection, random per-vault IDs/salts, and cold reopen.
+- Packaging tests inject private files and require the distribution gate to reject every fixture.
+- This source change needs native Windows build and a full first-run wizard-to-main-window acceptance test before distribution.
+
 # v0.8.1 — P2 source-pinned repair for v0.8.0 review
 
 - AUTO080-01: complete same-snapshot challenge enumeration, including visible passwords after large/hidden input populations and open shadow roots.
