@@ -67,6 +67,32 @@ try {
     Set-Content -LiteralPath (Join-Path $payload 'LaunchFlow.runtimeconfig.json') -Value $config
     Set-Content -LiteralPath (Join-Path $payload 'LaunchFlow.deps.json') -Value '{"runtimeTarget":{"name":".NETCoreApp,Version=v8.0/win-x64"}}'
     Test-Case 'accepts complete self-contained fixture' { Assert-LaunchFlowPayload -PublishDirectory $payload }
+    # No portable archive or setup may accidentally redistribute a developer's
+    # vault, saved credentials, recovery copy or browser session.
+    foreach ($relative in @(
+        'launchflow.db',
+        'launchflow.db-wal',
+        'subfolder/launchflow.db',
+        'backup.launchflow',
+        'someone.kdbx',
+        'hello-unlock.bin',
+        'profiles-v2/site/profile.json',
+        'profiles-sealed/site.profile.aes',
+        'recovery/vault.db',
+        'startup-diagnostics.log',
+        '.env'
+    )) {
+        Test-Case "rejects packaged private user data $relative" {
+            $bad = Join-Path $payload $relative
+            New-Item -ItemType Directory -Path (Split-Path $bad -Parent) -Force | Out-Null
+            Set-Content -LiteralPath $bad -Value 'synthetic-private-fixture'
+            try { Expect-Failure { Assert-LaunchFlowPayload -PublishDirectory $payload } }
+            finally { Remove-Item -LiteralPath $bad -Force }
+        }
+    }
+    Test-Case 'clean fixture remains distributable after private-file rejections' {
+        Assert-LaunchFlowPayload -PublishDirectory $payload
+    }
     foreach ($relative in $required) {
         Test-Case "rejects missing $relative" {
             $path = Join-Path $payload $relative
