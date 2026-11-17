@@ -83,6 +83,11 @@ internal static class VaultTests
             Check(!a.VaultId.SequenceEqual(b.VaultId) && !a.Salt.SequenceEqual(b.Salt),
                 "Two new installations reused a vault identity or Argon2id salt.");
         });
+        // Native Windows credential-isolation smoke runs this focused fixture
+        // without reading the full policy suite's live SQLite/WAL snapshots.
+        // Those snapshots may be exclusively locked on Windows.
+        if (Environment.GetEnvironmentVariable("LAUNCHFLOW_FRESH_OWNER_ONLY") == "1")
+            return;
         db.Initialize(Master, config, secrets);
         test("confirmed workspace save is rejected when encrypted vault is locked", () =>
         {
