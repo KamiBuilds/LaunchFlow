@@ -336,13 +336,14 @@ if ($innoSign) {
 else {
     Write-Host 'Inno SignTool skipped (no cert or signtool) — unsigned setup is OK for local use.' -ForegroundColor DarkGray
 }
-$innoArgs.Add($iss)
 # Inno Setup cannot always scan long extracted project paths even though
 # Playwright's bundled Firefox downloaded correctly. Use short, validated
 # temporary source paths; installed PC browsers have no build-time role.
 $innoStage = New-LaunchFlowInnoStage -PublishDirectory $publishDir
 try {
     $innoArgs.Add("/DLfSourceRoot=$innoStage")
+    # Inno command-line switches precede the script filename.
+    $innoArgs.Add($iss)
     Write-Host "Inno Setup source: $innoStage"
     # Remove only the expected target; never reuse stale installer output.
     if (Test-Path -LiteralPath $installer) { Remove-Item -LiteralPath $installer -Force }
