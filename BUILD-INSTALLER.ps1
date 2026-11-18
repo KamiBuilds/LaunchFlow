@@ -337,13 +337,26 @@ else {
     Write-Host 'Inno SignTool skipped (no cert or signtool) — unsigned setup is OK for local use.' -ForegroundColor DarkGray
 }
 $innoArgs.Add($iss)
-# Remove only the expected target: a successful compiler exit must not reuse stale output.
-if (Test-Path -LiteralPath $installer) { Remove-Item -LiteralPath $installer -Force }
-& $inno @innoArgs
-if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed. Check errors above.' }
-
-if (-not (Test-Path -LiteralPath $installer -PathType Leaf) -or (Get-Item -LiteralPath $installer).Length -eq 0) {
-    throw "Inno Setup returned successfully but the expected artifact is missing or empty: $installer"
+# Inno Setup cannot always scan long extracted project paths even though
+# Playwright's bundled Firefox downloaded correctly. Use short, validated
+# temporary source paths; installed PC browsers have no build-time role.
+$innoStage = New-LaunchFlowInnoStage -PublishDirectory $publishDir
+try {
+    $innoArgs.Add("/DLfSourceRoot=$innoStage")
+    Write-Host "Inno Setup source: $innoStage"
+    # Remove only the expected target; never reuse stale installer output.
+    if (Test-Path -LiteralPath $installer) { Remove-Item -LiteralPath $installer -Force }
+    & $inno @innoArgs
+    if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed. Check errors above.' }
+    if (-not (Test-Path -LiteralPath $installer -PathType Leaf) -or (Get-Item -LiteralPath $installer).Length -eq 0) {
+        throw "Inno Setup returned successfully but the expected artifact is missing or empty: $installer"
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $innoStage) {
+        try { Remove-Item -LiteralPath $innoStage -Recurse -Force -ErrorAction Stop }
+        catch { Write-Warning "Could not clean temporary Inno stage $innoStage. Remove it when the compiler exits." }
+    }
 }
 # Fallback if Inno did not sign (no /Slfsign=): sign the outer setup.exe here.
 Invoke-LaunchFlowSign -PathToSign $installer -QuietIfUnsigned | Out-Null

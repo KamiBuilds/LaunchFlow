@@ -117,6 +117,30 @@ try {
     Test-Case 'clean fixture remains distributable after private-file rejections' {
         Assert-LaunchFlowPayload -PublishDirectory $payload
     }
+    Test-Case 'Inno staging preserves Firefox nested DLLs and hidden Playwright files' {
+        $firefox = Join-Path $payload 'playwright-browsers/firefox-1543/firefox'
+        $layout = Join-Path $firefox 'installation_dir_layout'
+        New-Item -ItemType Directory -Path $layout -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $firefox 'firefox.exe') -Value 'synthetic Firefox exe'
+        Set-Content -LiteralPath (Join-Path $layout 'VersionedInstallationDirLayout.dll') -Value 'synthetic Firefox DLL'
+        $stage = $null
+        try {
+            $stage = New-LaunchFlowInnoStage -PublishDirectory $payload
+            foreach ($relative in @(
+                '.playwright/node/win32_x64/node.exe',
+                'playwright-browsers/firefox-1543/firefox/firefox.exe',
+                'playwright-browsers/firefox-1543/firefox/installation_dir_layout/VersionedInstallationDirLayout.dll'
+            )) {
+                if (-not (Test-Path -LiteralPath (Join-Path $stage $relative) -PathType Leaf)) {
+                    throw "Short Inno stage dropped $relative"
+                }
+            }
+        }
+        finally {
+            if ($stage -and (Test-Path -LiteralPath $stage)) { Remove-Item -LiteralPath $stage -Recurse -Force }
+            Remove-Item -LiteralPath (Join-Path $payload 'playwright-browsers') -Recurse -Force
+        }
+    }
     foreach ($relative in $required) {
         Test-Case "rejects missing $relative" {
             $path = Join-Path $payload $relative

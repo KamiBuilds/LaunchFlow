@@ -1,4 +1,8 @@
-#define AppVersion "0.8.2"
+#define AppVersion "0.8.3"
+; This override avoids Inno Setup MAX_PATH failures in deep extracted source trees.
+#ifndef LfSourceRoot
+#define LfSourceRoot "..\publish"
+#endif
 #define AppName "LaunchFlow"
 [Setup]
 AppId={{9B1A7C15-093B-4DBA-BDA7-BF43A2E67320}
@@ -45,8 +49,8 @@ FinishedLabel=LaunchFlow is installed.%n%nClick Finish to open it and create you
 [Files]
 ; Keep Playwright's private driver tree, including bundled Node and its licenses.
 ; Defense in depth: never install local user vaults accidentally present in a publish tree.
-Source: "..\publish\*"; DestDir: "{app}"; Excludes: ".playwright\*,launchflow.db,launchflow.db-wal,launchflow.db-shm,*.launchflow,*.kdbx,*.profile.aes,*.dpapi,hello-unlock.bin,profiles-v2\*,profiles-sealed\*,recovery\*"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\publish\.playwright\*"; DestDir: "{app}\.playwright"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#LfSourceRoot}\*"; DestDir: "{app}"; Excludes: ".playwright\*,launchflow.db,launchflow.db-wal,launchflow.db-shm,*.launchflow,*.kdbx,*.profile.aes,*.dpapi,hello-unlock.bin,profiles-v2\*,profiles-sealed\*,recovery\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#LfSourceRoot}\.playwright\*"; DestDir: "{app}\.playwright"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\LaunchFlow"; Filename: "{app}\LaunchFlow.exe"; Comment: "Website workspace automation"

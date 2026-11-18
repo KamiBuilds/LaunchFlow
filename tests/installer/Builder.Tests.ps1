@@ -21,6 +21,9 @@ function Install-LaunchFlowFirefoxBrowsers {
     $root = Join-Path $PublishDirectory 'playwright-browsers/firefox-synthetic/firefox'
     New-Item -ItemType Directory -Path $root -Force | Out-Null
     Set-Content -LiteralPath (Join-Path $root 'firefox.exe') -Value 'synthetic Firefox artifact'
+    $nested = Join-Path $root 'installation_dir_layout'
+    New-Item -ItemType Directory -Path $nested -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $nested 'VersionedInstallationDirLayout.dll') -Value 'synthetic long nested Firefox file'
     Assert-LaunchFlowFirefoxBrowsers -PublishDirectory $PublishDirectory
 }
 '@
@@ -69,6 +72,17 @@ $global:LASTEXITCODE = 0
     $innoDouble = Join-Path $fixture 'inno-double.ps1'
     Set-Content -LiteralPath $innoDouble -Value @'
 $target = Join-Path $PSScriptRoot 'dist/LaunchFlow-Setup-v0.7.19-x64.exe'
+$stageArguments = @($args | Where-Object { $_ -like '/DLfSourceRoot=*' })
+if ($stageArguments.Count -ne 1) { throw 'ISCC must receive one short validated source directory.' }
+$stage = $stageArguments[0].Substring('/DLfSourceRoot='.Length)
+$global:LF_TEST_LAST_INNO_STAGE = $stage
+if (-not (Test-Path -LiteralPath (Join-Path $stage '.playwright/node/win32_x64/node.exe') -PathType Leaf) -or
+    -not (Test-Path -LiteralPath (Join-Path $stage 'playwright-browsers/firefox-synthetic/firefox/firefox.exe') -PathType Leaf)) {
+    throw 'Short Inno source is missing its Playwright binaries.'
+}
+if (@(Get-ChildItem -LiteralPath $stage -Recurse -File -Force | Where-Object { $_.FullName.Length -ge 240 }).Count) {
+    throw 'Staged source remains too long.'
+}
 switch ($env:LF_TEST_COMPILER_MODE) {
     'success' { Set-Content -LiteralPath $target -Value 'synthetic current artifact' }
     'empty' { [IO.File]::WriteAllBytes($target, [byte[]]@()) }
@@ -171,6 +185,7 @@ $global:LASTEXITCODE = 0
                     }
                     if ($errorMessage -notlike $expectedError) { throw "Expected '$expectedError', got '$errorMessage'." }
                 }
+                if ($global:LF_TEST_LAST_INNO_STAGE -and (Test-Path -LiteralPath $global:LF_TEST_LAST_INNO_STAGE)) { throw 'Builder leaked an Inno staging directory.' }
                 if ((Get-Content -LiteralPath $stale -Raw).Trim() -cne 'unrelated stale artifact') { throw 'Unrelated artifact changed.' }
                 if ($mode -eq 'no-output' -and (Test-Path -LiteralPath $target)) { throw 'Expected stale target was retained.' }
             }

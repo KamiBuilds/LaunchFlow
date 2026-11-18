@@ -4,7 +4,7 @@
 
 LaunchFlow is a small Windows app for people who open the same sites every day (work dashboards, shops, tools). It keeps your website passwords in an encrypted vault on *your* PC, opens each site on the screen you choose, and can replay safe clicks you recorded earlier.
 
-> Current build: **v0.8.2** (test build — not a signed public release yet).
+> Current build: **v0.8.3** (test build — not a signed public release yet).
 
 ---
 
@@ -17,7 +17,7 @@ source ZIP. Anyone receiving a clean install must create their **own** master
 password and their **own empty vault** on first launch.
 
 - To share the app with a normal user, send the versioned
-  `LaunchFlow-Setup-v0.8.2-x64.exe` built by `BUILD-INSTALLER.ps1`.
+  `LaunchFlow-Setup-v0.8.3-x64.exe` built by `BUILD-INSTALLER.ps1`.
 - To share all *source files*, run
   `./MAKE-SAFE-ZIP.ps1 -Kind Source` rather than manually compressing your
   working folder. This takes Git-tracked files only and refuses vault data.
@@ -123,6 +123,8 @@ If the second step is pure browser SSO with no password field you control, pick 
 ---
 
 ## For builders (developers only)
+
+The Windows builder does **not** need a separately installed Firefox, Edge, or Chrome. It downloads the isolated Playwright Firefox automation runtime, then uses short temporary paths during Inno Setup compilation. A network connection is needed to download the Playwright runtime when building; normal users do not need to run this builder.
 
 Source preview, not what customers install:
 

@@ -1,3 +1,11 @@
+# v0.8.3 — Short-path Windows installer packaging (includes v0.8.2)
+
+- Fix Inno Setup MAX_PATH failures for Playwright Firefox files under deeply nested extracted source folders by staging a verified payload in a short temporary directory.
+- Include hidden Playwright driver files and bundled Firefox automation runtime, revalidate staging, then clean up on success/failure.
+- No locally installed Chrome, Edge or Firefox is required to build. Runtime browser discovery remains unchanged.
+- Retain v0.8.2 independent per-user master-password/vault initialization and distribution-secret rejection.
+- Native Windows installer and first-run acceptance tests remain necessary before distributing a stable release.
+
 # v0.8.2 — Critical fresh-install vault isolation and distribution safety
 
 - First-run setup cold-reopens the newly created encrypted vault using the exact master password chosen by that user; failed verification preserves the vault without reset.

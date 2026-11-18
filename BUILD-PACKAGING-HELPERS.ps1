@@ -127,3 +127,35 @@ function Install-LaunchFlowFirefoxBrowsers {
     Assert-LaunchFlowFirefoxBrowsers -PublishDirectory $PublishDirectory
     Write-Host '[OK] Playwright Firefox packaged for Auto sign-in.' -ForegroundColor Green
 }
+
+# Inno Setup can hit MAX_PATH while scanning nested Playwright Firefox binaries.
+# Stage a validated copy under a short temporary path; this is independent of
+# any Firefox/Chrome/Edge installation on the build machine.
+function New-LaunchFlowInnoStage {
+    param([Parameter(Mandatory=$true)][string]$PublishDirectory)
+    Assert-LaunchFlowPayload -PublishDirectory $PublishDirectory
+    Assert-LaunchFlowFirefoxBrowsers -PublishDirectory $PublishDirectory
+    $stage = Join-Path ([IO.Path]::GetTempPath()) ('lf-iscc-' + [guid]::NewGuid().ToString('N').Substring(0,12))
+    if ($stage.Length -gt 140) {
+        throw "Temporary directory is too long for Inno: $stage. Set TEMP/TMP to a short writable directory."
+    }
+    try {
+        New-Item -ItemType Directory -Path $stage -ErrorAction Stop | Out-Null
+        # Include dot-directories such as .playwright; never use a non-Force wildcard.
+        foreach ($entry in (Get-ChildItem -LiteralPath $PublishDirectory -Force)) {
+            Copy-Item -LiteralPath $entry.FullName -Destination $stage -Recurse -Force -ErrorAction Stop
+        }
+        Assert-LaunchFlowPayload -PublishDirectory $stage
+        Assert-LaunchFlowFirefoxBrowsers -PublishDirectory $stage
+        $longFile = Get-ChildItem -LiteralPath $stage -Recurse -File -Force |
+            Where-Object { $_.FullName.Length -ge 240 } | Select-Object -First 1
+        if ($longFile) {
+            throw "Inno source path is still too long: $($longFile.FullName). Set TEMP/TMP to a shorter writable directory."
+        }
+        return $stage
+    }
+    catch {
+        if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue }
+        throw
+    }
+}
