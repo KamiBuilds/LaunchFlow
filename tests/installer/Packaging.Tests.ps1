@@ -33,6 +33,23 @@ try {
         }
     }
     New-Item -ItemType Directory -Path $root -Force | Out-Null
+    Test-Case 'Windows PowerShell 5.1 relative-path compatibility preserves nested paths' {
+        $nested = Join-Path $root 'payload/profiles-v2/site/profile.json'
+        $relative = Get-LaunchFlowRelativePath -Root (Join-Path $root 'payload') -Path $nested
+        if ($relative -cne 'profiles-v2/site/profile.json') {
+            throw "Unexpected privacy-check relative path: $relative"
+        }
+    }
+    Test-Case 'relative-path helper rejects sibling-prefix escapes' {
+        Expect-Failure {
+            Get-LaunchFlowRelativePath -Root (Join-Path $root 'payload') -Path (Join-Path $root 'payload-copy/launchflow.db') | Out-Null
+        }
+    }
+    Test-Case 'relative-path helper rejects parent traversal escapes' {
+        Expect-Failure {
+            Get-LaunchFlowRelativePath -Root (Join-Path $root 'payload') -Path (Join-Path $root 'payload/../outside/launchflow.db') | Out-Null
+        }
+    }
     Test-Case 'exact artifact path ignores newer stale installer' {
         $dist = New-Item -ItemType Directory -Path (Join-Path $root 'dist') -Force
         Set-Content -LiteralPath (Join-Path $dist 'LaunchFlow-Setup-v99.0.0-x64.exe') -Value 'synthetic stale artifact'

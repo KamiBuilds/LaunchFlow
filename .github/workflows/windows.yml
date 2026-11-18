@@ -165,6 +165,15 @@ jobs:
           ./tests/installer/Packaging.Tests.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Packaging behavior tests failed' }
           ./tests/installer/Parse.Tests.ps1
+      # BUILD-INSTALLER.cmd invokes powershell.exe, not PowerShell 7's pwsh.
+      # Exercise the actual Windows PowerShell 5.1 runtime so .NET API incompatibilities
+      # fail in CI instead of on a user's VMware machine.
+      - name: Run packaging regressions with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          if ($PSVersionTable.PSVersion.Major -ne 5) { throw 'Expected Windows PowerShell 5.1.' }
+          & ./tests/installer/Packaging.Tests.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell 5.1 packaging regressions failed.' }
       - name: Exercise encrypted SQLite storage and recovery on native Windows
         shell: pwsh
         run: |
@@ -193,8 +202,8 @@ jobs:
         run: |
           choco install innosetup --yes --no-progress
           if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
-      - name: Build self-contained Windows app installer
-        shell: pwsh
+      - name: Build self-contained Windows app installer via Windows PowerShell 5.1
+        shell: powershell
         run: |
           ./BUILD-INSTALLER.ps1 -NoAutoInstall
           if ($LASTEXITCODE -ne 0) { throw 'Windows setup compilation failed' }

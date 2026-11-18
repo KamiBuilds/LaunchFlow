@@ -19,6 +19,29 @@ function Assert-LaunchFlowDraftRelease {
     }
 }
 
+# .NET Framework (Windows PowerShell 5.1, launched by BUILD-INSTALLER.cmd)
+# lacks Path.GetRelativePath. Keep path containment and privacy checks available
+# in both Windows PowerShell 5.1 and PowerShell 7+.
+function Get-LaunchFlowRelativePath {
+    param(
+        [Parameter(Mandatory=$true)][string]$Root,
+        [Parameter(Mandatory=$true)][string]$Path
+    )
+    $absoluteRoot = [IO.Path]::GetFullPath($Root).TrimEnd([char[]]@('\', '/'))
+    $absolutePath = [IO.Path]::GetFullPath($Path)
+    $prefix = $absoluteRoot + [IO.Path]::DirectorySeparatorChar
+    $comparison = if ([IO.Path]::DirectorySeparatorChar -eq '\') {
+        [StringComparison]::OrdinalIgnoreCase
+    }
+    else {
+        [StringComparison]::Ordinal
+    }
+    if (-not $absolutePath.StartsWith($prefix, $comparison)) {
+        throw "Path is outside the publish directory. Refusing unsafe packaging path: $Path"
+    }
+    return $absolutePath.Substring($prefix.Length).Replace('\', '/')
+}
+
 # Reject private user data in distributable payloads. Never delete it silently.
 function Assert-LaunchFlowNoUserData {
     param([Parameter(Mandatory=$true)][string]$PublishDirectory)
@@ -26,7 +49,7 @@ function Assert-LaunchFlowNoUserData {
         throw 'Publish output directory is missing.'
     }
     foreach ($file in (Get-ChildItem -LiteralPath $PublishDirectory -Recurse -File -Force)) {
-        $relative = [IO.Path]::GetRelativePath($PublishDirectory, $file.FullName).Replace('\', '/')
+        $relative = Get-LaunchFlowRelativePath -Root $PublishDirectory -Path $file.FullName
         $name = $file.Name
         if ($relative -match '(?i)(^|/)(profiles-v2|profiles-sealed|recovery)(/|$)' -or
             $name -match '(?i)^(launchflow|vault|credentials|passwords|secrets)\.(db|sqlite|sqlite3)(-wal|-shm)?$' -or

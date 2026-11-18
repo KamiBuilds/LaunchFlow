@@ -1,5 +1,7 @@
 # v0.8.3 — Short-path Windows installer packaging (includes v0.8.2)
 
+- Make privacy/packaging path checks compatible with Windows PowerShell 5.1 (the interpreter launched by BUILD-INSTALLER.cmd); the previous Path.GetRelativePath call only worked under newer .NET/PowerShell.
+- Add PowerShell 5.1 packaging regressions and run the real installer build from that shell in CI to prevent recurring VMware-only builder failures.
 - Fix Inno Setup MAX_PATH failures for Playwright Firefox files under deeply nested extracted source folders by staging a verified payload in a short temporary directory.
 - Include hidden Playwright driver files and bundled Firefox automation runtime, revalidate staging, then clean up on success/failure.
 - No locally installed Chrome, Edge or Firefox is required to build. Runtime browser discovery remains unchanged.
