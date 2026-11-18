@@ -2,7 +2,7 @@ name: Windows installer — build and gated draft release
 
 on:
   push:
-    branches: [validated/v0.7.46-three-checks-20261103, repair/vault-backup-integrity-20261105]
+    branches: [validated/v0.7.46-three-checks-20261103, repair/vault-backup-integrity-20261105, '0.8.3']
   pull_request:
   workflow_dispatch:
     inputs:
