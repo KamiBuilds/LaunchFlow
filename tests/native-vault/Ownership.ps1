@@ -65,7 +65,10 @@ function Read-Ledger {
     $raw=[IO.File]::ReadAllText($script:LedgerPath)
     if(-not $raw.TrimStart().StartsWith('[',[StringComparison]::Ordinal)){throw 'ManifestRejected'}
     $decoded=Read-BoundedJson $script:LedgerPath
-    $entries=if($null -eq $decoded){[object[]]@()}else{[object[]]$decoded}
+    # Do not assign from an if-expression: WinPS 5.1 unwraps a one-entry
+    # array into a PSCustomObject under Set-StrictMode, losing .Count.
+    $entries=@()
+    if($null -ne $decoded){$entries=@($decoded)}
     if($entries.Count -gt 16){throw 'ManifestRejected'}
     foreach($e in $entries){$null=Get-Owned $e}
     return $entries
