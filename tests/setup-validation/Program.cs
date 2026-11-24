@@ -22,7 +22,8 @@ try
     Console.WriteLine("PASS window_close_clears_unsubmitted_secret_input");
     // Actual production assessment and handlers; explicit adapters replace native WPF.
     foreach (var value in new string?[] { null, "", Sample(8), Sample(10), Sample(11), Sample(12), Sample(13), Sample(16),
-        "é漢🙂e\u0301Z7!é漢🙂e\u0301Z7!", "   Mixed7!   ", "password123!XYZ", new('a', 12), new('a', 16) })
+        "é漢🙂e\u0301Z7!é漢🙂e\u0301Z7!", "   Mixed7!   ", "password123!XYZ", new('a', 12), new('a', 16),
+        new(' ', 16), "test01020345", "welkom010203", "abcdefghijklmnop", "Abcdefgh12!?" })
     {
         var assessment = PasswordStrength.Evaluate(value);
         Require(assessment.Acceptable == PasswordStrength.MeetsMinimum(value), "Assessment/storage admission disagreement.");

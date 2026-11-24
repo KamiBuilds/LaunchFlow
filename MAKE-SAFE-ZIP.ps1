@@ -14,7 +14,7 @@ $root = $PSScriptRoot
 . (Join-Path $root 'BUILD-PACKAGING-HELPERS.ps1')
 $staging = Join-Path ([IO.Path]::GetTempPath()) ('launchflow-safe-zip-' + [guid]::NewGuid().ToString('N'))
 if (-not $OutputPath) {
-    $OutputPath = Join-Path $root ("dist/LaunchFlow-v0.8.3-$($Kind.ToLowerInvariant())-clean.zip")
+    $OutputPath = Join-Path $root ("dist/LaunchFlow-v0.8.5-$($Kind.ToLowerInvariant())-clean.zip")
 }
 $output = [IO.Path]::GetFullPath($OutputPath)
 if ($output.StartsWith([IO.Path]::GetFullPath($staging), [StringComparison]::OrdinalIgnoreCase)) {
@@ -61,8 +61,19 @@ try {
     New-Item -ItemType Directory -Path $parent -Force | Out-Null
     $temp = "$output.pending-$([guid]::NewGuid().ToString('N'))"
     try {
-        [IO.Compression.ZipFile]::CreateFromDirectory(
-            $staging, $temp, [IO.Compression.CompressionLevel]::Optimal, $false)
+        # Windows PowerShell 5.1/.NET Framework can emit backslash ZIP entry
+        # paths, making source-manifest parity fail on clean Windows builders.
+        # Always use explicit forward-slash entry names.
+        $writer = [IO.Compression.ZipFile]::Open($temp, [IO.Compression.ZipArchiveMode]::Create)
+        try {
+            foreach ($file in (Get-ChildItem -LiteralPath $staging -File -Recurse -Force)) {
+                $entryName = Get-LaunchFlowRelativePath -Root $staging -Path $file.FullName
+                [IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                    $writer, $file.FullName, $entryName,
+                    [IO.Compression.CompressionLevel]::Optimal) | Out-Null
+            }
+        }
+        finally { $writer.Dispose() }
         # Inspect the *actual ZIP*, not only the staged directory.
         $zip = [IO.Compression.ZipFile]::OpenRead($temp)
         try {

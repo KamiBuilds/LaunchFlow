@@ -352,6 +352,24 @@ public partial class App : Application
                 return false;
             }
             var diskState = db.InspectStorage();
+            // A prior creation may have committed encrypted data to a staging
+            // directory even though the live vault path is absent. Do not offer
+            // ordinary broken-DB quarantine or an automatic fresh start: those
+            // actions are for a *live* incomplete DB, not unclassified retained
+            // creation material.
+            if (!db.Exists && db.HasRetainedCreationStage())
+            {
+                StartupDiagnostics.Record(StartupDiagnostics.Stage.VaultRecoveryStarted);
+                MessageBox.Show(
+                    "A previous vault creation was interrupted. LaunchFlow found preserved creation files, " +
+                    "but cannot safely determine whether they contain a committed encrypted vault.\n\n" +
+                    "No files were deleted or replaced. Keep the full %LOCALAPPDATA%\\LaunchFlow folder " +
+                    "(including hidden .launchflow.db.create-* directories and SQLite companion files) together. " +
+                    "Contact support to inspect or recover the retained material before starting a new vault. " +
+                    "Do not delete staging folders to force setup.",
+                    "Interrupted vault creation preserved", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
             if (diskState == VaultStorageState.IncompleteOrUnsupported)
             {
                 if (!TryRecoverIncompleteVault())

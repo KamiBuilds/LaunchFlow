@@ -1,8 +1,9 @@
 namespace LaunchFlow.Services;
 
 /// <summary>
-/// Lightweight master-password guidance. Does not replace a password manager;
-/// only blocks obviously weak vault keys.
+/// One eligibility policy for new master passwords, rotations, and new portable
+/// exports. Existing vaults and backups are always verified cryptographically
+/// with their original passwords, never re-assessed under today's policy.
 /// </summary>
 public static class PasswordStrength
 {
@@ -15,31 +16,46 @@ public static class PasswordStrength
         if (string.IsNullOrEmpty(password) || password.Length < MinimumLength)
             return new(0, "Too short", $"Use at least {MinimumLength} characters.", false);
 
-        var score = 0;
-        score += 2; // The minimum-length guard above has already admitted this input.
+        if (password.All(char.IsWhiteSpace))
+            return new(0, "Weak", "Use real words or other characters, not spaces alone.", false);
+
+        if (IsSimpleRepeat(password))
+            return new(0, "Weak", "Avoid repeating a single character or a two-character pattern.", false);
+
+        if (IsCommon(password))
+            return new(0, "Weak", "Avoid common passwords and predictable word-plus-number combinations.", false);
+
+        var score = 2; // Length is an admission requirement, not an optional bonus.
         if (password.Length >= 16) score += 1;
         if (password.Any(char.IsLower) && password.Any(char.IsUpper)) score += 1;
         if (password.Any(char.IsDigit)) score += 1;
         if (password.Any(c => !char.IsLetterOrDigit(c))) score += 1;
-        if (IsCommon(password)) score = Math.Min(score, 1);
 
         return score switch
         {
-            <= 1 => new(score, "Weak",
-                $"Use {MinimumLength}+ characters with mixed case, a number, and a symbol.", false),
-            2 => new(score, "Fair",
-                "Add mixed case, a number, or a symbol — Fair is not enough for the vault key.", false),
+            <= 2 => new(score, "Fair",
+                "Use a longer passphrase or add mixed case, a number, or a symbol.", false),
             3 => new(score, "Good",
-                "Solid for a local vault. Consider a longer passphrase.", true),
+                "Acceptable for a new vault. A longer, less predictable passphrase is recommended.", true),
             _ => new(score, "Strong",
-                "Good master password for LaunchFlow’s local encrypted database.", true)
+                "Acceptable for a new LaunchFlow encrypted vault.", true)
         };
     }
 
-    public static bool MeetsMinimum(string? password) =>
-        !string.IsNullOrEmpty(password) &&
-        password.Length >= MinimumLength &&
-        Evaluate(password).Score >= 3;
+    public static bool MeetsMinimum(string? password) => Evaluate(password).Acceptable;
+
+    private static bool IsSimpleRepeat(string password)
+    {
+        for (var period = 1; period <= 2; period++)
+        {
+            if (password.Length % period != 0) continue;
+            var repeat = true;
+            for (var i = period; i < password.Length; i++)
+                if (password[i] != password[i % period]) { repeat = false; break; }
+            if (repeat) return true;
+        }
+        return false;
+    }
 
     private static bool IsCommon(string password)
     {
@@ -49,6 +65,18 @@ public static class PasswordStrength
             "password", "password123", "launchflow", "1234567890", "qwertyuiop",
             "letmein1234", "changeme123", "iloveyou123"
         ];
-        return banned.Any(b => lower.Contains(b, StringComparison.Ordinal));
+        if (banned.Any(b => lower.Contains(b, StringComparison.Ordinal))) return true;
+
+        // Common Dutch/English words followed only by digits or predictable
+        // decoration are not secure simply because the total length is 12+.
+        foreach (var prefix in new[] { "test", "welkom", "welcome", "admin", "guest" })
+        {
+            if (!lower.StartsWith(prefix, StringComparison.Ordinal)) continue;
+            var rest = lower.AsSpan(prefix.Length);
+            if (rest.IsEmpty || rest.ToString().All(c =>
+                    char.IsDigit(c) || c is '!' or '?' or '.' or '-' or '_'))
+                return true;
+        }
+        return false;
     }
 }

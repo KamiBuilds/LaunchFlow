@@ -34,6 +34,8 @@ try {
 [void][IO.Directory]::CreateDirectory($root);$script:Ledger=@()
 try {
     $child=Start-Owned $script:Exe '-NoLogo -NoProfile -Command "Start-Sleep -Seconds 2"'
+    # Assert the exact JSON schema through a new process and a live process;
+    # no profile, password, command line or process data is sent to CI output.
     Require ((Count-Owned) -eq 1) 'HealthyRegistrationMissing'
     Require (@(Read-Ledger).Count -eq 1) 'HealthyLedgerMissing'
     Require ($child.WaitForExit(10000)) 'HealthyChildExitFailed'

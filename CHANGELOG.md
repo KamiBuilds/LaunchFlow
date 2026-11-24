@@ -1,3 +1,13 @@
+# v0.8.5 — Vault reliability integration (unreleased)
+
+- Bring first-run encrypted staging, no-clobber publication, diagnostics and recovery from the reliability candidate together with coherent new-password acceptance and export password rules.
+- Display green only when the same validator that creates the vault would accept the input. Reject short, whitespace-only, simple repeated and common word + numeric passwords (including test01020345 / welkom010203) for NEW master/export passwords.
+- Preserve all old vault and backup unlock/decryption, format/KDF parameters and user data without revalidation on unlock.
+- Explicitly disclose a retained interrupted creation stage instead of routing it through a broken live-vault recovery operation or silently treating it as a clean install.
+- Use a unique 0.8.5 version across application, setup and safe source/portable ZIP.
+- Address Windows PowerShell 5.1 source ZIP entry-name parity and native ledger serialization. Full same-commit Windows native acceptance must pass before release.
+- Repo branch clean-up is separate from this commit and must not alter protected refs or discard unmerged work.
+
 # v0.8.4 — First-run vault reliability candidate
 
 - Enforce one shared password eligibility result so setup cannot approve input rejected by storage; keep valid-password representation and existing minimum rules unchanged.

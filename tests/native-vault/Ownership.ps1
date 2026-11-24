@@ -40,9 +40,13 @@ function Start-Owned([string]$Path,[string]$Arguments='') {
         if($null -eq (Get-Variable StartedHandles -Scope Script -ErrorAction SilentlyContinue)){$script:StartedHandles=@()}
         $script:StartedHandles+=@($process)
         $null=$process.Handle
-        $identity=Get-Identity $process $Path
+        # Snapshot the exact identity in a PSCustomObject; WinPS 5.1 can
+        # otherwise enumerate an OrderedDictionary during positional binding,
+        # leaving a malformed one-entry ledger that fails Assert-Keys.
+        $identity=[pscustomobject](Get-Identity $process $Path)
         if($null -eq (Get-Owned $identity)){throw 'WindowIdentityLost'}
-        $script:Ledger+=@($identity);Write-Json $script:LedgerPath @($script:Ledger)
+        $script:Ledger+=@($identity)
+        Write-Json $script:LedgerPath ([object[]]$script:Ledger)
         [IO.File]::Delete($intent)
         $null=$process.StandardOutput.ReadToEndAsync();$null=$process.StandardError.ReadToEndAsync()
         return $process

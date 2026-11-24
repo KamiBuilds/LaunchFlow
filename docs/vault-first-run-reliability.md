@@ -5,7 +5,7 @@
 This workstream starts from `0.8.3` at
 `9b4a302c5cb3f413daadfe7eb728b26197c98723` on
 `fix/v0.8.3-vault-first-run-reliability-20261123`.
-The candidate version is **0.8.4**, following the repository's patch-version
+The integrated follow-up candidate is **0.8.5** on the separate `fix/v0.8.5-vault-reliability-integration-20261124` branch. The original repair candidate was **0.8.4**, following the repository's patch-version
 policy. It is not a stable release. No protected branch merge is authorized.
 
 The existing encrypted format, derivation parameters, minimum password rules,

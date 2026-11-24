@@ -1,7 +1,7 @@
 name: Vault reliability native acceptance
 on:
   push:
-    branches: [fix/v0.8.3-vault-first-run-reliability-20261123]
+    branches: [fix/v0.8.3-vault-first-run-reliability-20261123, fix/v0.8.5-vault-reliability-integration-20261124]
     paths:
       - 'LaunchFlow/**'
       - 'tests/native-vault/**'
@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   preflight:
-    if: github.ref == 'refs/heads/fix/v0.8.3-vault-first-run-reliability-20261123'
+    if: github.ref == 'refs/heads/fix/v0.8.3-vault-first-run-reliability-20261123' || github.ref == 'refs/heads/fix/v0.8.5-vault-reliability-integration-20261124'
     runs-on: windows-2022
     timeout-minutes: 8
     steps:
