@@ -4,7 +4,7 @@
 
 LaunchFlow is a small Windows app for people who open the same sites every day (work dashboards, shops, tools). It keeps your website passwords in an encrypted vault on *your* PC, opens each site on the screen you choose, and can replay safe clicks you recorded earlier.
 
-> Current build: **v0.8.3** (test build — not a signed public release yet).
+> Current build: **v0.8.4** (test build — not a signed public release yet).
 
 ---
 
@@ -17,7 +17,7 @@ source ZIP. Anyone receiving a clean install must create their **own** master
 password and their **own empty vault** on first launch.
 
 - To share the app with a normal user, send the versioned
-  `LaunchFlow-Setup-v0.8.3-x64.exe` built by `BUILD-INSTALLER.ps1`.
+  `LaunchFlow-Setup-v0.8.4-x64.exe` built by `BUILD-INSTALLER.ps1`.
 - To share all *source files*, run
   `./MAKE-SAFE-ZIP.ps1 -Kind Source` rather than manually compressing your
   working folder. This takes Git-tracked files only and refuses vault data.
@@ -51,7 +51,7 @@ Those files are for people who **build** LaunchFlow. End users install once and 
 3. Open **LaunchFlow** from the Start menu.
 4. Create a **master password** (first run) or unlock your existing vault.
 
-Your master password unlocks the vault. It is **not** your website password and **not** your Windows password. If you forget it, the vault cannot be recovered.
+Your master password unlocks the vault. It is **not** your website password and **not** your Windows password. New master passwords and portable-backup passwords must be at least 12 characters and must pass the same displayed strength policy. Existing vaults and backups remain unlockable with their original passwords, even if those passwords would not pass today's new-password policy. If you forget your master password, the vault cannot be recovered without a separate backup.
 
 ---
 

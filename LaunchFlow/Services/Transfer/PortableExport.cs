@@ -35,9 +35,12 @@ public static class PortableExport
 
     public static void Write(string path, string exportPassword, PortablePackage package)
     {
-        if (string.IsNullOrWhiteSpace(exportPassword) || exportPassword.Length < PasswordStrength.MinimumLength)
-            throw new ArgumentException(
-                $"Export password must be at least {PasswordStrength.MinimumLength} characters.");
+        // New backups follow the same approval policy as new vault passwords.
+        // Read() intentionally does NOT apply this rule: historical encrypted
+        // backups must remain decryptable with their original passwords.
+        var assessment = PasswordStrength.Evaluate(exportPassword);
+        if (!assessment.Acceptable)
+            throw new ArgumentException("Choose a stronger export password. " + assessment.Hint);
 
         var salt = RandomNumberGenerator.GetBytes(SaltSize);
         var key = DeriveKey(exportPassword, salt);

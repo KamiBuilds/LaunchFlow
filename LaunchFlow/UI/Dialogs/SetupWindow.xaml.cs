@@ -27,15 +27,12 @@ public partial class SetupWindow : Window
         var assessment = PasswordStrength.Evaluate(PasswordBox.Password);
         StrengthLabel.Text = $"Strength: {assessment.Label}";
         StrengthHint.Text = assessment.Hint;
-        StrengthLabel.Foreground = assessment.Score switch
-        {
-            <= 1 => new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromRgb(0xF8, 0x71, 0x71)),
-            2 => new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromRgb(0xFB, 0xBF, 0x24)),
-            _ => new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromRgb(0x6E, 0xE7, 0xD7))
-        };
+        StrengthLabel.Foreground = new System.Windows.Media.SolidColorBrush(
+            assessment.Acceptable
+                ? System.Windows.Media.Color.FromRgb(0x6E, 0xE7, 0xD7)
+                : (assessment.Score == 2
+                    ? System.Windows.Media.Color.FromRgb(0xFB, 0xBF, 0x24)
+                    : System.Windows.Media.Color.FromRgb(0xF8, 0x71, 0x71)));
     }
 
     private void Create_Click(object sender, RoutedEventArgs e)

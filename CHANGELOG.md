@@ -1,3 +1,13 @@
+# v0.8.4 — Consistent password acceptance and vault protection
+
+- Fixed the setup strength indicator accepting complex 10–11 character passwords that the strict encrypted vault rejected (minimum is 12). Every new-password approval now comes from PasswordStrength.Evaluate.Acceptable.
+- Reject whitespace-only and obviously repeated/patterned passwords for new master keys and new portable backups, with clear strength hints.
+- Show green strength feedback only for passwords the vault will actually accept; recovery and master-password rotation share the same validator.
+- Preserve existing vault unlock, legacy upgrade, and portable backup decryption with the original password. Never reset or re-encrypt stored data simply because an old password fails the new creation rules.
+- Add regression coverage for indicator-vault parity, cold vault unlock after setup, and weak portable-export prevention.
+- Also correct source ZIP path separators for Windows PowerShell 5.1 to address the inherited 0.8.3 packaging test failure.
+- Requires exact-commit Windows CI and real installer/first-run acceptance before distribution.
+
 # v0.8.3 — Short-path Windows installer packaging (includes v0.8.2)
 
 - Make privacy/packaging path checks compatible with Windows PowerShell 5.1 (the interpreter launched by BUILD-INSTALLER.cmd); the previous Path.GetRelativePath call only worked under newer .NET/PowerShell.

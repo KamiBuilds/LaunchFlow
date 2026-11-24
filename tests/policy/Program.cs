@@ -56,6 +56,7 @@ Run("unsupported native platform does not accidentally deny unmanaged usage", ()
 {
     if (!OperatingSystem.IsWindows()) Check(!EnterprisePolicy.Current.DisableCredentialStorage && !EnterprisePolicy.Current.DisableAutomation);
 });
+PasswordStrengthTests.Run(Run);
 VaultTests.Run(Run);
 PrivacyTests.Run(Run);
 Console.WriteLine($"RESULT passed={passed} failures={failures}");
