@@ -12,12 +12,11 @@ public static class PasswordStrength
 
     public static Assessment Evaluate(string? password)
     {
-        if (string.IsNullOrEmpty(password))
+        if (string.IsNullOrEmpty(password) || password.Length < MinimumLength)
             return new(0, "Too short", $"Use at least {MinimumLength} characters.", false);
 
         var score = 0;
-        if (password.Length >= MinimumLength) score += 2;
-        else if (password.Length >= 10) score += 1;
+        score += 2; // The minimum-length guard above has already admitted this input.
         if (password.Length >= 16) score += 1;
         if (password.Any(char.IsLower) && password.Any(char.IsUpper)) score += 1;
         if (password.Any(char.IsDigit)) score += 1;

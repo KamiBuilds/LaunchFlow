@@ -212,32 +212,25 @@ public partial class App : Application
     /// </summary>
     private static bool TryRecoverIncompleteVault()
     {
-        var copies = VaultRecoveryService.ListSqliteRecoveryCopies();
-        var newest = copies.FirstOrDefault();
-        var choice = MessageBox.Show(
-            "An existing LaunchFlow vault file is incomplete, unsupported or cannot be read safely. " +
-            "Your encrypted data has NOT been deleted.\n\n" +
-            (newest is null
-                ? "No automatic recovery copies were found under %LOCALAPPDATA%\\LaunchFlow\\recovery.\n\n"
-                : "A recovery SQLite copy was found. Click Yes to restore the newest verified-looking copy.\n\n") +
-            "Yes = restore a SQLite recovery copy\n" +
-            "No = choose a .launchflow portable backup (creates a new vault after quarantining the broken file)\n" +
-            "Cancel = open the recovery folder and exit without changing files",
-            "Vault recovery required",
-            MessageBoxButton.YesNoCancel,
-            MessageBoxImage.Warning);
-
-        if (choice == MessageBoxResult.Cancel)
-        {
-            try { VaultRecoveryService.OpenRecoveryFolder(); } catch { /* optional */ }
-            MessageBox.Show(
-                "Preserve copies of launchflow.db and any -wal/-shm files before manual troubleshooting. " +
-                "LaunchFlow will not create a new vault over the broken file.",
-                "Vault unchanged", MessageBoxButton.OK, MessageBoxImage.Information);
+        var recovery = new VaultRecoveryWindow();
+        if (recovery.ShowDialog() != true || recovery.Choice == VaultRecoveryWindow.RecoveryChoice.Cancel)
             return false;
+        if (recovery.Choice == VaultRecoveryWindow.RecoveryChoice.StartFresh)
+        {
+            try { return TryStartFreshVault(VaultDatabase.Current); }
+            catch (Exception error)
+            {
+                StartupDiagnostics.Record(StartupDiagnostics.Stage.VaultRecoveryFailed, error);
+                MessageBox.Show("Fresh setup was not started. Existing material was not deleted. " +
+                    "Keep the live database and all recovery files together; preservation or rollback may be incomplete. " +
+                    "Check the startup diagnostic log before retrying.",
+                    "Recovery needs attention", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
         }
 
-        if (choice == MessageBoxResult.Yes)
+        var newest = VaultRecoveryService.ListSqliteRecoveryCopies().FirstOrDefault();
+        if (recovery.Choice == VaultRecoveryWindow.RecoveryChoice.RestoreSqlite)
         {
             var pick = newest;
             if (pick is null ||
@@ -324,7 +317,8 @@ public partial class App : Application
                 package.Config, localDefaults, localDefaults.GlobalShortcut);
             foreach (var workflow in projected.Workflows)
                 workflow.Enabled = false;
-            VaultDatabase.Current.Initialize(master.Secret, projected, package.Credentials);
+            if (!TryCreateAndVerifyVault(VaultDatabase.Current, master.Secret, projected, package.Credentials))
+                return false;
             MessageBox.Show(
                 "Portable backup imported into a new vault. Automatic website launches are disabled until you review them.\n\n" +
                 "Broken vault kept at:\n" + quarantine,
@@ -347,6 +341,16 @@ public partial class App : Application
         for (int round = 0; round < 3; round++)
         {
             var db = VaultDatabase.Current;
+            if (VaultRecoveryService.HasIncompletePreservation(db.DataDirectory))
+            {
+                StartupDiagnostics.Record(StartupDiagnostics.Stage.VaultRecoveryFailed);
+                MessageBox.Show("A previous vault-preservation operation did not finish. " +
+                    "LaunchFlow will not inspect, unlock or create a vault until the retained live and recovery sets " +
+                    "have been checked together. Do not delete the preservation marker or any database companions " +
+                    "to force setup; retain them for manual recovery.",
+                    "Vault preservation needs attention", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
             var diskState = db.InspectStorage();
             if (diskState == VaultStorageState.IncompleteOrUnsupported)
             {
@@ -483,6 +487,12 @@ public partial class App : Application
 
             var setup = new SetupWindow();
             if (setup.ShowDialog() != true) return false;
+            var password = setup.ChosenPassword;
+            var handoffOrdinalEqual = string.Equals(password, setup.TakeChosenPassword(), StringComparison.Ordinal);
+            StartupDiagnostics.Record(StartupDiagnostics.Stage.SetupHandoff);
+            StartupDiagnostics.RecordAdmission(StartupDiagnostics.Admission.HandoffOrdinalEqual, handoffOrdinalEqual);
+            if (!handoffOrdinalEqual)
+                throw new InvalidOperationException("The setup handoff changed. No vault was created.");
             var settings = new Configuration
             {
                 StartWithWindows = setup.StartWithWindows,
@@ -492,15 +502,16 @@ public partial class App : Application
                 VaultLockMinutes = 10,
                 SealBrowserProfilesOnLock = true
             };
-            // Treat the new user's password as authoritative: prove that the
-            // persisted vault can be opened from a *cold locked state* with
-            // exactly the password entered in this wizard. Do not silently
-            // replace or reset the on-disk vault if verification fails.
-            db.Initialize(setup.ChosenPassword, settings);
-            db.Lock();
-            if (!db.Unlock(setup.ChosenPassword))
-                throw new InvalidOperationException(
-                    "New vault could not be reopened with the chosen password. The encrypted file was preserved.");
+            try
+            {
+                if (!TryCreateAndVerifyVault(db, password, settings))
+                {
+                    MessageBox.Show(PasswordStrength.Evaluate(password).Hint,
+                        "Choose a stronger master password", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    continue;
+                }
+            }
+            finally { password = ""; }
             try
             {
                 // First-run setup (also after vault reset) must reconcile BOTH

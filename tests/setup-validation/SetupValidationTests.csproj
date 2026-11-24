@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <LaunchFlowSourceRoot Condition="'$(LaunchFlowSourceRoot)' == ''">$(MSBuildThisFileDirectory)../..</LaunchFlowSourceRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="handoff/**/*.cs" />
+    <Compile Include="$(LaunchFlowSourceRoot)/LaunchFlow/Services/Vault/PasswordStrength.cs" Link="Production/PasswordStrength.cs" />
+    <Compile Include="$(LaunchFlowSourceRoot)/LaunchFlow/Services/Platform/StartupDiagnostics.cs" Link="Production/StartupDiagnostics.cs" />
+    <Compile Include="$(LaunchFlowSourceRoot)/LaunchFlow/UI/Dialogs/SetupWindow.xaml.cs" Link="Production/SetupWindow.xaml.cs" />
+  </ItemGroup>
+</Project>

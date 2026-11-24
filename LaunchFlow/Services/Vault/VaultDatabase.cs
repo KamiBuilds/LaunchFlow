@@ -103,9 +103,13 @@ public sealed partial class VaultDatabase
     {
         lock (_gate)
         {
-            if (!File.Exists(DatabasePath)) return VaultStorageState.Absent;
             try
             {
+                if (!CreationPathExists(DatabasePath))
+                    return HasCreationArtifacts() || new[] { "-wal", "-shm", "-journal" }.Any(
+                        suffix => CreationPathExists(DatabasePath + suffix))
+                        ? VaultStorageState.IncompleteOrUnsupported : VaultStorageState.Absent;
+                if (Directory.Exists(DatabasePath)) return VaultStorageState.IncompleteOrUnsupported;
                 using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
                 {
                     DataSource = DatabasePath,
@@ -684,16 +688,24 @@ public sealed partial class VaultDatabase
         return VaultRecordCodec.Open(envelope, key, vaultId, "config", "config");
     }
 
+    static partial void SensitiveBufferForTesting(string kind, byte[] buffer);
+
     private static byte[] DeriveKey(string password, byte[] salt, int memoryKb, int iterations, int lanes)
     {
-        var argon = new Argon2id(Encoding.UTF8.GetBytes(password))
+        var passwordBytes = Encoding.UTF8.GetBytes(password);
+        try
         {
-            Salt = salt,
-            DegreeOfParallelism = Math.Clamp(lanes, 1, 8),
-            MemorySize = Math.Clamp(memoryKb, 16 * 1024, 512 * 1024),
-            Iterations = Math.Clamp(iterations, 1, 12)
-        };
-        return argon.GetBytes(KeySize);
+            SensitiveBufferForTesting("PasswordUtf8", passwordBytes);
+            using var argon = new Argon2id(passwordBytes)
+            {
+                Salt = salt,
+                DegreeOfParallelism = Math.Clamp(lanes, 1, 8),
+                MemorySize = Math.Clamp(memoryKb, 16 * 1024, 512 * 1024),
+                Iterations = Math.Clamp(iterations, 1, 12)
+            };
+            return argon.GetBytes(KeySize);
+        }
+        finally { CryptographicOperations.ZeroMemory(passwordBytes); }
     }
 
     private static byte[] Encrypt(byte[] plaintext, byte[] key)
@@ -736,8 +748,16 @@ public sealed partial class VaultDatabase
     private static T? Deserialize<T>(byte[] bytes) =>
         JsonSerializer.Deserialize<T>(Encoding.UTF8.GetString(bytes), JsonOptions);
 
-    private static Configuration CloneConfig(Configuration source) =>
-        Deserialize<Configuration>(Serialize(source))!;
+    private static Configuration CloneConfig(Configuration source)
+    {
+        var bytes = Serialize(source);
+        try
+        {
+            SensitiveBufferForTesting("CloneConfig", bytes);
+            return Deserialize<Configuration>(bytes)!;
+        }
+        finally { CryptographicOperations.ZeroMemory(bytes); }
+    }
 
     private static Dictionary<Guid, SiteCredential> CloneSecrets(Dictionary<Guid, SiteCredential> source) =>
         source.ToDictionary(kv => kv.Key, kv => kv.Value with { });

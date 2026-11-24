@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup>
+  <Target Name="ExtractStartupHandler" BeforeTargets="BeforeCompile">
+    <Exec Command="python3 &quot;$(MSBuildProjectDirectory)/extract.py&quot; &quot;$(MSBuildProjectDirectory)/obj/App.Startup.g.cs&quot;" />
+  </Target>
+  <ItemGroup>
+    <Compile Include="obj/App.Startup.g.cs" />
+    <Compile Include="../../../LaunchFlow/App.VaultSetup.cs" Link="Production/App.VaultSetup.cs" Condition="Exists('../../../LaunchFlow/App.VaultSetup.cs')" />
+    <Compile Include="../../../LaunchFlow/Services/Vault/PasswordStrength.cs" Link="Production/PasswordStrength.cs" />
+    <Compile Include="../../../LaunchFlow/Services/Platform/StartupDiagnostics.cs" Link="Production/StartupDiagnostics.cs" />
+  </ItemGroup>
+</Project>

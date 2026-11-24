@@ -155,22 +155,147 @@ public static class VaultRecoveryService
             VaultDatabase.Current.DataDirectory);
     }
 
-    public static string QuarantineLiveVault(string liveDatabasePath, string dataDirectory)
-    {
-        if (!File.Exists(liveDatabasePath))
-            throw new FileNotFoundException("No live vault file to quarantine.", liveDatabasePath);
+    public static string QuarantineLiveVault(string liveDatabasePath, string dataDirectory) =>
+        QuarantineLiveVault(liveDatabasePath, dataDirectory, VaultRestoreFileOperations.Default);
 
+    public static string QuarantineLiveVault(string liveDatabasePath, string dataDirectory,
+        VaultRestoreFileOperations fileOps)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(liveDatabasePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(dataDirectory);
+        ArgumentNullException.ThrowIfNull(fileOps);
+        if (HasIncompletePreservation(dataDirectory))
+            throw new InvalidOperationException("A previous vault preservation operation needs manual recovery before retrying.");
+        RequireIncompleteCandidate(liveDatabasePath);
         SqliteConnection.ClearAllPools();
         var recoveryDirectory = Path.Combine(dataDirectory, "recovery");
         Directory.CreateDirectory(recoveryDirectory);
+        if ((File.GetAttributes(recoveryDirectory) & FileAttributes.ReparsePoint) != 0)
+            throw new IOException("The recovery directory must not be a link.");
         var quarantine = Path.Combine(recoveryDirectory,
             "broken-" + DateTimeOffset.UtcNow.ToString("yyyyMMddTHHmmssZ") + "-" +
             Guid.NewGuid().ToString("N") + ".db");
-        MoveIfExists(VaultRestoreFileOperations.Default, liveDatabasePath, quarantine);
-        MoveIfExists(VaultRestoreFileOperations.Default, liveDatabasePath + "-wal", quarantine + "-wal");
-        MoveIfExists(VaultRestoreFileOperations.Default, liveDatabasePath + "-shm", quarantine + "-shm");
-        CrashLog.Write("VaultQuarantine", "Live vault quarantined at " + quarantine);
-        return quarantine;
+        var marker = Path.Combine(dataDirectory, PreservationMarkerName);
+        // Persist intent before the first move: interruption must not masquerade as an absent vault.
+        using (var intent = new FileStream(marker, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
+        {
+            intent.Write(System.Text.Encoding.UTF8.GetBytes(Path.GetFileName(quarantine)));
+            intent.Flush(flushToDisk: true);
+        }
+        var moved = new List<string>();
+        try
+        {
+            foreach (var suffix in new[] { "", "-wal", "-shm" })
+            {
+                if (suffix != "" && !fileOps.FileExists(liveDatabasePath + suffix)) continue;
+                // File.Move is no-clobber. Never remove an occupied destination, even on rollback.
+                fileOps.MoveFile(liveDatabasePath + suffix, quarantine + suffix);
+                moved.Add(suffix);
+            }
+            // A file may have been replaced after admission. Inspect the actual preserved set
+            // before permitting fresh setup, not just the earlier live-path snapshot.
+            RequireIncompleteCandidate(quarantine);
+            File.Delete(marker);
+            return quarantine;
+        }
+        catch (Exception primary)
+        {
+            try
+            {
+                foreach (var suffix in moved)
+                    RestoreOriginal(fileOps, quarantine + suffix, liveDatabasePath + suffix);
+                File.Delete(marker);
+            }
+            catch (Exception rollback)
+            {
+                throw new AggregateException("Vault preservation did not complete. Retain both live and recovery files; no automatic setup is permitted.", primary, rollback);
+            }
+            ExceptionDispatchInfo.Capture(primary).Throw();
+            throw;
+        }
+    }
+
+    private const string PreservationMarkerName = ".vault-preservation-pending";
+
+    internal static bool HasIncompletePreservation(string dataDirectory)
+    {
+        try { _ = File.GetAttributes(Path.Combine(dataDirectory, PreservationMarkerName)); return true; }
+        catch (FileNotFoundException) { return false; }
+        catch (DirectoryNotFoundException) { return false; }
+    }
+
+    internal static bool CanStartFreshVault(string path) =>
+        !HasIncompletePreservation(Path.GetDirectoryName(Path.GetFullPath(path))!) &&
+        InspectQuarantineCandidate(path) == VaultStorageState.IncompleteOrUnsupported;
+
+    private static void RequireIncompleteCandidate(string path)
+    {
+        if (InspectQuarantineCandidate(path) != VaultStorageState.IncompleteOrUnsupported)
+            throw new InvalidOperationException("Only incomplete or unrecognized vault material can be preserved for fresh setup. Recognized vaults require authentication.");
+    }
+
+    // Inspect an owned snapshot, not the source: even a read-only SQLite open can change sidecars.
+    private static VaultStorageState InspectQuarantineCandidate(string path)
+    {
+        path = Path.GetFullPath(path);
+        var stage = Directory.CreateTempSubdirectory("LaunchFlow-VaultInspection-").FullName;
+        VaultStorageState result;
+        try
+        {
+            var streams = new List<FileStream>();
+            try
+            {
+                foreach (var suffix in new[] { "", "-wal", "-shm" })
+                {
+                    var source = path + suffix;
+                    if (suffix != "" && !File.Exists(source)) continue;
+                    if ((File.GetAttributes(source) & (FileAttributes.ReparsePoint | FileAttributes.Directory)) != 0)
+                        throw new IOException("Vault recovery requires ordinary files, not links or directories.");
+                    streams.Add(new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read));
+                }
+                foreach (var stream in streams)
+                {
+                    var destination = Path.Combine(stage, "candidate.db" + stream.Name[path.Length..]);
+                    using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                    stream.CopyTo(output);
+                }
+            }
+            finally { foreach (var stream in streams) stream.Dispose(); }
+            var snapshot = Path.Combine(stage, "candidate.db");
+            result = new VaultDatabase(snapshot).InspectStorage();
+            if (result == VaultStorageState.IncompleteOrUnsupported && new FileInfo(snapshot).Length > 0)
+            {
+                try
+                {
+                    using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+                    { DataSource = snapshot, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
+                    connection.Open();
+                    foreach (var table in new[] { "secure_meta", "vault_meta" })
+                    {
+                        using var exists = connection.CreateCommand();
+                        exists.CommandText = "SELECT 1 FROM sqlite_master WHERE type='table' AND name=$name;";
+                        exists.Parameters.AddWithValue("$name", table);
+                        if (exists.ExecuteScalar() is null) continue;
+                        using var owner = connection.CreateCommand();
+                        // Fixed identifiers only. Even invalid metadata rows are evidence of prior ownership.
+                        owner.CommandText = "SELECT 1 FROM " + table + " LIMIT 1;";
+                        if (owner.ExecuteScalar() is not null) result = VaultStorageState.PresentNeedsAuthentication;
+                    }
+                }
+                catch (SqliteException)
+                {
+                    // Unrecognized bytes remain unknown; they are preserved in full, never overwritten.
+                }
+            }
+        }
+        catch (Exception primary)
+        {
+            try { Directory.Delete(stage, recursive: true); }
+            catch (Exception cleanup) { throw new AggregateException("Vault inspection failed and its owned snapshot could not be removed.", primary, cleanup); }
+            throw;
+        }
+        Directory.Delete(stage, recursive: true);
+        return result;
     }
 
     public static void OpenRecoveryFolder()
@@ -290,7 +415,8 @@ public static class VaultRecoveryService
         VaultRestoreFileOperations fileOps, string source, string destination)
     {
         if (!fileOps.FileExists(source)) return false;
-        if (fileOps.FileExists(destination)) fileOps.DeleteFile(destination);
+        if (fileOps.FileExists(destination))
+            throw new IOException("Recovery destination is already occupied; no file was replaced.");
         fileOps.MoveFile(source, destination);
         return true;
     }

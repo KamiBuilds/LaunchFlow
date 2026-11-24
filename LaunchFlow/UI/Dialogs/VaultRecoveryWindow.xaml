@@ -1,0 +1,18 @@
+<Window x:Class="LaunchFlow.VaultRecoveryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Vault recovery required" Width="580" SizeToContent="Height"
+        ResizeMode="NoResize" WindowStartupLocation="CenterScreen"
+        Background="#111A2A" Foreground="#E9F1FB" FontFamily="Segoe UI" FontSize="13">
+  <StackPanel Margin="28">
+    <TextBlock Text="Existing vault material needs attention" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap"/>
+    <TextBlock Text="The database is incomplete, unsupported or cannot be read safely. It has not been deleted. Keep the database and its WAL/SHM companions together. No new vault will be created over these files."
+               TextWrapping="Wrap" LineHeight="21" Margin="0,14,0,18"/>
+    <Button Content="Restore a SQLite recovery copy…" Click="Restore_Click" Padding="12,10" Margin="0,0,0,10"/>
+    <Button Content="Import a portable .launchflow backup…" Click="Import_Click" Padding="12,10" Margin="0,0,0,10"/>
+    <Button Content="Preserve these files and set up a new empty vault…" Click="Fresh_Click" Padding="12,10" Margin="0,0,0,18"/>
+    <TextBlock Text="Starting fresh requires separate confirmation and is refused for recognized ownership, including damaged ownership metadata. It does not reset or recover an existing master password."
+               TextWrapping="Wrap" Foreground="#A8BED6" Margin="0,0,0,18"/>
+    <Button Content="Cancel — exit without moving files" IsCancel="True" Click="Cancel_Click" Padding="12,10"/>
+  </StackPanel>
+</Window>

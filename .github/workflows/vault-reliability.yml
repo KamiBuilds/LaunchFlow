@@ -1,0 +1,111 @@
+name: Vault reliability native acceptance
+on:
+  push:
+    branches: [fix/v0.8.3-vault-first-run-reliability-20261123]
+    paths:
+      - 'LaunchFlow/**'
+      - 'tests/native-vault/**'
+      - 'BUILD-*'
+      - 'installer/**'
+      - '.github/workflows/vault-reliability.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: vault-reliability-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  preflight:
+    if: github.ref == 'refs/heads/fix/v0.8.3-vault-first-run-reliability-20261123'
+    runs-on: windows-2022
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Actual Windows PowerShell 5.1 mechanisms and nested native host
+        shell: powershell
+        run: |
+          & ./tests/native-vault/Test-Ast.ps1
+          & ./tests/native-vault/Test-Mechanisms.ps1
+          & ./tests/native-vault/Test-JsonGuard.ps1
+          & ./tests/native-vault/Test-Ownership.ps1
+          & ./tests/native-vault/Test-Registration.ps1
+          & ./tests/native-vault/Test-RecoveryOracle.ps1
+          & ./tests/native-vault/Test-BuildOwnership.ps1
+          & ./tests/native-vault/Test-Package.ps1
+          & ./tests/native-vault/Test-NativeVault.ps1 -Case preflight -ResultRoot "$env:RUNNER_TEMP/vault-preflight"
+          exit $LASTEXITCODE
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: vault-native-preflight
+          path: ${{ runner.temp }}/vault-preflight/public/result.json
+          if-no-files-found: error
+          retention-days: 3
+  build:
+    needs: preflight
+    runs-on: windows-2022
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73
+        with:
+          dotnet-version: '8.0.x'
+      - name: Provision build tool only (no signing/secrets)
+        shell: powershell
+        run: |
+          $compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'
+          if (-not (Test-Path -LiteralPath $compiler)) {
+            choco install innosetup --version=6.4.3 --yes --no-progress --limit-output
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (-not (Test-Path -LiteralPath $compiler)) { throw 'Build compiler unavailable' }
+      - name: Exact candidate archive and original CMD outside Git
+        shell: powershell
+        env:
+          CANDIDATE_SHA: ${{ github.sha }}
+        run: |
+          & ./tests/native-vault/Build-Candidate.ps1 -SourceSha $env:CANDIDATE_SHA -OutputRoot "$env:RUNNER_TEMP/vault-candidate"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: vault-candidate-package
+          path: ${{ runner.temp }}/vault-candidate/package/*
+          if-no-files-found: error
+          retention-days: 3
+  installed:
+    needs: [preflight, build]
+    runs-on: windows-2022
+    timeout-minutes: 22
+    strategy:
+      fail-fast: false
+      matrix:
+        case: [short_correction, valid_keyboard, valid_unicode, owned_wrong, recovery_cancel, valid_clipboard]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with:
+          name: vault-candidate-package
+          path: ${{ runner.temp }}/vault-package
+      - name: Fresh actor, real installer, actual setup and cold owner
+        shell: powershell
+        env:
+          CANDIDATE_SHA: ${{ github.sha }}
+          CASE_NAME: ${{ matrix.case }}
+        run: |
+          & ./tests/native-vault/Test-NativeVault.ps1 -Case $env:CASE_NAME -PackageRoot "$env:RUNNER_TEMP/vault-package" -SourceSha $env:CANDIDATE_SHA -ResultRoot "$env:RUNNER_TEMP/vault-case"
+          exit $LASTEXITCODE
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: vault-native-${{ matrix.case }}
+          path: ${{ runner.temp }}/vault-case/public/result.json
+          if-no-files-found: error
+          retention-days: 3

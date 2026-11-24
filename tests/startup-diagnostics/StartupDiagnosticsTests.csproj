@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../LaunchFlow/Services/Platform/StartupDiagnostics.cs" Link="Production/StartupDiagnostics.cs" />
+    <Compile Include="../../LaunchFlow/Services/Platform/VaultDatabase.CreationDiagnostics.cs" Link="Production/VaultDatabase.CreationDiagnostics.cs" Condition="Exists('../../LaunchFlow/Services/Platform/VaultDatabase.CreationDiagnostics.cs')" />
+  </ItemGroup>
+</Project>

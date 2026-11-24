@@ -1,3 +1,13 @@
+# v0.8.4 — First-run vault reliability candidate
+
+- Enforce one shared password eligibility result so setup cannot approve input rejected by storage; keep valid-password representation and existing minimum rules unchanged.
+- Stage new encrypted vault creation, complete/checkpoint/dispose SQLite resources before non-clobbering publication, distinguish uncertain outcomes, and preserve existing or retained material. Pre-commit failures no longer leave a blocking final-path empty database.
+- Add explicit preserved fresh-start recovery with separate confirmation, recognized-ownership refusal, rollback protection and a startup-blocking preservation-intent marker.
+- Add bounded secret-safe creation phases, admission evidence and exception graphs; blocked diagnostics remain best effort. Zero owned temporary password/configuration byte buffers.
+- Track final verification and remaining native/review gates in `docs/vault-first-run-reliability.md`.
+- Existing encrypted-vault format, derivation rules, data locations and installer AppId remain compatibility boundaries.
+- The reported valid-password VMware startup failure is not yet reproduced or resolved; this candidate is not a stable public release.
+
 # v0.8.3 — Short-path Windows installer packaging (includes v0.8.2)
 
 - Make privacy/packaging path checks compatible with Windows PowerShell 5.1 (the interpreter launched by BUILD-INSTALLER.cmd); the previous Path.GetRelativePath call only worked under newer .NET/PowerShell.

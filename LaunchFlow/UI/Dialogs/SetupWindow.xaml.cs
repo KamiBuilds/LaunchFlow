@@ -6,7 +6,16 @@ namespace LaunchFlow;
 
 public partial class SetupWindow : Window
 {
+    private bool _submitted;
     public string ChosenPassword { get; private set; } = "";
+
+    // Consume once; immutable strings cannot be zeroed, but the dialog must not retain the handoff.
+    internal string TakeChosenPassword()
+    {
+        var password = ChosenPassword;
+        ChosenPassword = "";
+        return password;
+    }
     public bool StartWithWindows => StartupCheck.IsChecked == true;
     public bool RunAfterUnlock => UnlockCheck.IsChecked == true;
     public bool RunOnAppStart => LaunchCheck.IsChecked == true;
@@ -15,6 +24,12 @@ public partial class SetupWindow : Window
     public SetupWindow()
     {
         InitializeComponent();
+        Closed += (_, _) =>
+        {
+            PasswordBox.Clear();
+            ConfirmBox.Clear();
+            if (DialogResult != true) ChosenPassword = "";
+        };
         Loaded += (_, _) =>
         {
             DarkWindowChrome.Apply(this);
@@ -40,9 +55,15 @@ public partial class SetupWindow : Window
 
     private void Create_Click(object sender, RoutedEventArgs e)
     {
+        if (_submitted) return;
         var password = PasswordBox.Password;
         var confirm = ConfirmBox.Password;
+        StartupDiagnostics.Record(StartupDiagnostics.Stage.SetupAssessment);
         var assessment = PasswordStrength.Evaluate(password);
+        StartupDiagnostics.RecordAdmission(StartupDiagnostics.Admission.UiAcceptable, assessment.Acceptable);
+        StartupDiagnostics.RecordAdmission(StartupDiagnostics.Admission.UiMeetsMinimum, PasswordStrength.MeetsMinimum(password));
+        StartupDiagnostics.RecordAdmission(StartupDiagnostics.Admission.ConfirmationEqual,
+            string.Equals(password, confirm, StringComparison.Ordinal));
         if (!assessment.Acceptable)
         {
             MessageBox.Show(this, assessment.Hint,
@@ -56,6 +77,7 @@ public partial class SetupWindow : Window
             return;
         }
 
+        _submitted = true;
         ChosenPassword = password;
         PasswordBox.Clear();
         ConfirmBox.Clear();

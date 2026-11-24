@@ -6,8 +6,42 @@ using Microsoft.Data.Sqlite;
 
 namespace LaunchFlow.Services;
 
+/// <summary>Conservative creation state; none of these failure states authorize deletion.</summary>
+public enum VaultCreationOutcome
+{
+    NotPublished,
+    CommitUncertain,
+    CandidateCommitted,
+    PublicationUncertain,
+    Published
+}
+
+/// <summary>
+/// Creation could not finish safely. Preserve any retained stage and inspect or
+/// unlock an existing destination; do not automatically initialize over it.
+/// </summary>
+public sealed class VaultCreationException : IOException
+{
+    public VaultCreationOutcome Outcome { get; }
+    // For explicit local recovery only. Never include this path in diagnostics.
+    public string? RetainedCreationDirectory { get; }
+
+    internal VaultCreationException(VaultCreationOutcome outcome, string? retainedDirectory, Exception inner)
+        : base("Vault creation did not finish. Preserve retained creation material; " +
+            "inspect or unlock existing storage before retrying.", inner)
+    {
+        Outcome = outcome;
+        RetainedCreationDirectory = retainedDirectory;
+    }
+}
+
 public sealed partial class VaultDatabase
 {
+    // Optional hooks are erased from source-linked/platform builds that omit
+    // their implementations. Diagnostic adapters must be strictly fail-open.
+    partial void TraceCreationStage(string stage);
+    partial void CreationOperationForTesting(string operation);
+
     private const int StrictSchemaVersion = VaultRecordCodec.Version;
     private byte[]? _strictVaultId;
     private byte[]? _strictIdentityToken;
@@ -282,6 +316,8 @@ public sealed partial class VaultDatabase
     private void InitializeStrict(string password, Configuration config,
         Dictionary<Guid, SiteCredential>? secrets)
     {
+        TraceCreationStage("VaultCreateAdmission");
+        CreationOperationForTesting("VaultCreateAdmission");
         ArgumentNullException.ThrowIfNull(config);
         if (secrets is { Count: > 0 }) EnterprisePolicy.Current.RequireCredentialStorage();
         if (!PasswordStrength.MeetsMinimum(password))
@@ -290,43 +326,245 @@ public sealed partial class VaultDatabase
         lock (_gate)
         {
             if (_key is not null) throw new InvalidOperationException("Vault is already unlocked.");
-            if (File.Exists(DatabasePath)) throw new InvalidOperationException("Vault database already exists.");
+            RequireNewCreationDestination();
+            TraceCreationStage("VaultCreateCloneConfig");
+            CreationOperationForTesting("VaultCreateCloneConfig");
             var candidateConfig = CloneConfig(config);
             var candidateSecrets = CloneSecrets(secrets ?? new Dictionary<Guid, SiteCredential>());
-            var serial = Serialize(candidateConfig);
-            var salt = RandomNumberGenerator.GetBytes(SaltSize);
-            var vaultId = RandomNumberGenerator.GetBytes(16);
-            var key = DeriveKey(password, salt, ArgonMemoryKb, ArgonIterations, ArgonLanes);
+            byte[]? serial = null, key = null, identity = null, snapshot = null;
+            string? stage = null;
+            SqliteConnection? connection = null;
+            SqliteTransaction? transaction = null;
+            FileStream? reservation = null;
+            var commitAttempted = false;
+            var committed = false;
+            var publishAttempted = false;
+            var published = false;
             try
             {
-                using var connection = OpenConnection(create: true);
-                using var transaction = connection.BeginTransaction();
+                TraceCreationStage("VaultCreateSerializeConfig");
+                CreationOperationForTesting("VaultCreateSerializeConfig");
+                serial = Serialize(candidateConfig);
+                SensitiveBufferForTesting("CreationConfig", serial);
+                TraceCreationStage("VaultCreateRandomMaterial");
+                CreationOperationForTesting("VaultCreateRandomMaterial");
+                var salt = RandomNumberGenerator.GetBytes(SaltSize);
+                var vaultId = RandomNumberGenerator.GetBytes(16);
+                TraceCreationStage("VaultCreateDeriveKey");
+                CreationOperationForTesting("VaultCreateDeriveKey");
+                key = DeriveKey(password, salt, ArgonMemoryKb, ArgonIterations, ArgonLanes);
+                SensitiveBufferForTesting("CreationKey", key);
+                TraceCreationStage("VaultCreateOpenConnection");
+                CreationOperationForTesting("VaultCreateOpenConnection");
+                Directory.CreateDirectory(DataDirectory);
+                var nextStage = Path.Combine(DataDirectory, CreationStagePrefix + Guid.NewGuid().ToString("N"));
+                // Exclusive reservation arbitrates even a stage-name collision.
+                // No existing stage is adopted, and admission never removes one.
+                reservation = new FileStream(nextStage + ".lease", FileMode.CreateNew,
+                    FileAccess.Write, FileShare.None, 1, FileOptions.DeleteOnClose);
+                if (Directory.Exists(nextStage) || File.Exists(nextStage))
+                    throw new IOException("Creation staging location already exists.");
+                Directory.CreateDirectory(nextStage);
+                stage = nextStage;
+                if (!OperatingSystem.IsWindows())
+                    File.SetUnixFileMode(stage, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+                var candidate = Path.Combine(stage, "candidate.db");
+                using (new FileStream(candidate, FileMode.CreateNew, FileAccess.Write, FileShare.None)) { }
+                if (!OperatingSystem.IsWindows())
+                    File.SetUnixFileMode(candidate, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                connection = new SqliteConnection(new SqliteConnectionStringBuilder
+                {
+                    DataSource = candidate, Mode = SqliteOpenMode.ReadWrite, Pooling = false
+                }.ToString());
+                connection.Open();
+                using (var pragma = connection.CreateCommand())
+                {
+                    pragma.CommandText = "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA secure_delete=ON;";
+                    pragma.ExecuteNonQuery();
+                }
+                TraceCreationStage("VaultCreateBeginTransaction");
+                CreationOperationForTesting("VaultCreateBeginTransaction");
+                transaction = connection.BeginTransaction();
+                TraceCreationStage("VaultCreateEnsureSchema");
+                CreationOperationForTesting("VaultCreateEnsureSchema");
                 EnsureStrictSchema(connection);
+                TraceCreationStage("VaultCreateSealVerifier");
+                CreationOperationForTesting("VaultCreateSealVerifier");
                 var verifier = VaultRecordCodec.Seal(Encoding.UTF8.GetBytes("LaunchFlow.Vault.v3"),
                     key, vaultId, "verifier", "verifier");
+                TraceCreationStage("VaultCreateInsertMeta");
+                CreationOperationForTesting("VaultCreateInsertMeta");
                 InsertStrictMeta(connection, vaultId, salt, verifier);
+                TraceCreationStage("VaultCreateWriteConfig");
+                CreationOperationForTesting("VaultCreateWriteConfig");
                 WriteSealed(connection, "config", serial, key, vaultId);
+                TraceCreationStage("VaultCreatePersistCredentials");
+                CreationOperationForTesting("VaultCreatePersistCredentials");
                 PersistCredentials(connection, candidateSecrets, key, vaultId);
+                // These fallible tokens describe the same transaction snapshot;
+                // prepare them before commit, not after publishing a live key.
+                TraceCreationStage("VaultCreateIdentityToken");
+                CreationOperationForTesting("VaultCreateIdentityToken");
+                identity = StrictIdentityToken(
+                    new StrictMeta(vaultId, salt, verifier, ArgonMemoryKb, ArgonIterations, ArgonLanes));
+                SensitiveBufferForTesting("CreationIdentity", identity);
+                TraceCreationStage("VaultCreateSnapshotToken");
+                CreationOperationForTesting("VaultCreateSnapshotToken");
+                snapshot = ComputeStrictSnapshotToken(connection);
+                SensitiveBufferForTesting("CreationSnapshot", snapshot);
+                TraceCreationStage("VaultCreateCommit");
+                CreationOperationForTesting("VaultCreateCommit");
+                commitAttempted = true;
                 transaction.Commit();
-
+                CreationOperationForTesting("CommitReturnedBeforeOutcomeRecorded");
+                committed = true;
+                TraceCreationStage("VaultCreateDisposeResources");
+                CreationOperationForTesting("VaultCreateDisposeResources");
+                transaction.Dispose();
+                transaction = null;
+                using (var checkpoint = connection.CreateCommand())
+                {
+                    checkpoint.CommandText = "PRAGMA wal_checkpoint(TRUNCATE);";
+                    using var result = checkpoint.ExecuteReader();
+                    if (!result.Read() || result.GetInt32(0) != 0 || result.GetInt32(1) != 0)
+                        throw new IOException("Creation checkpoint did not complete.");
+                }
+                connection.Dispose();
+                connection = null;
+                // Creation alone is nonpooled. Final close must remove all WAL
+                // companions before the main file can be safely published.
+                if (File.Exists(candidate + "-wal") || File.Exists(candidate + "-shm") ||
+                    File.Exists(candidate + "-journal"))
+                    throw new IOException("Creation companions are still present.");
+                TraceCreationStage("VaultCreatePublish");
+                CreationOperationForTesting("VaultCreatePublish");
+                RequireCreationTargetAbsent();
+                CreationOperationForTesting("PublishTargetCheckedBeforeMove");
+                publishAttempted = true;
+                PublishCreationCandidate(candidate);
+                CreationOperationForTesting("PublishReturnedBeforeOutcomeRecorded");
+                published = true;
+                TraceCreationStage("VaultCreateCleanup");
+                CreationOperationForTesting("VaultCreateCleanup");
+                Directory.Delete(stage);
+                stage = null;
+                reservation.Dispose();
+                reservation = null;
+                TraceCreationStage("VaultCreatePublishCaches");
+                CreationOperationForTesting("VaultCreatePublishCaches");
                 _key = key;
                 _strictVaultId = vaultId;
-                _strictIdentityToken = StrictIdentityToken(
-                    new StrictMeta(vaultId, salt, verifier, ArgonMemoryKb, ArgonIterations, ArgonLanes));
-                if (_strictSnapshotToken is not null)
-                    CryptographicOperations.ZeroMemory(_strictSnapshotToken);
-                _strictSnapshotToken = ComputeStrictSnapshotToken(connection);
+                _strictIdentityToken = identity;
+                _strictSnapshotToken = snapshot;
                 _sessionGeneration++;
-                key = null!;
+                key = identity = snapshot = null;
                 _configCache = candidateConfig;
                 _secretsCache = candidateSecrets;
             }
+            catch (Exception primary)
+            {
+                var errors = new List<Exception> { primary };
+                // Unwind never emits a generic stage over the failed operation.
+                // Preserve primary and secondary disposal/cleanup exceptions.
+                try { transaction?.Dispose(); } catch (Exception secondary) { errors.Add(secondary); }
+                try { connection?.Dispose(); } catch (Exception secondary) { errors.Add(secondary); }
+                if (stage is not null && !commitAttempted && errors.Count == 1)
+                {
+                    try
+                    {
+                        CreationOperationForTesting("VaultCreateCleanup");
+                        foreach (var suffix in new[] { "-wal", "-shm", "-journal", "" })
+                            File.Delete(Path.Combine(stage, "candidate.db") + suffix);
+                        Directory.Delete(stage);
+                        stage = null;
+                    }
+                    catch (Exception secondary) { errors.Add(secondary); }
+                }
+                try { reservation?.Dispose(); } catch (Exception secondary) { errors.Add(secondary); }
+                if (commitAttempted || stage is not null || errors.Count != 1)
+                {
+                    var outcome = published ? VaultCreationOutcome.Published :
+                        publishAttempted ? VaultCreationOutcome.PublicationUncertain :
+                        committed ? VaultCreationOutcome.CandidateCommitted :
+                        commitAttempted ? VaultCreationOutcome.CommitUncertain : VaultCreationOutcome.NotPublished;
+                    throw new VaultCreationException(outcome, stage,
+                        errors.Count == 1 ? primary : new AggregateException("Vault creation and cleanup failed.", errors));
+                }
+                throw;
+            }
             finally
             {
-                CryptographicOperations.ZeroMemory(serial);
+                if (serial is not null) CryptographicOperations.ZeroMemory(serial);
                 if (key is not null) CryptographicOperations.ZeroMemory(key);
+                if (identity is not null) CryptographicOperations.ZeroMemory(identity);
+                if (snapshot is not null) CryptographicOperations.ZeroMemory(snapshot);
             }
+            TraceCreationStage("VaultCreateComplete");
         }
+    }
+
+    // Windows MoveFile refuses an existing destination. On Unix, the managed
+    // no-overwrite move can still race an independent creator; link provides
+    // atomic no-clobber publication of the already-closed same-volume file.
+    // An unlink failure is deliberately uncertain and preserves both links.
+    private void PublishCreationCandidate(string candidate)
+    {
+        if (OperatingSystem.IsWindows()) File.Move(candidate, DatabasePath, overwrite: false);
+        else
+        {
+            if (LinkCreationCandidate(candidate, DatabasePath) != 0)
+                throw new IOException("Creation publication was refused.",
+                    new System.ComponentModel.Win32Exception(System.Runtime.InteropServices.Marshal.GetLastPInvokeError()));
+            File.Delete(candidate);
+        }
+    }
+
+    [System.Runtime.InteropServices.DllImport("libc", EntryPoint = "link", SetLastError = true)]
+    private static extern int LinkCreationCandidate(string source, string destination);
+
+    private string CreationStagePrefix => "." + Path.GetFileName(DatabasePath) + ".create-";
+
+    private static bool CreationPathExists(string path)
+    {
+        try { _ = File.GetAttributes(path); return true; }
+        catch (FileNotFoundException) { return false; }
+        catch (DirectoryNotFoundException) { return false; }
+    }
+
+    private bool HasCreationArtifacts()
+    {
+        if (!CreationPathExists(DataDirectory)) return false;
+        foreach (var path in Directory.EnumerateFileSystemEntries(DataDirectory, CreationStagePrefix + "*"))
+        {
+            var attributes = File.GetAttributes(path);
+            // Reservations contain no vault data. Empty directories likewise
+            // cannot hide a committed candidate. Preserve both, but do not let
+            // an interrupted attempt with no material disable ordinary setup.
+            if ((attributes & FileAttributes.ReparsePoint) == 0)
+            {
+                if ((attributes & FileAttributes.Directory) != 0 &&
+                    !Directory.EnumerateFileSystemEntries(path).Any()) continue;
+                if ((attributes & FileAttributes.Directory) == 0 &&
+                    path.EndsWith(".lease", StringComparison.Ordinal) && new FileInfo(path).Length == 0) continue;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private void RequireCreationTargetAbsent()
+    {
+        foreach (var suffix in new[] { "", "-wal", "-shm", "-journal" })
+            if (CreationPathExists(DatabasePath + suffix))
+                throw new InvalidOperationException("Vault database or companion already exists.");
+    }
+
+    private void RequireNewCreationDestination()
+    {
+        RequireCreationTargetAbsent();
+        if (HasCreationArtifacts())
+            throw new InvalidOperationException(
+                "A previous creation stage needs recovery. Preserve it before creating a new vault.");
     }
 
     private void ChangeMasterStrict(string currentPassword, string newPassword)

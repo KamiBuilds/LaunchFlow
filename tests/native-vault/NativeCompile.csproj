@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <LangVersion>5</LangVersion>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="NativeInput.cs"/><Compile Include="NativeExtra.cs"/>
+    <Compile Include="InputPlan.cs"/><Compile Include="ClipboardContract.cs"/>
+    <Compile Include="ClipboardPreflight.cs"/><Compile Include="JsonGuard.cs"/>
+    <Compile Include="OwnedBuild.cs"/>
+  </ItemGroup>
+</Project>
