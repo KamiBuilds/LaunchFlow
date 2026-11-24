@@ -22,7 +22,14 @@ function Test-Integer($Value) {
 function Assert-Keys($Value,[string[]]$Keys) {
     if ($null -eq $Value) { throw 'ManifestRejected' }
     $actual=if ($Value -is [Collections.IDictionary]) {@($Value.Keys)} else {@($Value.PSObject.Properties.Name)}
-    if (@(Compare-Object $Keys $actual -CaseSensitive).Count -ne 0) { throw 'ManifestRejected' }
+    if (@(Compare-Object $Keys $actual -CaseSensitive).Count -ne 0) {
+        # Schema-only diagnostic: record count and expected-field membership,
+        # NEVER actual key names/values, process arguments or user data.
+        $mask=(@($Keys | ForEach-Object { if (@($actual) -ccontains $_) {'1'} else {'0'} }) -join '')
+        Write-Warning ("Native contract shape rejected: type={0}; expected={1}; actual={2}; present={3}" -f
+            $Value.GetType().Name, $Keys.Count, @($actual).Count, $mask)
+        throw 'ManifestRejected'
+    }
 }
 function Assert-Manifest([object[]]$Entries) {
     if ($Entries.Count -lt 1) { throw 'ManifestRejected' }
