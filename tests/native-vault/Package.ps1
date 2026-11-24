@@ -1,4 +1,15 @@
 # Public, fixed-schema package provenance; never paths, process state or credentials.
+function Read-PackageManifest([string]$Path) {
+    $text=[IO.File]::ReadAllText($Path)
+    if(-not $text.TrimStart().StartsWith('[',[StringComparison]::Ordinal)){throw 'ManifestRejected'}
+    $decoded=Read-BoundedJson $Path 16777216
+    $items=@()
+    if($null -ne $decoded){$items=@($decoded)}
+    Assert-Manifest $items
+    # Unary comma keeps the strict, validated array as one return value;
+    # callers do not wrap the command output with @( ... ) again.
+    return ,$items
+}
 function Project-Provenance($p) {
     $keys=@('schema','sourceSha','archiveSha256','sourceBeforeSha256','sourceAfterSha256','runtimeManifestSha256','installerSha256','version','sourceFiles','runtimeFiles','builderExit')
     Assert-Keys $p $keys
@@ -20,9 +31,12 @@ function Read-Package([string]$Root,[string]$SourceSha) {
     foreach($pair in @(@('source.zip','archiveSha256'),@('source-before.json','sourceBeforeSha256'),@('source-after.json','sourceAfterSha256'),@('runtime.json','runtimeManifestSha256'),@('Installer.exe','installerSha256'))) {
         if((Get-FileDigest (Join-Path $Root $pair[0])) -cne $p.($pair[1])){throw 'BindingMismatch'}
     }
-    $source=@(Read-BoundedJson (Join-Path $Root 'source-before.json') 16777216);Assert-Manifest $source
-    $after=@(Read-BoundedJson (Join-Path $Root 'source-after.json') 16777216);Assert-Manifest $after
-    $runtime=@(Read-BoundedJson (Join-Path $Root 'runtime.json') 16777216);Assert-Manifest $runtime
+    # WinPS 5.1 ConvertFrom-Json may return the top-level JSON array as a
+    # *single* Object[] pipeline value. Decode first, then enumerate that value
+    # into records; never accept a top-level JSON object as a manifest.
+    $source=Read-PackageManifest (Join-Path $Root 'source-before.json')
+    $after=Read-PackageManifest (Join-Path $Root 'source-after.json')
+    $runtime=Read-PackageManifest (Join-Path $Root 'runtime.json')
     if($source.Count -ne $p.sourceFiles -or $after.Count -ne $source.Count -or $runtime.Count -ne $p.runtimeFiles){throw 'BindingMismatch'}
     foreach($required in @('LaunchFlow.exe','LaunchFlow.dll','coreclr.dll','hostpolicy.dll','Microsoft.Playwright.dll','.playwright/package/cli.js')) {
         if(@($runtime|Where-Object {$_.path -ceq $required}).Count -ne 1){throw 'ManifestRejected'}
