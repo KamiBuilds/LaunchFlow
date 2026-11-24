@@ -1,5 +1,9 @@
 # Public, fixed-schema package provenance; never paths, process state or credentials.
 function Read-PackageManifest([string]$Path) {
+    Assert-NoReparse $Path
+    if(-not [IO.File]::Exists($Path) -or ([IO.FileInfo]::new($Path)).Length -gt 16777216) {
+        throw 'ManifestRejected'
+    }
     $text=[IO.File]::ReadAllText($Path)
     if(-not $text.TrimStart().StartsWith('[',[StringComparison]::Ordinal)){throw 'ManifestRejected'}
     $decoded=Read-BoundedJson $Path 16777216

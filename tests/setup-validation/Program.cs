@@ -43,6 +43,18 @@ try
             Require(window.ChosenPassword == value && window.PasswordBox.Password == "" && window.ConfirmBox.Password == "", "Snapshot changed or controls retained.");
     }
     Console.WriteLine("PASS assessment_and_actual_setup_boundary_unicode_common_matrix");
+    foreach (var weak in new[] { "test01020345", "welkom010203", "aaaaaaaaaaaaaaaa",
+        "010101010101", new string(' ', 16), "Abcdef12!?" })
+    {
+        var assessment = PasswordStrength.Evaluate(weak);
+        Require(!assessment.Acceptable && !PasswordStrength.MeetsMinimum(weak) &&
+            assessment.Label is not ("Good" or "Strong"),
+            "Known guessable or short input was approved: " + weak.Length);
+    }
+    Require(PasswordStrength.MeetsMinimum("Abcdefgh12!?") &&
+        PasswordStrength.Evaluate("Abcdefgh12!?").Acceptable,
+        "Healthy 12-character password was rejected.");
+    Console.WriteLine("PASS explicit weak_password_denial_and_accepted_creation_boundary");
     var random = new Random(71023);
     for (var n = 0; n < 2000; n++)
     {

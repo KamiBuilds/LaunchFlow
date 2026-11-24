@@ -8,9 +8,10 @@ This workstream starts from `0.8.3` at
 The integrated follow-up candidate is **0.8.5** on the separate `fix/v0.8.5-vault-reliability-integration-20261124` branch. The original repair candidate was **0.8.4**, following the repository's patch-version
 policy. It is not a stable release. No protected branch merge is authorized.
 
-The existing encrypted format, derivation parameters, minimum password rules,
-legacy compatibility, per-user data path, installer AppId and credential
-boundaries remain unchanged. Existing databases must never be silently adopted,
+The encrypted format, derivation parameters, legacy compatibility, per-user
+data path, installer AppId and credential boundaries remain unchanged.
+The 0.8.5 candidate uses stricter shared admission for NEW passwords only;
+historical master-password unlock and portable backup reading remain compatible. Existing databases must never be silently adopted,
 replaced or removed. New helpers remain under their existing UI/service owners.
 
 ## Reproduced defects
@@ -112,3 +113,16 @@ vaults and unrelated services. Never upload credentials, UI trees, clipboard
 values, vault/profile files or dumps as diagnostics. Report child failures and
 incomplete suites directly. Publishing, signing, migration and release are
 separate from passing a candidate's engineering checks.
+
+## 0.8.5 integration notes (not release approval)
+
+The integrated candidate also blocks a missing main database with retained
+creation-stage directories or orphaned -wal/-shm companion files from entering
+a live-file recovery flow. It preserves all unknown material and tells the user
+to retain the complete data directory for inspection. Automatic deletion or
+reinitialization is never performed on this path.
+
+Windows PowerShell 5.1 JSON array shape regression tests now cover both process
+ledgers and portable package manifests. Bounded file checks run before reading
+the raw manifest text. New password-policy regression probes explicitly reject
+whitespace-only, obvious repeat, and common word-plus-number examples.

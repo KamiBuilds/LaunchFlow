@@ -357,17 +357,24 @@ public partial class App : Application
             // ordinary broken-DB quarantine or an automatic fresh start: those
             // actions are for a *live* incomplete DB, not unclassified retained
             // creation material.
-            if (!db.Exists && db.HasRetainedCreationStage())
+            if (!db.Exists && diskState == VaultStorageState.IncompleteOrUnsupported)
             {
+                // Both retained staging directories and orphaned SQLite -wal/-shm
+                // sidecars are unknown encrypted material. The ordinary live-DB
+                // recovery path cannot inspect a missing main file.
+                var retainedCreation = db.HasRetainedCreationStage();
                 StartupDiagnostics.Record(StartupDiagnostics.Stage.VaultRecoveryStarted);
                 MessageBox.Show(
-                    "A previous vault creation was interrupted. LaunchFlow found preserved creation files, " +
-                    "but cannot safely determine whether they contain a committed encrypted vault.\n\n" +
-                    "No files were deleted or replaced. Keep the full %LOCALAPPDATA%\\LaunchFlow folder " +
-                    "(including hidden .launchflow.db.create-* directories and SQLite companion files) together. " +
-                    "Contact support to inspect or recover the retained material before starting a new vault. " +
-                    "Do not delete staging folders to force setup.",
-                    "Interrupted vault creation preserved", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    retainedCreation
+                        ? "An interrupted vault creation left retained staging files."
+                        : "LaunchFlow found SQLite companion files without a main vault database.",
+                    "Vault recovery requires preservation", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(
+                    "No files were deleted or replaced. Preserve the entire %LOCALAPPDATA%\\LaunchFlow folder, " +
+                    "including hidden .launchflow.db.create-* directories and -wal/-shm companions, as one set. " +
+                    "Get help to inspect/recover the preserved material before creating a new vault; " +
+                    "do not delete these files to force setup.",
+                    "Preserve encrypted material", MessageBoxButton.OK, MessageBoxImage.Information);
                 return false;
             }
             if (diskState == VaultStorageState.IncompleteOrUnsupported)

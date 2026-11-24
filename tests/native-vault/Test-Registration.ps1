@@ -27,18 +27,15 @@ try {
 }finally{
     # Only this synthetic fixture handle; never a product/process-name kill.
     if($null -ne $script:Launched){if(-not $script:Launched.HasExited){$script:Launched.Kill();Require ($script:Launched.WaitForExit(5000)) 'FixtureCleanupFailed'};$script:Launched.Dispose()}
-    # WinPS 5.1 does not reliably restore this dot-sourced function through
-    # Set-Item + a captured scriptblock: the next identity became Object[]
-    # instead of the expected four-field record. Reload the original definitions.
+    # Reload the real implementation after test-only fault injection. The
+    # Windows schema checks below must exercise the production harness owner.
     . (Join-Path $SourceRoot 'Ownership.ps1')
     [IO.Directory]::Delete($root,$true)
 }
 # Healthy registration and intent retirement must still produce a verified ledger.
 [void][IO.Directory]::CreateDirectory($root);$script:Ledger=@()
 try {
-    Write-Host 'Native registration healthy stage: before Start-Owned'
     $child=Start-Owned $script:Exe '-NoLogo -NoProfile -Command "Start-Sleep -Seconds 2"'
-    Write-Host 'Native registration healthy stage: after Start-Owned'
     # Assert the exact JSON schema through a new process and a live process;
     # no profile, password, command line or process data is sent to CI output.
     Require ((Count-Owned) -eq 1) 'HealthyRegistrationMissing'

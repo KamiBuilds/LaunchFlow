@@ -167,6 +167,15 @@ try
     catch (ArgumentException) { invalidPasswordRejected = true; }
     Check(invalidPasswordRejected && File.ReadAllBytes(inclusive).SequenceEqual(priorBytes),
         "B2 rejected staging input preserves existing backup");
+    foreach (var weak in new[] { "aaaaaaaaaaaaaaaa", new string(' ', 16),
+        "test01020345", "welkom010203" })
+    {
+        var denied = false;
+        try { PortableExport.Write(inclusive, weak, replacement); }
+        catch (ArgumentException) { denied = true; }
+        Check(denied && File.ReadAllBytes(inclusive).SequenceEqual(priorBytes),
+            "New portable export accepted a guessable password or replaced the prior archive.");
+    }
     Check(!Directory.EnumerateFiles(root, "*.tmp", SearchOption.TopDirectoryOnly).Any(),
         "B2 successful and rejected writes leave no staging files");
 

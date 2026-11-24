@@ -62,6 +62,8 @@ function Read-Ledger {
     # The ledger must be a top-level JSON array, never an object or a
     # polymorphic wrapper. WinPS 5.1 ConvertFrom-Json can emit the array as a
     # *single* Object[] pipeline value; @(<command>) wraps it one level too deep.
+    Assert-NoReparse $script:LedgerPath
+    if(([IO.FileInfo]::new($script:LedgerPath)).Length -gt 32768){throw 'ManifestRejected'}
     $raw=[IO.File]::ReadAllText($script:LedgerPath)
     if(-not $raw.TrimStart().StartsWith('[',[StringComparison]::Ordinal)){throw 'ManifestRejected'}
     $decoded=Read-BoundedJson $script:LedgerPath
