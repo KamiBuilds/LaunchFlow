@@ -24,6 +24,28 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Windows PowerShell JSON ledger shape (synthetic only)
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:OS -ne 'Windows_NT' -or $PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1){throw 'WindowsPowerShell51Required'}
+          $SourceRoot=Join-Path $env:GITHUB_WORKSPACE 'tests/native-vault'
+          . (Join-Path $SourceRoot 'Contracts.ps1')
+          $root=Join-Path ([IO.Path]::GetTempPath()) ('lf-json-shape-'+[Guid]::NewGuid().ToString('N'))
+          Assert-NoReparse $root
+          [void][IO.Directory]::CreateDirectory($root)
+          try {
+              $path=Join-Path $root 'synthetic-ledger.json'
+              Write-Json $path @([ordered]@{pid=1;startTicks='111111111111111111';session=1;path='synthetic-unused'})
+              $entries=@(Read-BoundedJson $path)
+              if($entries.Count -ne 1){throw 'ShapeDiagnosticEntryCountMismatch'}
+              foreach($entry in $entries){
+                  $names=if($entry -is [Collections.IDictionary]){@($entry.Keys)}else{@($entry.PSObject.Properties.Name)}
+                  $safe=[ordered]@{stage='Read-BoundedJson-to-Read-Ledger-shape';type=$entry.GetType().FullName;expected=@('path','pid','session','startTicks');actual=@($names|Sort-Object -CaseSensitive)}
+                  Write-Host (ConvertTo-Json -InputObject $safe -Depth 3 -Compress)
+                  Assert-Keys $entry @('pid','startTicks','session','path')
+              }
+          }finally{[IO.Directory]::Delete($root,$true)}
       - name: Actual Windows PowerShell 5.1 mechanisms and nested native host
         shell: powershell
         run: |
