@@ -59,9 +59,16 @@ function Start-Owned([string]$Path,[string]$Arguments='') {
 }
 function Read-Ledger {
     if(-not [IO.File]::Exists($script:LedgerPath)){return @()}
-    $entries=@(Read-BoundedJson $script:LedgerPath)
+    # The ledger must be a top-level JSON array, never an object or a
+    # polymorphic wrapper. WinPS 5.1 ConvertFrom-Json can emit the array as a
+    # *single* Object[] pipeline value; @(<command>) wraps it one level too deep.
+    $raw=[IO.File]::ReadAllText($script:LedgerPath)
+    if(-not $raw.TrimStart().StartsWith('[',[StringComparison]::Ordinal)){throw 'ManifestRejected'}
+    $decoded=Read-BoundedJson $script:LedgerPath
+    $entries=if($null -eq $decoded){[object[]]@()}else{[object[]]$decoded}
     if($entries.Count -gt 16){throw 'ManifestRejected'}
-    foreach($e in $entries){$null=Get-Owned $e};return $entries
+    foreach($e in $entries){$null=Get-Owned $e}
+    return $entries
 }
 function Test-PendingSpawn {
     # Do not deserialize or trust absence of the ledger while registration may be interrupted.
