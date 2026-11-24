@@ -36,7 +36,9 @@ try {
 # Healthy registration and intent retirement must still produce a verified ledger.
 [void][IO.Directory]::CreateDirectory($root);$script:Ledger=@()
 try {
+    Write-Host 'Native registration healthy stage: before Start-Owned'
     $child=Start-Owned $script:Exe '-NoLogo -NoProfile -Command "Start-Sleep -Seconds 2"'
+    Write-Host 'Native registration healthy stage: after Start-Owned'
     # Assert the exact JSON schema through a new process and a live process;
     # no profile, password, command line or process data is sent to CI output.
     Require ((Count-Owned) -eq 1) 'HealthyRegistrationMissing'
