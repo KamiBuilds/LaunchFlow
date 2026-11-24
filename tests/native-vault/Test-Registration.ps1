@@ -27,7 +27,10 @@ try {
 }finally{
     # Only this synthetic fixture handle; never a product/process-name kill.
     if($null -ne $script:Launched){if(-not $script:Launched.HasExited){$script:Launched.Kill();Require ($script:Launched.WaitForExit(5000)) 'FixtureCleanupFailed'};$script:Launched.Dispose()}
-    Set-Item Function:Get-Identity $original
+    # WinPS 5.1 does not reliably restore this dot-sourced function through
+    # Set-Item + a captured scriptblock: the next identity became Object[]
+    # instead of the expected four-field record. Reload the original definitions.
+    . (Join-Path $SourceRoot 'Ownership.ps1')
     [IO.Directory]::Delete($root,$true)
 }
 # Healthy registration and intent retirement must still produce a verified ledger.
