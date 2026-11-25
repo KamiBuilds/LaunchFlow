@@ -292,8 +292,8 @@ public partial class App : Application
 
         var master = new SecretPromptWindow("New vault master password",
             $"Choose a new master password (at least {PasswordStrength.MinimumLength} characters). " +
-            "This unlocks LaunchFlow on this PC after the broken vault is moved aside.");
-        master.RequireStrongPassword = true;
+            "This unlocks LaunchFlow on this PC after the broken vault is moved aside.")
+        { RequireStrongPassword = true };
         if (master.ShowDialog() != true) return false;
         if (!PasswordStrength.MeetsMinimum(master.Secret))
         {
