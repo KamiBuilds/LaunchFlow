@@ -11,6 +11,7 @@ namespace NativeUiDriver {
         public long Handle;
         public string Kind;
         public bool Owned;
+        public string TitleClass; // fixed non-sensitive category, never raw title
     }
     public static partial class Native {
         [StructLayout(LayoutKind.Sequential)] public struct MOUSEINPUT {
@@ -105,7 +106,10 @@ namespace NativeUiDriver {
                     GetWindowText(window, caption, caption.Capacity);
                     windows.Add(new WindowRef {
                         Handle = window.ToInt64(), Kind = Classify(caption.ToString()),
-                        Owned = GetWindow(window, 4) != IntPtr.Zero
+                        Owned = GetWindow(window, 4) != IntPtr.Zero,
+                        TitleClass = caption.Length == 0 ? "Empty"
+                            : caption.ToString().StartsWith("LaunchFlow", StringComparison.OrdinalIgnoreCase)
+                                ? "LaunchFlow" : "Other"
                     });
                 }
                 return true;

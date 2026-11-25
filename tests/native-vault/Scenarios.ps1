@@ -77,6 +77,8 @@ function Wait-Window([string]$Kind,[string[]]$Allowed=@(),[int]$Seconds=60) {
                         $unknownOwnedFirstSeen[$handleKey]=$timer.Elapsed.TotalMilliseconds
                     }
                     if($timer.Elapsed.TotalMilliseconds - $unknownOwnedFirstSeen[$handleKey] -ge 2000) {
+                        if($w.TitleClass -ceq 'Empty'){App-Fail 'UnexpectedEmptyOwned'}
+                        if($w.TitleClass -ceq 'LaunchFlow'){App-Fail 'UnexpectedLaunchFlowOwned'}
                         App-Fail 'UnexpectedOwnedDialog'
                     }
                     $pendingOwned=$true
