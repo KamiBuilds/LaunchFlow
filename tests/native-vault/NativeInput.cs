@@ -184,18 +184,25 @@ namespace NativeUiDriver {
             if (mode == "NativeSendInputKeyboard") { FillKeyboard(field, handle, process, value); return; }
             if (mode == "NativeClipboardPaste") { FillClipboard(field, handle, process, value); return; }
             if (mode != "NativeSendInputUnicode") throw new InvalidOperationException("EntryModeInvalid");
-            INPUT[] input = new INPUT[value.Length * 2];
-            try {
-                for (int i = 0; i < value.Length; i++) {
-                    input[i * 2] = Key(0, 4);
-                    input[i * 2].data.ki.wScan = value[i];
-                    input[i * 2 + 1] = Key(0, 6);
-                    input[i * 2 + 1].data.ki.wScan = value[i];
-                }
+            // Dispatch Unicode UTF-16 input as bounded key pairs rather than
+            // one burst for the entire password. WPF PasswordBox text
+            // composition must observe each character before the next one,
+            // including combining marks and non-Latin BMP characters. Never
+            // substitute clipboard/ValuePattern or read a password back.
+            for (int i = 0; i < value.Length; i++) {
                 AssertFocused(field, handle, process);
-                Send(input);
-            } finally { Array.Clear(input, 0, input.Length); }
-            Thread.Sleep(180);
+                NoModifiers();
+                INPUT[] input = new INPUT[2];
+                try {
+                    input[0] = Key(0, 4);
+                    input[0].data.ki.wScan = value[i];
+                    input[1] = Key(0, 6);
+                    input[1].data.ki.wScan = value[i];
+                    Send(input);
+                } finally { Array.Clear(input, 0, input.Length); }
+                Thread.Sleep(30);
+            }
+            Thread.Sleep(300);
             AssertFocused(field, handle, process);
         }
         public static void ClickButton(long handle, int process, string name) {
