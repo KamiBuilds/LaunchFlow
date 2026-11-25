@@ -166,8 +166,13 @@ function Invoke-Scenario {
             Click-Button $unlock 'Unlock';Mark 'WrongSubmitted'
             $warning=Wait-Window 'AuthenticationRejected' @('Unlock');Mark 'WrongRefused'
             Dismiss-Dialog $warning;Mark 'WrongAcknowledged'
+            # UnlockWindow closes after submitting any nonempty password.
+            # On an incorrect password App.InitializeVault starts a NEW
+            # UnlockWindow for the next attempt. Keep verifying the UI remains
+            # in the unlock flow, but never require the prior HWND to survive.
             $retry=Wait-Window 'Unlock'
-            if($retry.Handle -ne $unlock.Handle){App-Fail 'UnexpectedWindow'};Mark 'UnlockRetained'
+            $unlock=$retry
+            Mark 'UnlockRetained'
             Phase 'ColdUnlock'
         }
         Fill-Field $unlock 'PasswordBox' $script:Owner;Mark 'OwnerInput'
