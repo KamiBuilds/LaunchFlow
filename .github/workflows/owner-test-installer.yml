@@ -1,0 +1,63 @@
+name: Owner-test LaunchFlow Windows installer
+
+on:
+  push:
+    branches: [fix/v0.8.7-vault-native-stabilization-20261125]
+    paths: ['.github/workflows/owner-test-installer.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  owner-test-installer:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - name: Checkout the exact test commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify exact commit
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD).Trim() -cne "$env:GITHUB_SHA") { throw "Source SHA mismatch" }
+      - name: Install .NET 8 SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+      - name: Verify password-popup behavior using production handlers
+        shell: pwsh
+        run: |
+          dotnet run --project ./tests/setup-validation/SetupValidationTests.csproj -c Release -p:TreatWarningsAsErrors=true
+          if ($LASTEXITCODE -ne 0) { throw 'Password-popup behavior tests failed' }
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup install failed' }
+      - name: Build exact self-contained setup EXE
+        shell: powershell
+        run: |
+          ./BUILD-INSTALLER.ps1 -NoAutoInstall
+          if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
+          if (-not (Test-Path -LiteralPath 'dist/LaunchFlow-Setup-v0.8.7-x64.exe' -PathType Leaf)) { throw 'Setup executable missing' }
+      - name: Record tested source and checksum
+        shell: pwsh
+        run: |
+          $path='dist/LaunchFlow-Setup-v0.8.7-x64.exe'
+          $sum=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$sum  LaunchFlow-Setup-v0.8.7-x64.exe" | Set-Content -LiteralPath 'dist/SHA256SUMS.txt' -Encoding ascii
+          "Source commit: $env:GITHUB_SHA" | Set-Content -LiteralPath 'dist/BUILD-SOURCE.txt'
+          "Status: owner-test installer, not a release; full CI and independent Windows acceptance required." | Add-Content -LiteralPath 'dist/BUILD-SOURCE.txt'
+      - name: Upload installer ZIP for owner testing
+        uses: actions/upload-artifact@v6
+        with:
+          name: LaunchFlow-v0.8.7-OWNER-TEST-${{ github.sha }}
+          path: |
+            dist/LaunchFlow-Setup-v0.8.7-x64.exe
+            dist/SHA256SUMS.txt
+            dist/BUILD-SOURCE.txt
+          if-no-files-found: error
+          retention-days: 14
