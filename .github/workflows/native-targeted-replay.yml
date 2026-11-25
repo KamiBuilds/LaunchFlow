@@ -1,0 +1,47 @@
+name: Focused native Unicode and wrong-password replay
+on:
+  push:
+    branches: [fix/v0.8.6-native-wrong-unicode-20261125]
+    paths:
+      - 'tests/native-vault/**'
+      - '.github/workflows/native-targeted-replay.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  replay:
+    # Test-harness-only replay of known production payload cc1135c.
+    # NOT equivalent to an exact-current-commit installer acceptance.
+    runs-on: windows-2022
+    timeout-minutes: 22
+    strategy:
+      fail-fast: false
+      matrix:
+        case: [owned_wrong, valid_unicode]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with:
+          name: vault-candidate-package
+          path: ${{ runner.temp }}/vault-package
+          run-id: 45579952990
+          github-token: ${{ github.token }}
+      - name: Run current native tests on previous exact production payload
+        shell: powershell
+        env:
+          CASE_NAME: ${{ matrix.case }}
+          BASE_SOURCE_SHA: cc1135cdf5046a2b24237fbcdc4f579155af0eeb
+        run: |
+          & ./tests/native-vault/Test-NativeVault.ps1 -Case $env:CASE_NAME -PackageRoot "$env:RUNNER_TEMP/vault-package" -SourceSha $env:BASE_SOURCE_SHA -ResultRoot "$env:RUNNER_TEMP/vault-case"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: native-targeted-${{ matrix.case }}
+          path: ${{ runner.temp }}/vault-case/public/result.json
+          if-no-files-found: warn
+          retention-days: 2
