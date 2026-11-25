@@ -19,6 +19,13 @@ public static class PasswordStrength
         if (password.All(char.IsWhiteSpace))
             return new(0, "Weak", "Use real words or other characters, not spaces alone.", false);
 
+        // Long numeric strings and passwords padded with spaces can satisfy
+        // naive length/character-class scores without being hard to guess.
+        if (password.All(char.IsDigit))
+            return new(0, "Weak", "Avoid passwords made only of numbers.", false);
+        if (password.Count(c => !char.IsWhiteSpace(c)) < 6)
+            return new(0, "Weak", "Use more meaningful characters instead of padding with spaces.", false);
+
         if (IsSimpleRepeat(password))
             return new(0, "Weak", "Avoid repeating a single character or a two-character pattern.", false);
 

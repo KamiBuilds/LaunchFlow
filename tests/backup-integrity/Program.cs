@@ -168,7 +168,7 @@ try
     Check(invalidPasswordRejected && File.ReadAllBytes(inclusive).SequenceEqual(priorBytes),
         "B2 rejected staging input preserves existing backup");
     foreach (var weak in new[] { "aaaaaaaaaaaaaaaa", new string(' ', 16),
-        "test01020345", "welkom010203" })
+        "test01020345", "welkom010203", "0102030405060708", "               1" })
     {
         var denied = false;
         try { PortableExport.Write(inclusive, weak, replacement); }

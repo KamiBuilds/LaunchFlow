@@ -23,7 +23,7 @@ try
     // Actual production assessment and handlers; explicit adapters replace native WPF.
     foreach (var value in new string?[] { null, "", Sample(8), Sample(10), Sample(11), Sample(12), Sample(13), Sample(16),
         "é漢🙂e\u0301Z7!é漢🙂e\u0301Z7!", "   Mixed7!   ", "password123!XYZ", new('a', 12), new('a', 16),
-        new(' ', 16), "test01020345", "welkom010203", "abcdefghijklmnop", "Abcdefgh12!?" })
+        new(' ', 16), "test01020345", "welkom010203", "abcdefghijklmnop", "Abcdefgh12!?", "0102030405060708", "               1" })
     {
         var assessment = PasswordStrength.Evaluate(value);
         Require(assessment.Acceptable == PasswordStrength.MeetsMinimum(value), "Assessment/storage admission disagreement.");
@@ -44,7 +44,7 @@ try
     }
     Console.WriteLine("PASS assessment_and_actual_setup_boundary_unicode_common_matrix");
     foreach (var weak in new[] { "test01020345", "welkom010203", "aaaaaaaaaaaaaaaa",
-        "010101010101", new string(' ', 16), "Abcdef12!?" })
+        "010101010101", new string(' ', 16), "Abcdef12!?", "0102030405060708", "               1" })
     {
         var assessment = PasswordStrength.Evaluate(weak);
         Require(!assessment.Acceptable && !PasswordStrength.MeetsMinimum(weak) &&
