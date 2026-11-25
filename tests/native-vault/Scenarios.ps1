@@ -63,7 +63,11 @@ function Wait-Window([string]$Kind,[string[]]$Allowed=@(),[int]$Seconds=60) {
             }
             if($w.Kind -ceq 'StartupRegistrationWarning'){App-Fail 'ApplicationError'}
             if($w.Kind -cne $Kind -and $w.Kind -cnotin $Allowed -and ($w.Kind -cne 'Other' -or $w.Owned)){
-                Write-Host ('native-window: phase='+$script:Report.phase+' expected='+$Kind+' actual='+(Safe-WindowKind $w)+' owned='+[bool]$w.Owned)
+                # Project only a fixed classifier into the result's reason; the
+                # parent's CI log must never contain raw window titles or secrets.
+                if($w.Kind -ceq 'SetupInputRejected'){App-Fail 'UnexpectedSetupDialog'}
+                if($w.Kind -ceq 'WeakInput'){App-Fail 'UnexpectedWeakDialog'}
+                if($w.Kind -ceq 'Other' -and $w.Owned){App-Fail 'UnexpectedOwnedDialog'}
                 App-Fail 'UnexpectedWindow'
             }
         }
