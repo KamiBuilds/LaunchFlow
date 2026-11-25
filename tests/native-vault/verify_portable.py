@@ -21,7 +21,7 @@ commands += [('portable-csharp', [a.dotnet, 'run', '--project', str(root / 'Mech
              ('native-csharp-compile-only', [a.dotnet, 'build', str(root / 'NativeCompile.csproj'), '-c', 'Release', '-p:UseSharedCompilation=false'])]
 # Preserve the original seven gates; these focused regressions add portable coverage.
 commands += [(name, [a.pwsh, '-NoLogo', '-NoProfile', '-File', str(root / name)]) for name in
-             ('Test-Registration.ps1', 'Test-RecoveryOracle.ps1', 'Test-BuildOwnership.ps1')]
+             ('Test-Registration.ps1', 'Test-RecoveryOracle.ps1', 'Test-BuildOwnership.ps1', 'Test-JsonShape.ps1')]
 results = []
 for name, command in commands:
     try:

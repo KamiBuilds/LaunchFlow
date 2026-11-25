@@ -52,6 +52,7 @@ jobs:
           & ./tests/native-vault/Test-Ast.ps1
           & ./tests/native-vault/Test-Mechanisms.ps1
           & ./tests/native-vault/Test-JsonGuard.ps1
+          & ./tests/native-vault/Test-JsonShape.ps1
           & ./tests/native-vault/Test-Ownership.ps1
           & ./tests/native-vault/Test-Registration.ps1
           & ./tests/native-vault/Test-RecoveryOracle.ps1

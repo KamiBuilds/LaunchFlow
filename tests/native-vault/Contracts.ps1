@@ -102,7 +102,19 @@ function Read-BoundedJson([string]$Path,[int]$Limit=32768) {
     if ($null -eq ('NativeUiDriver.JsonGuard' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot 'JsonGuard.cs') | Out-Null }
     $text=[IO.File]::ReadAllText($Path)
     [NativeUiDriver.JsonGuard]::Validate($text)
-    return $text|ConvertFrom-Json
+    # Preserve nested arrays while normalizing the outer conversion boundary.
+    $converter=Get-Command ConvertFrom-Json -ErrorAction Stop
+    if($converter.Parameters.ContainsKey('NoEnumerate')){
+        $value=$text|ConvertFrom-Json -NoEnumerate
+    }else{
+        $value=$text|ConvertFrom-Json
+    }
+    if($null -eq $value){throw 'ManifestRejected'}
+    if($value -is [array]){
+        foreach($entry in $value){,$entry}
+    }else{
+        ,$value
+    }
 }
 function Import-Native {
     Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,WindowsBase,PresentationCore,PresentationFramework,System.Xaml | Out-Null

@@ -59,7 +59,13 @@ python3 tests/native-vault/verify_portable.py \
 This checks PowerShell syntax, strict schemas, manifests/provenance, JSON rewrite,
 process identities, real portable child registration-fault/watchdog accounting,
 the actual recovery scenario's modeled-UI filesystem oracle, portable input
-planning and C#5 Windows reference compilation. The original seven gates remain.
+planning and C#5 Windows reference compilation. The original ten preparation
+checks remain, with `Test-JsonShape.ps1` added as an eleventh check. It exercises
+empty/single/multiple JSON root arrays, scalar provenance and strict rejection
+of nested arrays, null roots/entries and malformed records. The actual-host
+controls are distinct from the explicitly modeled nonenumerating conversion
+boundary. `Read-BoundedJson` emits exactly one array level on supported hosts;
+invalid null roots cannot masquerade as an empty process ledger.
 **It does not execute WPF, Windows PowerShell 5.1, Win32 input, Job Objects or the
 installer.** The build-owner portable gate reports its native portion as skipped.
 
