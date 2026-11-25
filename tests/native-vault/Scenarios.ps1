@@ -53,8 +53,12 @@ function Check-App {
 function Windows {Check-App;return @([NativeUiDriver.Native]::Windows($script:App.Id))}
 function Wait-Window([string]$Kind,[string[]]$Allowed=@(),[int]$Seconds=60) {
     $timer=[Diagnostics.Stopwatch]::StartNew()
+    # Win32/WPF may briefly expose an owned native popup during window
+    # transitions. A persistent unknown owned dialog is still an error.
+    $unknownOwnedFirstSeen=@{}
     while($timer.Elapsed.TotalSeconds -lt $Seconds) {
         $windows=@(Windows)
+        $pendingOwned=$false
         foreach($w in $windows) {
             if($w.Kind -cin @('StartupError','DependencyError')){App-Fail 'ApplicationError'}
             if($w.Kind -ceq 'Main' -and $Kind -cne 'Main'){
@@ -67,13 +71,23 @@ function Wait-Window([string]$Kind,[string[]]$Allowed=@(),[int]$Seconds=60) {
                 # parent's CI log must never contain raw window titles or secrets.
                 if($w.Kind -ceq 'SetupInputRejected'){App-Fail 'UnexpectedSetupDialog'}
                 if($w.Kind -ceq 'WeakInput'){App-Fail 'UnexpectedWeakDialog'}
-                if($w.Kind -ceq 'Other' -and $w.Owned){App-Fail 'UnexpectedOwnedDialog'}
+                if($w.Kind -ceq 'Other' -and $w.Owned){
+                    $handleKey=[string]$w.Handle
+                    if(-not $unknownOwnedFirstSeen.ContainsKey($handleKey)) {
+                        $unknownOwnedFirstSeen[$handleKey]=$timer.Elapsed.TotalMilliseconds
+                    }
+                    if($timer.Elapsed.TotalMilliseconds - $unknownOwnedFirstSeen[$handleKey] -ge 2000) {
+                        App-Fail 'UnexpectedOwnedDialog'
+                    }
+                    $pendingOwned=$true
+                    continue
+                }
                 App-Fail 'UnexpectedWindow'
             }
         }
         $found=@($windows|Where-Object {$_.Kind -ceq $Kind})
         if($found.Count -gt 1){throw 'WindowIdentityLost'}
-        if($found.Count -eq 1){return $found[0]}
+        if($found.Count -eq 1 -and -not $pendingOwned){return $found[0]}
         Start-Sleep -Milliseconds 150
     }
     throw 'Deadline'
