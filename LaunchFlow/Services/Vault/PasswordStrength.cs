@@ -51,6 +51,14 @@ public static class PasswordStrength
 
     public static bool MeetsMinimum(string? password) => Evaluate(password).Acceptable;
 
+    /// <summary>
+    /// Actionable, password-safe guidance used by every UI that CREATES a new
+    /// password. It must never embed or log the submitted password.
+    /// </summary>
+    public static string RejectionNotice(Assessment assessment) =>
+        "That password isn't strong enough to protect your encrypted data.\n\n" +
+        assessment.Hint + "\n\nChoose a stronger, less predictable password and try again.";
+
     private static bool IsSimpleRepeat(string password)
     {
         for (var period = 1; period <= 2; period++)

@@ -7,6 +7,10 @@ public partial class SecretPromptWindow : Window
 {
     public string Secret { get; private set; } = "";
 
+    // Only opt-in for NEW master/backup passwords. Existing vault unlock and
+    // encrypted backup import must accept the original password unchanged.
+    public bool RequireStrongPassword { get; init; }
+
     public SecretPromptWindow(string title, string message)
     {
         InitializeComponent();
@@ -22,6 +26,17 @@ public partial class SecretPromptWindow : Window
 
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
+        if (RequireStrongPassword)
+        {
+            var assessment = PasswordStrength.Evaluate(SecretBox.Password);
+            if (!assessment.Acceptable)
+            {
+                MessageBox.Show(this, PasswordStrength.RejectionNotice(assessment),
+                    "Choose a stronger password", MessageBoxButton.OK, MessageBoxImage.Warning);
+                SecretBox.Focus(); // Stay on the same prompt; do not accept or lose the entry.
+                return;
+            }
+        }
         Secret = SecretBox.Password;
         SecretBox.Clear();
         DialogResult = true;

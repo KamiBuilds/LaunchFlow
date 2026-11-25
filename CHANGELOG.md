@@ -1,3 +1,10 @@
+# v0.8.7 — Actionable password rejection popup (development branch)
+
+- Show a clear, reason-specific warning when a newly created master or backup password is too weak; do not silently refuse or close the prompt.
+- Keep the entered password available for correction and focus its field on rejection.
+- Apply the same new-password popup to first-run setup, password changes, portable exports, and recovery setup. Existing-vault unlock, old-password confirmation, and backup import are NOT revalidated.
+- Add actual production-handler regression coverage for setup and standalone password prompts, including the warning, correction, and legacy unlock behavior.
+
 # v0.8.7 — Vault and native test stabilization (unreleased)
 
 - Integrated the independent first-run staging and cold-unlock safeguards with a single new-password acceptance policy for setup, rotation and new portable backups.

@@ -277,12 +277,12 @@ public partial class MainWindow
         if (current.ShowDialog() != true) return;
         var next = new SecretPromptWindow("New master password",
             $"Choose a new password of at least {PasswordStrength.MinimumLength} characters (mixed case, number, or symbol recommended).")
-        { Owner = this };
+        { Owner = this, RequireStrongPassword = true };
         if (next.ShowDialog() != true) return;
         if (!PasswordStrength.MeetsMinimum(next.Secret))
         {
-            MessageBox.Show(this, PasswordStrength.Evaluate(next.Secret).Hint,
-                "Password too weak", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, PasswordStrength.RejectionNotice(PasswordStrength.Evaluate(next.Secret)),
+                "Choose a stronger password", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         var confirm = new SecretPromptWindow("Confirm new master password", "Enter the same new password again.") { Owner = this };

@@ -40,7 +40,7 @@ public partial class MainWindow
         if (dialog.ShowDialog(this) != true) return;
         var first = new SecretPromptWindow("Protect your export",
             $"Set an export password ({PasswordStrength.MinimumLength}+ characters). You'll need it on the new PC.")
-        { Owner = this };
+        { Owner = this, RequireStrongPassword = true };
         if (first.ShowDialog() != true) return;
         var second = new SecretPromptWindow("Confirm export password", "Enter your export password again.") { Owner = this };
         if (second.ShowDialog() != true) return;

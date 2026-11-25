@@ -63,8 +63,9 @@ public partial class SetupWindow : Window
             string.Equals(password, confirm, StringComparison.Ordinal));
         if (!assessment.Acceptable)
         {
-            MessageBox.Show(this, assessment.Hint,
+            MessageBox.Show(this, PasswordStrength.RejectionNotice(assessment),
                 "Choose a stronger master password", MessageBoxButton.OK, MessageBoxImage.Warning);
+            PasswordBox.Focus(); // Keep the wizard and both password fields available for correction.
             return;
         }
         if (password != confirm)

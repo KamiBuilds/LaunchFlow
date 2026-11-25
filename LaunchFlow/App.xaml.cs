@@ -293,11 +293,12 @@ public partial class App : Application
         var master = new SecretPromptWindow("New vault master password",
             $"Choose a new master password (at least {PasswordStrength.MinimumLength} characters). " +
             "This unlocks LaunchFlow on this PC after the broken vault is moved aside.");
+        master.RequireStrongPassword = true;
         if (master.ShowDialog() != true) return false;
         if (!PasswordStrength.MeetsMinimum(master.Secret))
         {
-            MessageBox.Show(PasswordStrength.Evaluate(master.Secret).Hint,
-                "Password too weak", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(PasswordStrength.RejectionNotice(PasswordStrength.Evaluate(master.Secret)),
+                "Choose a stronger password", MessageBoxButton.OK, MessageBoxImage.Warning);
             return false;
         }
         var confirm = new SecretPromptWindow("Confirm new master password",
@@ -531,7 +532,7 @@ public partial class App : Application
             {
                 if (!TryCreateAndVerifyVault(db, password, settings))
                 {
-                    MessageBox.Show(PasswordStrength.Evaluate(password).Hint,
+                    MessageBox.Show(PasswordStrength.RejectionNotice(PasswordStrength.Evaluate(password)),
                         "Choose a stronger master password", MessageBoxButton.OK, MessageBoxImage.Warning);
                     continue;
                 }

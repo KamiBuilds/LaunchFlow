@@ -37,8 +37,22 @@ try
             Require(color != System.Windows.Media.Color.FromRgb(0x6E, 0xE7, 0xD7), "Rejected input was presented in the accepted strength color.");
             if (assessment.Label == "Too short") Require(color == System.Windows.Media.Color.FromRgb(0xF8, 0x71, 0x71), "Short-input color was not a refusal.");
         }
+        System.Windows.MessageBox.Reset();
         window.SubmitForTest();
         Require((window.DialogResult == true) == assessment.Acceptable, "Actual setup admission disagreement.");
+        if (!assessment.Acceptable)
+        {
+            Require(System.Windows.MessageBox.Count == 1 &&
+                System.Windows.MessageBox.LastTitle == "Choose a stronger master password" &&
+                System.Windows.MessageBox.LastMessage?.Contains(assessment.Hint) == true &&
+                System.Windows.MessageBox.LastMessage.Contains("stronger") &&
+                window.PasswordBox.FocusCount > 0 &&
+                window.PasswordBox.Password == (value ?? "") &&
+                window.DialogResult is null && window.ChosenPassword == "",
+                "Rejected setup password did not show actionable modal advice and stay correctable.");
+        }
+        else Require(System.Windows.MessageBox.Count == 0,
+            "Accepted setup password unexpectedly showed a weakness popup.");
         if (assessment.Acceptable)
             Require(window.ChosenPassword == value && window.PasswordBox.Password == "" && window.ConfirmBox.Password == "", "Snapshot changed or controls retained.");
     }
@@ -55,6 +69,40 @@ try
         PasswordStrength.Evaluate("Abcdefgh12!?").Acceptable,
         "Healthy 12-character password was rejected.");
     Console.WriteLine("PASS explicit weak_password_denial_and_accepted_creation_boundary");
+
+    // The shared NEW-password popup must be shown BEFORE the prompt closes,
+    // with guidance rather than a silent refusal. Existing-unlock prompts are
+    // deliberately NOT strength-gated, for backwards compatibility.
+    var newPasswordPrompt = new SecretPromptWindow("New master password", "Choose one")
+        { RequireStrongPassword = true };
+    newPasswordPrompt.SecretBox.Password = "welkom010203";
+    System.Windows.MessageBox.Reset();
+    newPasswordPrompt.SubmitForTest();
+    Require(newPasswordPrompt.DialogResult is null &&
+        newPasswordPrompt.Secret == "" &&
+        newPasswordPrompt.SecretBox.Password == "welkom010203" &&
+        newPasswordPrompt.SecretBox.FocusCount > 0 &&
+        System.Windows.MessageBox.Count == 1 &&
+        System.Windows.MessageBox.LastTitle == "Choose a stronger password" &&
+        System.Windows.MessageBox.LastMessage?.Contains("predictable") == true,
+        "Weak new-password prompt did not display guidance before admission.");
+    newPasswordPrompt.SecretBox.Password = "Abcdefgh12!?";
+    System.Windows.MessageBox.Reset();
+    newPasswordPrompt.SubmitForTest();
+    Require(newPasswordPrompt.DialogResult == true &&
+        newPasswordPrompt.Secret == "Abcdefgh12!?" &&
+        newPasswordPrompt.SecretBox.Password == "" &&
+        System.Windows.MessageBox.Count == 0,
+        "Corrected new-password prompt was not admitted and cleared.");
+    var existingPasswordPrompt = new SecretPromptWindow("Unlock existing vault", "Existing password");
+    existingPasswordPrompt.SecretBox.Password = "welkom010203";
+    System.Windows.MessageBox.Reset();
+    existingPasswordPrompt.SubmitForTest();
+    Require(existingPasswordPrompt.DialogResult == true &&
+        existingPasswordPrompt.Secret == "welkom010203" &&
+        System.Windows.MessageBox.Count == 0,
+        "Existing vault unlock was incorrectly strength-gated.");
+    Console.WriteLine("PASS new_password_popups_and_existing_password_compatibility");
     var random = new Random(71023);
     for (var n = 0; n < 2000; n++)
     {
