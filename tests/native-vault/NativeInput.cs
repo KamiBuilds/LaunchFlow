@@ -90,6 +90,17 @@ namespace NativeUiDriver {
                 uint owner;
                 GetWindowThreadProcessId(window, out owner);
                 if (owner == (uint)process && IsWindowVisible(window)) {
+                    // EnumWindows also reports WPF tooltip, popup and menu HWNDs.
+                    // They can be owned and visible for the entire hover interval,
+                    // but are not modal dialogs. Never let them masquerade as an
+                    // unexpected password/setup window.
+                    try {
+                        AutomationElement element = AutomationElement.FromHandle(window);
+                        if (element != null && element.Current.ControlType != ControlType.Window)
+                            return true;
+                    } catch (ElementNotAvailableException) {
+                        return true; // Transient WPF HWND destroyed during enumeration.
+                    }
                     StringBuilder caption = new StringBuilder(256);
                     GetWindowText(window, caption, caption.Capacity);
                     windows.Add(new WindowRef {
