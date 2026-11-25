@@ -531,6 +531,15 @@ public sealed partial class VaultDatabase
         catch (DirectoryNotFoundException) { return false; }
     }
 
+    /// <summary>
+    /// Preserved interrupted-creation material is never silently deleted or
+    /// treated as an empty first run. Used by the startup recovery prompt.
+    /// </summary>
+    internal bool HasRetainedCreationStage()
+    {
+        lock (_gate) return HasCreationArtifacts();
+    }
+
     private bool HasCreationArtifacts()
     {
         if (!CreationPathExists(DataDirectory)) return false;

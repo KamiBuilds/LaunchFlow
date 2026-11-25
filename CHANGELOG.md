@@ -1,3 +1,22 @@
+# v0.8.7 — Vault and native test stabilization (unreleased)
+
+- Integrated the independent first-run staging and cold-unlock safeguards with a single new-password acceptance policy for setup, rotation and new portable backups.
+- Reject short, whitespace-only, repeated and common word-plus-number passwords; preserve decrypt/unlock compatibility for existing vaults and exports.
+- Preserve interrupted creation directories and orphaned SQLite companion files instead of treating them as a new empty vault.
+- Retain the paced Unicode keyboard input, wrong-password retry and window-classification repairs from the v0.8.6 native branch.
+- Fixed Windows PowerShell 5.1 package ZIP entry separators and added/maintained native and portable regression coverage.
+- Only exact-SHA CI and real Windows installed-product acceptance can authorize a release.
+
+# v0.8.5 — Vault reliability integration (unreleased)
+
+- Bring first-run encrypted staging, no-clobber publication, diagnostics and recovery from the reliability candidate together with coherent new-password acceptance and export password rules.
+- Display green only when the same validator that creates the vault would accept the input. Reject short, whitespace-only, simple repeated and common word + numeric passwords (including test01020345 / welkom010203) for NEW master/export passwords.
+- Preserve all old vault and backup unlock/decryption, format/KDF parameters and user data without revalidation on unlock.
+- Explicitly disclose a retained interrupted creation stage instead of routing it through a broken live-vault recovery operation or silently treating it as a clean install.
+- Use a unique 0.8.5 version across application, setup and safe source/portable ZIP.
+- Address Windows PowerShell 5.1 source ZIP entry-name parity and native ledger serialization. Full same-commit Windows native acceptance must pass before release.
+- Repo branch clean-up is separate from this commit and must not alter protected refs or discard unmerged work.
+
 # v0.8.4 — First-run vault reliability candidate
 
 - Enforce one shared password eligibility result so setup cannot approve input rejected by storage; keep valid-password representation and existing minimum rules unchanged.
