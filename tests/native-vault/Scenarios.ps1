@@ -37,6 +37,14 @@ function Save-State { Write-Json (Join-Path $ResultRoot 'private/record.json') $
 function Phase([string]$Name) {$script:Report.phase=$Name;Save-State}
 function Mark([string]$Name) {$script:Report.milestones.$Name=$true;Save-State}
 function App-Fail([string]$Reason) {$script:Report.category='Application';$script:Report.reason=$Reason;throw $Reason}
+function Safe-WindowKind($Window) {
+    # Classifiers are source-defined. Never show raw window text or secret values.
+    $known=@('Setup','Unlock','Main','StartupError','DependencyError',
+        'StartupRegistrationWarning','WeakInput','SetupInputRejected',
+        'AuthenticationRejected','Recovery','VaultUnchanged','Other')
+    $kind=if([string]$Window.Kind -cin $known){[string]$Window.Kind}else{'Other'}
+    return $kind
+}
 function Check-App {
     if($script:App.HasExited){App-Fail 'ApplicationExited'}
     $identity=$script:Ledger|Where-Object {$_.pid -eq $script:App.Id}|Select-Object -Last 1
@@ -49,9 +57,15 @@ function Wait-Window([string]$Kind,[string[]]$Allowed=@(),[int]$Seconds=60) {
         $windows=@(Windows)
         foreach($w in $windows) {
             if($w.Kind -cin @('StartupError','DependencyError')){App-Fail 'ApplicationError'}
-            if($w.Kind -ceq 'Main' -and $Kind -cne 'Main'){App-Fail $(if($script:Report.phase -ceq 'ShortCorrection'){'ShortAccepted'}elseif($script:Report.phase -ceq 'WrongRefusal'){'WrongAccepted'}else{'UnexpectedWindow'})}
+            if($w.Kind -ceq 'Main' -and $Kind -cne 'Main'){
+                Write-Host ('native-window: phase='+$script:Report.phase+' expected='+$Kind+' actual=Main')
+                App-Fail $(if($script:Report.phase -ceq 'ShortCorrection'){'ShortAccepted'}elseif($script:Report.phase -ceq 'WrongRefusal'){'WrongAccepted'}else{'UnexpectedWindow'})
+            }
             if($w.Kind -ceq 'StartupRegistrationWarning'){App-Fail 'ApplicationError'}
-            if($w.Kind -cne $Kind -and $w.Kind -cnotin $Allowed -and ($w.Kind -cne 'Other' -or $w.Owned)){App-Fail 'UnexpectedWindow'}
+            if($w.Kind -cne $Kind -and $w.Kind -cnotin $Allowed -and ($w.Kind -cne 'Other' -or $w.Owned)){
+                Write-Host ('native-window: phase='+$script:Report.phase+' expected='+$Kind+' actual='+(Safe-WindowKind $w)+' owned='+[bool]$w.Owned)
+                App-Fail 'UnexpectedWindow'
+            }
         }
         $found=@($windows|Where-Object {$_.Kind -ceq $Kind})
         if($found.Count -gt 1){throw 'WindowIdentityLost'}
