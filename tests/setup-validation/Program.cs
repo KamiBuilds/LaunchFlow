@@ -45,7 +45,7 @@ try
             Require(System.Windows.MessageBox.Count == 1 &&
                 System.Windows.MessageBox.LastTitle == "Choose a stronger master password" &&
                 System.Windows.MessageBox.LastMessage?.Contains(assessment.Hint) == true &&
-                System.Windows.MessageBox.LastMessage.Contains("stronger") &&
+                System.Windows.MessageBox.LastMessage?.Contains("stronger") == true &&
                 window.PasswordBox.FocusCount > 0 &&
                 window.PasswordBox.Password == (value ?? "") &&
                 window.DialogResult is null && window.ChosenPassword == "",
