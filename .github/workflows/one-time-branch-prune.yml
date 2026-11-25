@@ -9,7 +9,7 @@ permissions:
   contents: write
 jobs:
   prune:
-    if: github.event.head_commit.message == 'maintenance: stage one-time pruning of 45 obsolete branches'
+    if: "github.event.head_commit.message == 'maintenance: stage one-time pruning of 45 obsolete branches'"
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
