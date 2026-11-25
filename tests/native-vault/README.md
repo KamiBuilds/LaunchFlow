@@ -100,3 +100,31 @@ Missing native execution remains an unverified platform gate, never a pass.
 
 Hosted Windows is not the unavailable affected VMware environment. Passing these
 checks alone does not prove the reported valid-password incident is resolved.
+
+## 25 November 2026: Unicode and wrong-password native fixes
+
+The installed-product `valid_unicode` case keeps real SendInput Unicode
+entry (including non-Latin and combining code units). The input helper now
+dispatches paced UTF-16 key pairs instead of one large input burst.
+No clipboard, accessibility-password readback or fallback is substituted.
+
+The `owned_wrong` case asserts the application rejects the wrong password
+and then binds to the newly created unlock dialog. The old dialog correctly
+closed after handing the wrong password to the application; matching its old
+window handle was an invalid harness assumption.
+
+EnumWindows includes non-modal WPF tooltip/popup HWNDs. The harness checks
+UI Automation control type to ignore non-window surfaces, and while waiting
+for Main it uses the repeated visible/enabled `MainTabs` readiness gate
+rather than treating incidental popup surfaces as modal errors. Recognized
+startup failures and unexpected password/confirmation dialogs still fail.
+
+Both cases passed the focused Windows replay on exact source-linked harness
+commit `15e4d656b2d59456d84f28751d82a98bbfc50595` against the previously
+built application payload `cc1135cdf5046a2b24237fbcdc4f579155af0eeb`
+(GitHub Actions run 45595780977). This proves those native harness changes
+against those application binaries, **not** a final exact-current-source
+installer build or an independently verified affected VMware machine.
+The one-time replay workflow was removed to avoid depending on an expiring
+artifact. The permanent vault-reliability acceptance workflow must pass
+on the final integrated commit before release.
