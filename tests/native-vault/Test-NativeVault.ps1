@@ -138,7 +138,7 @@ try {
         $safe=Project-Report $script:Report
         Write-Json (Join-Path $ResultRoot 'public/result.json') $safe
         $code=if($safe.accepted){0}else{1}
-        Write-Host ('native-vault: '+$(if($safe.accepted){'PASS'}else{'FAIL'})+' '+$Case+' '+$safe.category+' '+$safe.reason)
+        Write-Host ('native-vault: '+$(if($safe.accepted){'PASS'}else{'FAIL'})+' '+$Case+' phase='+$safe.phase+' '+$safe.category+' '+$safe.reason)
     } elseif($Role -ceq 'Supervisor') {Invoke-Supervisor;$code=0}
     elseif($Role -ceq 'Cleanup'){Invoke-CleanupHost;$code=0}
     else {
