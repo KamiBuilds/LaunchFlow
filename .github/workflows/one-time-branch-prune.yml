@@ -1,0 +1,68 @@
+name: One-time LaunchFlow obsolete branch cleanup
+on:
+  push:
+    branches:
+      - fix/v0.8.6-native-wrong-unicode-20261125
+    paths:
+      - .github/workflows/one-time-branch-prune.yml
+permissions:
+  contents: write
+jobs:
+  prune:
+    if: github.event.head_commit.message == 'maintenance: stage one-time pruning of 45 obsolete branches'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Check out exact cleanup commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify exact branch snapshot and delete only pinned obsolete refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EXACT_HEAD: ${{ github.sha }}
+          EXACT_REF: ${{ github.ref }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess, sys
+          from pathlib import Path
+          data=json.loads(Path("docs/maintenance/branch-prune-20261125.json").read_text(encoding="utf-8"))
+          assert os.environ["REPO"]=="KamiBuilds/LaunchFlow"==data["repository"]
+          assert os.environ["EXACT_REF"]=="refs/heads/fix/v0.8.6-native-wrong-unicode-20261125"
+          keep=data["retained"]
+          delete=data["deleted"]
+          assert len(keep)==6 and len(delete)==45
+          required={"main","fix/v0.8.6-native-wrong-unicode-20261125",
+              "fix/v0.8.3-vault-first-run-reliability-20261123",
+              "fix/v0.8.5-vault-reliability-integration-20261124","0.8.4","0.8.3"}
+          assert {x["name"] for x in keep}==required
+          expected={x["name"]:x["sha"] for x in keep+delete}
+          assert len(expected)==51
+          assert all(len(x)==40 and all(c in "0123456789abcdef" for c in x)
+                     for x in expected.values())
+          expected["fix/v0.8.6-native-wrong-unicode-20261125"]=os.environ["EXACT_HEAD"]
+          actual=json.loads(subprocess.check_output(["gh","api",
+              "repos/"+os.environ["REPO"]+"/branches?per_page=100"],text=True))
+          heads={x["name"]:x["commit"]["sha"] for x in actual}
+          if heads!=expected:
+              print("ABORT: GitHub branch names or head SHAs changed; no deletions performed.")
+              sys.exit(3)
+          print("Verified 51 pinned branch references; keeping main plus five development branches.")
+          for item in delete:
+              branch=item["name"]
+              # Never delete protected refs, even if a future manifest edit tried.
+              if branch in required: raise RuntimeError("Refused protected branch deletion")
+              subprocess.run(["gh","api","--method","DELETE",
+                  "repos/"+os.environ["REPO"]+"/git/refs/heads/"+branch],
+                  stdout=subprocess.DEVNULL,check=True)
+              print("Deleted "+branch)
+          final=json.loads(subprocess.check_output(["gh","api",
+              "repos/"+os.environ["REPO"]+"/branches?per_page=100"],text=True))
+          after={x["name"] for x in final}
+          if after!=required:
+              raise RuntimeError("Unexpected remaining branch set: "+repr(sorted(after)))
+          print("PASS: exactly six branches remain: main + latest five.")
+          PY

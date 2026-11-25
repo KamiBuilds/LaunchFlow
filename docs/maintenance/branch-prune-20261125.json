@@ -1,0 +1,213 @@
+{
+  "repository": "KamiBuilds/LaunchFlow",
+  "captured": "2026-11-25",
+  "note": "Recovery manifest of exact pre-cleanup branch names and head SHAs. To restore an old branch, create the ref at its SHA if the object remains in GitHub.",
+  "retained": [
+    {
+      "name": "0.8.3",
+      "sha": "9b4a302c5cb3f413daadfe7eb728b26197c98723"
+    },
+    {
+      "name": "0.8.4",
+      "sha": "375d6bedb3e7a81d089c8b4b65e92b79e1709041"
+    },
+    {
+      "name": "fix/v0.8.3-vault-first-run-reliability-20261123",
+      "sha": "cc1135cdf5046a2b24237fbcdc4f579155af0eeb"
+    },
+    {
+      "name": "fix/v0.8.5-vault-reliability-integration-20261124",
+      "sha": "c3a37cd09b15e16b8fbe7ed138df7a541bd58c3f"
+    },
+    {
+      "name": "fix/v0.8.6-native-wrong-unicode-20261125",
+      "sha": "73d217ed696ad615806ba2e6f5f53885d69b4623"
+    },
+    {
+      "name": "main",
+      "sha": "d5f7e692ac064ab971d219b0d4c221d6e2cb47c6"
+    }
+  ],
+  "deleted": [
+    {
+      "name": "cursor",
+      "sha": "ed08d5de74ed7966e03d412e491e9598fb8adb1c"
+    },
+    {
+      "name": "cursor-v0.7.51",
+      "sha": "ed08d5de74ed7966e03d412e491e9598fb8adb1c"
+    },
+    {
+      "name": "cursor-v0.7.52-save-fix",
+      "sha": "ed08d5de74ed7966e03d412e491e9598fb8adb1c"
+    },
+    {
+      "name": "cursor-v0.7.53-login-hardening",
+      "sha": "ed08d5de74ed7966e03d412e491e9598fb8adb1c"
+    },
+    {
+      "name": "cursor-v0.7.53-two-blockers-repair",
+      "sha": "ed08d5de74ed7966e03d412e491e9598fb8adb1c"
+    },
+    {
+      "name": "feature/v0.7.62-consent-focus-toggle-autosave-20261110",
+      "sha": "b2365539bfc19a731edd7d9a3acf45244dcf1904"
+    },
+    {
+      "name": "fix/v0.7.63-website-name-placeholder-20261110",
+      "sha": "4eeef3762d9a5e7b5e661a96259fbf9a0e26d871"
+    },
+    {
+      "name": "fix/v0.7.77-keepass-cache-retry-20261112",
+      "sha": "6cb10d4230efc96b12f274ade59869aaea4e6cf3"
+    },
+    {
+      "name": "fix/v0.8.2-independent-first-run-vault-20261117",
+      "sha": "686cad46eb088fd8eb5be9fbd26b0c3dba5463b1"
+    },
+    {
+      "name": "import/v0.7.75-upload-20261111",
+      "sha": "abcd04c86b0f5e76bd9a8326f0606cc9949d8db6"
+    },
+    {
+      "name": "import/v0.7.96-full-source-20261115",
+      "sha": "084d03f408d7fbed9be677c389ab45d6d590c652"
+    },
+    {
+      "name": "import/v0.7.96-source-staging-20261113",
+      "sha": "8c9e86979476214f0cb416f5f2f7aed5b9293829"
+    },
+    {
+      "name": "import/v0.8.0-full-source-20261115",
+      "sha": "45db3ba84c0a72b16bb494be717ffafa181254cb"
+    },
+    {
+      "name": "refactor/architecture-readability-20261106",
+      "sha": "93b49482b6ea197c810e27def9fe6d9b080ec0aa"
+    },
+    {
+      "name": "refactor/core-structure-20261106",
+      "sha": "ed08d5de74ed7966e03d412e491e9598fb8adb1c"
+    },
+    {
+      "name": "repair/explicit-next-stage-20261109",
+      "sha": "d8efcabbb7ec52cd5375579863e57df8c953d31f"
+    },
+    {
+      "name": "repair/login-vault-ownership-20261109",
+      "sha": "ed08d5de74ed7966e03d412e491e9598fb8adb1c"
+    },
+    {
+      "name": "repair/staged-login-ownership-20261109",
+      "sha": "672c4028cf0fb6ddf9490e28419415a8af83afcd"
+    },
+    {
+      "name": "repair/thousandeyes-autologin-and-dialog-20261109",
+      "sha": "c99bb3e667c4c56248fbd22d8ac8a00521af049b"
+    },
+    {
+      "name": "repair/v0.7.53-complete-source-20261109",
+      "sha": "0ab4e99b86b801ab3dcd7dde506c2435988cdb20"
+    },
+    {
+      "name": "repair/v0.7.59-browser-readiness-20261110",
+      "sha": "c94a34f62fda97ef63335bbce696157cbe295f1a"
+    },
+    {
+      "name": "repair/v0.7.60-fast-safe-exit-20261110",
+      "sha": "535297b4a54a95fe31df464b198168209f5e78ce"
+    },
+    {
+      "name": "repair/v0.7.61-p1-ci-gates-clean-installer-20261110",
+      "sha": "83bb18a6a9012746074f069236e4825b0a29afb6"
+    },
+    {
+      "name": "repair/v0.7.61-p1-stabilization-20261110",
+      "sha": "1aceffc2e274b793a7829d26ae13f3ee62a83d2c"
+    },
+    {
+      "name": "repair/v0.7.62-password-prompt-autosave-20261110",
+      "sha": "c833858319f870b4de7038ecdcc629145b33f396"
+    },
+    {
+      "name": "repair/v0.7.64-npm-login-basic-ui-20261110",
+      "sha": "432cf176e3688baea0c92b60305d845ca39ebc59"
+    },
+    {
+      "name": "repair/v0.7.72-auto03-deterministic-staged-login-20261111",
+      "sha": "e3fab2b9167be601faa3f383ecdfdfd35a577f5e"
+    },
+    {
+      "name": "repair/v0.7.72-source-gate-portable-backup-20261111",
+      "sha": "e77cecce64db6bd8832479be998f028222391858"
+    },
+    {
+      "name": "repair/v0.7.73-password-boundary-installer-fixtures-20261111",
+      "sha": "897825ff5f10a9181c9979465c4a5920aec2ecce"
+    },
+    {
+      "name": "repair/v0.7.74-incremental-diagnostics-consent-flows-20261111",
+      "sha": "df6b6a006511996ac0aa35b5df55380159d863e2"
+    },
+    {
+      "name": "repair/v0.7.76-remaining-boundaries-20261112",
+      "sha": "0c66e6f19d7f84cb5af725285556ad9963eb4ad0"
+    },
+    {
+      "name": "repair/v0.7.77-five-issues-20261112",
+      "sha": "429b4c9c0233770681722cf3f348f49c095b2198"
+    },
+    {
+      "name": "repair/v0.7.78-run-token-profile-safety-20261113",
+      "sha": "ba16e21cab1827b62334bf4504ba9a2acc4335d0"
+    },
+    {
+      "name": "repair/v0.7.79-backup-integrity-20261113",
+      "sha": "6089f828c83aa888cea5fc567abbda1a2c93c415"
+    },
+    {
+      "name": "repair/v0.7.80-vault-tray-import-safety-20261113",
+      "sha": "5ab4e59311a20839e18b7f8e56e2a6e3308db583"
+    },
+    {
+      "name": "repair/v0.7.81-credential-session-backup-hardening-20261113",
+      "sha": "eef832171b501530e286b0bc5f4ba82bef7cc329"
+    },
+    {
+      "name": "repair/v0.7.82-profile-restore-cleanup-20261113",
+      "sha": "aee7e0bce7409335d5570e0266a651307c73bd67"
+    },
+    {
+      "name": "repair/v0.8.1-fresh-first-launch-smoke-20261117",
+      "sha": "d55e68c2ec3ad18f132d4f14a613204c768e8864"
+    },
+    {
+      "name": "repair/v0.8.1-review-080-p2-20261116",
+      "sha": "4bae6e18791c652923f7aa728e252657f1c3ccbb"
+    },
+    {
+      "name": "repair/vault-backup-integrity-20261105",
+      "sha": "52f0978b0954937a61674105c01b10e57d80f67c"
+    },
+    {
+      "name": "review/v0.7.58-browser-discovery-20261109",
+      "sha": "b685c12dea22cdde3fc7bc618ddfcbbdac9edd1f"
+    },
+    {
+      "name": "review/v0.7.71-full-source-20261110",
+      "sha": "13c15f42e2ef4a7ec23067084f8eab48d9dd1a4f"
+    },
+    {
+      "name": "review/v0.7.97-failure-audit-20261115",
+      "sha": "b92719724c575457a2db554bea40d0b8cd8da3e7"
+    },
+    {
+      "name": "test/v0.7.54-thousandeyes-upgrade-20261109",
+      "sha": "7a360417d30d20dc3256c39e8081eb844d0c37d2"
+    },
+    {
+      "name": "validated/v0.7.46-three-checks-20261103",
+      "sha": "dc5cdfe600ecd33d2fbb6f3f74e55e8b180b5f3d"
+    }
+  ]
+}
