@@ -132,11 +132,16 @@ function Full-Exit([string]$Milestone) {
 }
 function Invoke-Scenario {
     Assert-WindowsHost
-    Import-Native
-    if([NativeUiDriver.Native]::InputSize -ne 40 -or -not [NativeUiDriver.Native]::InputDesktopAvailable()){throw 'DesktopUnavailable'}
+    # Assign specific fixed reason codes; never emit compiler source, raw exception
+    # messages, window titles or any captured password values in CI.
+    try { Import-Native } catch { throw 'NativeImportFailed' }
+    if([NativeUiDriver.Native]::InputSize -ne 40){throw 'NativeInputLayoutInvalid'}
+    if(-not [NativeUiDriver.Native]::InputDesktopAvailable()){throw 'DesktopUnavailable'}
     Mark 'Host'
     if($Case -ceq 'preflight') {
-        [NativeUiDriver.Native]::ClipboardPreflight();Mark 'ClipboardPreflight';return
+        try { [NativeUiDriver.Native]::ClipboardPreflight() }
+        catch { throw 'NativeClipboardPreflightFailed' }
+        Mark 'ClipboardPreflight';return
     }
     Phase 'InstallBinding'
     $package=Read-Package $PackageRoot $SourceSha;$script:Report.binding=$package.binding;Save-State
