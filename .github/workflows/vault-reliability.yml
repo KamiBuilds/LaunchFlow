@@ -13,7 +13,9 @@ permissions:
   contents: read
 concurrency:
   group: vault-reliability-${{ github.ref }}
-  cancel-in-progress: false
+  # Superseded installer candidates must not hold Windows runners while a
+  # newer exact-commit repair is awaiting acceptance.
+  cancel-in-progress: true
 jobs:
   preflight:
     if: github.ref == 'refs/heads/fix/v0.8.3-vault-first-run-reliability-20261123' || github.ref == 'refs/heads/fix/v0.8.6-native-wrong-unicode-20261125' || github.ref == 'refs/heads/fix/v0.8.7-vault-native-stabilization-20261125'
