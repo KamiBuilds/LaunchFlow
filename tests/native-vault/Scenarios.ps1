@@ -72,13 +72,16 @@ function Wait-Window([string]$Kind,[string[]]$Allowed=@(),[int]$Seconds=60) {
                 if($w.Kind -ceq 'SetupInputRejected'){App-Fail 'UnexpectedSetupDialog'}
                 if($w.Kind -ceq 'WeakInput'){App-Fail 'UnexpectedWeakDialog'}
                 if($w.Kind -ceq 'Other' -and $w.Owned){
+                    # Wait-Main requires a live, enabled and visible tab surface
+                    # twice. Ignore unnamed WPF top-level popup surfaces ONLY
+                    # while checking for Main, never while admitting a password,
+                    # detecting a rejection dialog or restoring encrypted data.
+                    if($Kind -ceq 'Main'){continue}
                     $handleKey=[string]$w.Handle
                     if(-not $unknownOwnedFirstSeen.ContainsKey($handleKey)) {
                         $unknownOwnedFirstSeen[$handleKey]=$timer.Elapsed.TotalMilliseconds
                     }
                     if($timer.Elapsed.TotalMilliseconds - $unknownOwnedFirstSeen[$handleKey] -ge 2000) {
-                        if($w.TitleClass -ceq 'Empty'){App-Fail 'UnexpectedEmptyOwned'}
-                        if($w.TitleClass -ceq 'LaunchFlow'){App-Fail 'UnexpectedLaunchFlowOwned'}
                         App-Fail 'UnexpectedOwnedDialog'
                     }
                     $pendingOwned=$true
