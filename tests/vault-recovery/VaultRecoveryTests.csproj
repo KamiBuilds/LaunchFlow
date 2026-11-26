@@ -22,6 +22,7 @@
     <Compile Include="../../LaunchFlow/Domain/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
     <Compile Include="../../LaunchFlow/Services/Policy/EnterprisePolicy.cs" Link="Services/EnterprisePolicy.cs" />
     <Compile Include="../../LaunchFlow/Services/Vault/VaultDatabase.cs" Link="Services/VaultDatabase.cs" />
+    <Compile Include="../../LaunchFlow/Services/Vault/VaultDatabase.Inspection.cs" Link="Services/VaultDatabase.Inspection.cs" />
     <Compile Include="../../LaunchFlow/Services/Vault/VaultDatabase.Strict.cs" Link="Services/VaultDatabase.Strict.cs" />
     <Compile Include="../../LaunchFlow/Services/Vault/VaultDatabase.Upgrade.cs" Link="Services/VaultDatabase.Upgrade.cs" />
     <Compile Include="../../LaunchFlow/Services/Vault/VaultRecordCodec.cs" Link="Services/VaultRecordCodec.cs" />

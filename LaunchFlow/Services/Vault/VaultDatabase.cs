@@ -105,83 +105,16 @@ public sealed partial class VaultDatabase
         {
             try
             {
+                RequireOrdinaryInspectionParents(Path.GetFullPath(DatabasePath));
                 if (!CreationPathExists(DatabasePath))
                     return HasCreationArtifacts() || new[] { "-wal", "-shm", "-journal" }.Any(
                         suffix => CreationPathExists(DatabasePath + suffix))
                         ? VaultStorageState.IncompleteOrUnsupported : VaultStorageState.Absent;
                 if (Directory.Exists(DatabasePath)) return VaultStorageState.IncompleteOrUnsupported;
-                using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
-                {
-                    DataSource = DatabasePath,
-                    Mode = SqliteOpenMode.ReadOnly,
-                    Pooling = false
-                }.ToString());
-                connection.Open();
-
-                using (var integrity = connection.CreateCommand())
-                {
-                    integrity.CommandText = "PRAGMA quick_check(1);";
-                    if (!string.Equals(integrity.ExecuteScalar()?.ToString(), "ok",
-                            StringComparison.OrdinalIgnoreCase))
-                        return VaultStorageState.IncompleteOrUnsupported;
-                }
-
-                if (TableExists(connection, "secure_meta"))
-                    return InspectStrictStructure(connection);
-                if (TableExists(connection, "secure_objects") ||
-                    TableExists(connection, "secure_credentials"))
-                    return VaultStorageState.IncompleteOrUnsupported;
-
-                if (!HasColumns(connection, "vault_meta", "id", "salt", "verifier",
-                        "argon_memory_kb", "argon_iterations", "argon_lanes") ||
-                    !HasColumns(connection, "objects", "id", "sealed"))
-                    return VaultStorageState.IncompleteOrUnsupported;
-
-                var hasSchemaVersion = HasColumns(connection, "vault_meta", "schema_version");
-                var detectedSchema = 1;
-                using (var metadata = connection.CreateCommand())
-                {
-                    metadata.CommandText = hasSchemaVersion
-                        ? "SELECT salt, verifier, argon_memory_kb, argon_iterations, argon_lanes, " +
-                          "schema_version FROM vault_meta WHERE id=1;"
-                        : "SELECT salt, verifier, argon_memory_kb, argon_iterations, argon_lanes " +
-                          "FROM vault_meta WHERE id=1;";
-                    using var reader = metadata.ExecuteReader();
-                    if (!reader.Read() || reader.IsDBNull(0) || reader.IsDBNull(1))
-                        return VaultStorageState.IncompleteOrUnsupported;
-                    var salt = reader.GetFieldValue<byte[]>(0);
-                    var verifier = reader.GetFieldValue<byte[]>(1);
-                    var memory = reader.GetInt32(2);
-                    var passes = reader.GetInt32(3);
-                    var lanes = reader.GetInt32(4);
-                    detectedSchema = hasSchemaVersion ? reader.GetInt32(5) : 1;
-                    if (salt.Length != SaltSize ||
-                        verifier.Length < NonceSize + TagSize ||
-                        memory < 8 || memory > 1024 * 1024 ||
-                        passes < 1 || passes > 1000 || lanes < 1 || lanes > 64 ||
-                        detectedSchema < 1 || detectedSchema > SchemaVersion)
-                        return VaultStorageState.IncompleteOrUnsupported;
-                }
-
-                using var configuration = connection.CreateCommand();
-                configuration.CommandText = "SELECT sealed FROM objects WHERE id='config';";
-                var configBytes = configuration.ExecuteScalar() as byte[];
-                if (configBytes is null || configBytes.Length < NonceSize + TagSize)
-                    return VaultStorageState.IncompleteOrUnsupported;
-
-                // Older vaults may hold their credentials in objects instead of
-                // a dedicated table; the unlock path handles that migration.
-                if (HasColumns(connection, "credentials", "workflow_id", "sealed"))
-                {
-                    // The table exists with its expected shape; decryption is
-                    // deliberately deferred until the authorized unlock.
-                }
-                else if (detectedSchema >= 2 || TableExists(connection, "credentials"))
-                {
-                    return VaultStorageState.IncompleteOrUnsupported;
-                }
-
-                return VaultStorageState.LegacyUpgradeRequired;
+                using var snapshot = new InspectionSnapshot(DatabasePath);
+                var result = InspectOwnedStorage(snapshot.DatabasePath);
+                snapshot.VerifyUnchanged();
+                return result;
             }
             catch (Exception ex) when (ex is SqliteException or IOException or
                 UnauthorizedAccessException or InvalidOperationException or
@@ -190,6 +123,82 @@ public sealed partial class VaultDatabase
                 return VaultStorageState.IncompleteOrUnsupported;
             }
         }
+    }
+
+    private VaultStorageState InspectOwnedStorage(string databasePath)
+    {
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = databasePath,
+            Mode = SqliteOpenMode.ReadOnly,
+            Pooling = false
+        }.ToString());
+        connection.Open();
+
+        using (var integrity = connection.CreateCommand())
+        {
+            integrity.CommandText = "PRAGMA quick_check(1);";
+            if (!string.Equals(integrity.ExecuteScalar()?.ToString(), "ok",
+                    StringComparison.OrdinalIgnoreCase))
+                return VaultStorageState.IncompleteOrUnsupported;
+        }
+
+        if (TableExists(connection, "secure_meta"))
+            return InspectStrictStructure(connection);
+        if (TableExists(connection, "secure_objects") ||
+            TableExists(connection, "secure_credentials"))
+            return VaultStorageState.IncompleteOrUnsupported;
+
+        if (!HasColumns(connection, "vault_meta", "id", "salt", "verifier",
+                "argon_memory_kb", "argon_iterations", "argon_lanes") ||
+            !HasColumns(connection, "objects", "id", "sealed"))
+            return VaultStorageState.IncompleteOrUnsupported;
+
+        var hasSchemaVersion = HasColumns(connection, "vault_meta", "schema_version");
+        var detectedSchema = 1;
+        using (var metadata = connection.CreateCommand())
+        {
+            metadata.CommandText = hasSchemaVersion
+                ? "SELECT salt, verifier, argon_memory_kb, argon_iterations, argon_lanes, " +
+                  "schema_version FROM vault_meta WHERE id=1;"
+                : "SELECT salt, verifier, argon_memory_kb, argon_iterations, argon_lanes " +
+                  "FROM vault_meta WHERE id=1;";
+            using var reader = metadata.ExecuteReader();
+            if (!reader.Read() || reader.IsDBNull(0) || reader.IsDBNull(1))
+                return VaultStorageState.IncompleteOrUnsupported;
+            var salt = reader.GetFieldValue<byte[]>(0);
+            var verifier = reader.GetFieldValue<byte[]>(1);
+            var memory = reader.GetInt32(2);
+            var passes = reader.GetInt32(3);
+            var lanes = reader.GetInt32(4);
+            detectedSchema = hasSchemaVersion ? reader.GetInt32(5) : 1;
+            if (salt.Length != SaltSize ||
+                verifier.Length < NonceSize + TagSize ||
+                memory < 8 || memory > 1024 * 1024 ||
+                passes < 1 || passes > 1000 || lanes < 1 || lanes > 64 ||
+                detectedSchema < 1 || detectedSchema > SchemaVersion)
+                return VaultStorageState.IncompleteOrUnsupported;
+        }
+
+        using var configuration = connection.CreateCommand();
+        configuration.CommandText = "SELECT sealed FROM objects WHERE id='config';";
+        var configBytes = configuration.ExecuteScalar() as byte[];
+        if (configBytes is null || configBytes.Length < NonceSize + TagSize)
+            return VaultStorageState.IncompleteOrUnsupported;
+
+        // Older vaults may hold their credentials in objects instead of
+        // a dedicated table; the unlock path handles that migration.
+        if (HasColumns(connection, "credentials", "workflow_id", "sealed"))
+        {
+            // The table exists with its expected shape; decryption is
+            // deliberately deferred until the authorized unlock.
+        }
+        else if (detectedSchema >= 2 || TableExists(connection, "credentials"))
+        {
+            return VaultStorageState.IncompleteOrUnsupported;
+        }
+
+        return VaultStorageState.LegacyUpgradeRequired;
     }
 
     private static bool TableExists(SqliteConnection connection, string table)

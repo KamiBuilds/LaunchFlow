@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <VaultDatabaseSource Condition="'$(VaultDatabaseSource)' == ''">../../LaunchFlow/Services/Vault/VaultDatabase.cs</VaultDatabaseSource>
+    <VaultInspectionSource>$([System.IO.Path]::GetDirectoryName('$(VaultDatabaseSource)'))/VaultDatabase.Inspection.cs</VaultInspectionSource>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="LegacyCompatibilityProgram.cs" />
@@ -13,6 +14,7 @@
     <Compile Include="../../LaunchFlow/Services/Policy/EnterprisePolicy.cs" Link="EnterprisePolicy.cs" Condition="Exists('../../LaunchFlow/Services/Policy/EnterprisePolicy.cs')" />
     <Compile Include="../../LaunchFlow/Services/Diagnostics/CrashLog.cs" Link="CrashLog.cs" />
     <Compile Include="$(VaultDatabaseSource)" Link="VaultDatabase.cs" />
+    <Compile Include="$(VaultInspectionSource)" Link="VaultDatabase.Inspection.cs" Condition="Exists('$(VaultInspectionSource)')" />
     <Compile Include="../../LaunchFlow/Services/Vault/VaultDatabase.Strict.cs" Link="Services/VaultDatabase.Strict.cs" />
     <Compile Include="../../LaunchFlow/Services/Vault/VaultDatabase.Upgrade.cs" Link="Services/VaultDatabase.Upgrade.cs" />
     <Compile Include="../../LaunchFlow/Services/Vault/VaultRecordCodec.cs" Link="Services/VaultRecordCodec.cs" />

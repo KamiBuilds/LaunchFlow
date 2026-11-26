@@ -1,3 +1,9 @@
+# v0.8.9 — Non-mutating inspection repair candidate (unreleased)
+
+- Repair the confirmed cold-unlock inspection side effect without ignoring or deleting live SQLite companions. Existing vault formats, derivation parameters, ownership and recovery boundaries remain compatibility requirements.
+- Retain the strict whole-directory preservation checks. Acceptance requires newly executed regression tests, independent final-source review and the full exact-source Windows matrix; earlier 0.8.8 passes do not certify this candidate.
+- Remove the completed one-off observation workflow; retain its source-bound, secret-safe evidence outside the application tree. No merge or release is authorized.
+
 # v0.8.8 — Review repair candidate (unreleased)
 
 - Continue from the exact v0.8.7 review base `6258e8d45254216d26097ca5fe6866a06057b90e` without replacing its newer recovery or password-popup repairs.

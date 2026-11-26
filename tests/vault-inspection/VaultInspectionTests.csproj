@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <LaunchFlowSourceRoot Condition="'$(LaunchFlowSourceRoot)' == ''">$(MSBuildThisFileDirectory)../..</LaunchFlowSourceRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(LaunchFlowSourceRoot)/LaunchFlow/Domain/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
+    <Compile Include="$(LaunchFlowSourceRoot)/LaunchFlow/Services/Policy/EnterprisePolicy.cs" Link="Services/EnterprisePolicy.cs" />
+    <Compile Include="$(LaunchFlowSourceRoot)/LaunchFlow/Services/Vault/VaultDatabase.cs" Link="Services/VaultDatabase.cs" />
+    <Compile Include="$(LaunchFlowSourceRoot)/LaunchFlow/Services/Vault/VaultDatabase.Inspection.cs" Link="Services/VaultDatabase.Inspection.cs" Condition="Exists('$(LaunchFlowSourceRoot)/LaunchFlow/Services/Vault/VaultDatabase.Inspection.cs')" />
+    <Compile Include="$(LaunchFlowSourceRoot)/LaunchFlow/Services/Vault/VaultDatabase.Strict.cs" Link="Services/VaultDatabase.Strict.cs" />
+    <Compile Include="$(LaunchFlowSourceRoot)/LaunchFlow/Services/Vault/VaultDatabase.Upgrade.cs" Link="Services/VaultDatabase.Upgrade.cs" />
+    <Compile Include="$(LaunchFlowSourceRoot)/LaunchFlow/Services/Vault/VaultRecordCodec.cs" Link="Services/VaultRecordCodec.cs" />
+    <Compile Include="$(LaunchFlowSourceRoot)/LaunchFlow/Services/Persistence/ConfigStore.cs" Link="Services/ConfigStore.cs" />
+    <Compile Include="$(LaunchFlowSourceRoot)/LaunchFlow/Services/Vault/PasswordStrength.cs" Link="Services/PasswordStrength.cs" />
+    <Compile Include="$(LaunchFlowSourceRoot)/LaunchFlow/Services/Persistence/WorkflowConfigurationService.cs" Link="Services/WorkflowConfigurationService.cs" />
+    <Compile Include="$(LaunchFlowSourceRoot)/LaunchFlow/Services/Login/WebsiteLoginMode.cs" Link="Services/WebsiteLoginMode.cs" />
+    <Compile Include="$(LaunchFlowSourceRoot)/LaunchFlow/Services/Persistence/ConfigurationSaveTransaction.cs" Link="Services/ConfigurationSaveTransaction.cs" />
+    <Compile Include="$(LaunchFlowSourceRoot)/LaunchFlow/Services/Vault/CredentialVault.cs" Link="Services/CredentialVault.cs" />
+    <Compile Include="$(LaunchFlowSourceRoot)/LaunchFlow/Services/Vault/VaultRecoveryService.cs" Link="Services/VaultRecoveryService.cs" />
+    <Compile Include="$(LaunchFlowSourceRoot)/LaunchFlow/Services/Vault/VaultRestoreFileOperations.cs" Link="Services/VaultRestoreFileOperations.cs" />
+    <Compile Include="$(LaunchFlowSourceRoot)/LaunchFlow/Services/Diagnostics/CrashLog.cs" Link="Services/CrashLog.cs" />
+    <Compile Include="$(LaunchFlowSourceRoot)/LaunchFlow/Services/KeePass/KeePassXcService.cs" Link="Services/KeePassXcService.cs" />
+    <Compile Include="$(LaunchFlowSourceRoot)/LaunchFlow/Services/Transfer/PortableExport.cs" Link="Services/PortableExport.cs" />
+    <Compile Include="$(LaunchFlowSourceRoot)/LaunchFlow/Services/Transfer/PortableImportValidation.cs" Link="Services/PortableImportValidation.cs" />
+    <Compile Include="$(LaunchFlowSourceRoot)/LaunchFlow/Services/Transfer/SecureTransferService.cs" Link="Services/SecureTransferService.cs" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.31" />
+    <PackageReference Include="Konscious.Security.Cryptography.Argon2" Version="1.3.1" />
+  </ItemGroup>
+</Project>

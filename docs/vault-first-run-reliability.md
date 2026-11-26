@@ -3,11 +3,15 @@
 ## Candidate and compatibility
 
 This workstream started from `0.8.3` at
-`9b4a302c5cb3f413daadfe7eb728b26197c98723`. The current review baseline is
-`0.8.7` at `6258e8d45254216d26097ca5fe6866a06057b90e` on
-`fix/v0.8.7-vault-native-stabilization-20261125`.
-The follow-up candidate version is **0.8.8** on
+`9b4a302c5cb3f413daadfe7eb728b26197c98723`. The earlier six-case native
+`0.8.7` baseline was `6258e8d45254216d26097ca5fe6866a06057b90e` on
+`fix/v0.8.7-vault-native-stabilization-20261125`. The current repair input is
+`0.8.8` at `3595b1bf47b38b34aace63949e14ab9e9f518374`; its application source
+is unchanged from `5e8fb5fa1704e4e74c25798cf078c3c03a622679` and still has
+the confirmed cold-unlock inspection side effect.
+The follow-up candidate version is **0.8.9** on
 `fix/v0.8.8-reviewed-stabilization-20261125`, following the patch-version policy.
+The branch identifier is retained; application and installer versions advance together.
 It is not a stable release. No protected branch merge is authorized.
 
 The existing encrypted format, derivation parameters, legacy unlock/decryption
@@ -32,6 +36,25 @@ Policy inspection must not rewrite the password supplied to storage.
    the cause of the separately reported VMware incident.
 
 ## Requirements and evidence gates
+
+The additional 0.8.9 repair addresses a confirmed cold-unlock preservation
+failure in the 0.8.8 candidate. Native run `45833874179` accepted five of six
+installed cases. The blocked `owned_wrong` case stopped at `UnlockPendingExit`,
+before attempting its wrong-password controls. Observation-only run
+`45843564105` reused the exact installer from application source
+`5e8fb5fa1704e4e74c25798cf078c3c03a622679` and confirmed newly created WAL/SHM
+files, with the main database and other entries unchanged and zero owned
+processes remaining. A separate complete-DLL probe reproduced those companion
+creations through live read-only structural inspection. This is not evidence
+of password corruption, and a successful diagnostic collection is not product
+acceptance. The original strict preservation check remains authoritative.
+
+The repair must inspect a coherent owned detached copy, retain meaningful WAL
+content, preserve classifications and source bytes, fail closed on uncertain
+capture, and clean up only its own temporary files. It must not ignore or delete
+live companions, use immutable reads that disregard WAL, or alter encrypted
+formats and existing data. Final 0.8.9 integrated and native results are still
+pending; earlier results do not certify the changed application.
 
 - Shared assessment, UI admission and defensive storage validation agree.
 - Valid matching input keeps its exact snapshot; mismatch/cancel/rejection

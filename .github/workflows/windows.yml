@@ -62,6 +62,8 @@ jobs:
         run: dotnet run --project tests/setup-validation/SetupValidationTests.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
       - name: Verify isolated new-password creation, rotation, export and legacy decoding
         run: python3 tests/password-admission/run.py --dotnet dotnet
+      - name: Verify structural inspection preserves the live vault and companions
+        run: python3 tests/vault-inspection/run.py --dotnet dotnet
       - name: Verify startup exit, main-window refusal and cancellation ownership
         run: dotnet run --project tests/startup-exit/StartupExitTests.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
       - name: Verify source-linked independent service boundaries
@@ -185,6 +187,11 @@ jobs:
         run: |
           dotnet run --project ./tests/storage-integrity/StorageIntegrity.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
           if ($LASTEXITCODE -ne 0) { throw 'Windows encrypted SQLite/recovery regression tests failed' }
+      - name: Verify non-mutating inspection on native Windows
+        shell: pwsh
+        run: |
+          python3 tests/vault-inspection/run.py --dotnet dotnet
+          if ($LASTEXITCODE -ne 0) { throw 'Windows vault inspection preservation tests failed' }
       - name: Verify fresh owners have different master passwords on native Windows
         shell: pwsh
         run: |
