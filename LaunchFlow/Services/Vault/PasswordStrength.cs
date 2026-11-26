@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace LaunchFlow.Services;
 
 /// <summary>
@@ -19,24 +21,29 @@ public static class PasswordStrength
         if (password.All(char.IsWhiteSpace))
             return new(0, "Weak", "Use real words or other characters, not spaces alone.", false);
 
+        // Discount edge padding for assessment only; callers retain the exact input.
+        var analysis = password.Trim();
+        if (analysis.Length < MinimumLength)
+            return new(0, "Too short", $"Use at least {MinimumLength} characters excluding leading or trailing spaces.", false);
+
         // Long numeric strings and passwords padded with spaces can satisfy
         // naive length/character-class scores without being hard to guess.
-        if (password.All(char.IsDigit))
+        if (IsNumericOnly(analysis))
             return new(0, "Weak", "Avoid passwords made only of numbers.", false);
-        if (password.Count(c => !char.IsWhiteSpace(c)) < 6)
+        if (analysis.Count(c => !char.IsWhiteSpace(c)) < 6)
             return new(0, "Weak", "Use more meaningful characters instead of padding with spaces.", false);
 
-        if (IsSimpleRepeat(password))
+        if (IsSimpleRepeat(analysis))
             return new(0, "Weak", "Avoid repeating a single character or a two-character pattern.", false);
 
-        if (IsCommon(password))
+        if (IsCommon(analysis))
             return new(0, "Weak", "Avoid common passwords and predictable word-plus-number combinations.", false);
 
         var score = 2; // Length is an admission requirement, not an optional bonus.
-        if (password.Length >= 16) score += 1;
-        if (password.Any(char.IsLower) && password.Any(char.IsUpper)) score += 1;
-        if (password.Any(char.IsDigit)) score += 1;
-        if (password.Any(c => !char.IsLetterOrDigit(c))) score += 1;
+        if (analysis.Length >= 16) score += 1;
+        if (analysis.Any(char.IsLower) && analysis.Any(char.IsUpper)) score += 1;
+        if (analysis.Any(char.IsDigit)) score += 1;
+        if (analysis.Any(c => !char.IsLetterOrDigit(c))) score += 1;
 
         return score switch
         {
@@ -59,17 +66,32 @@ public static class PasswordStrength
         "That password isn't strong enough to protect your encrypted data.\n\n" +
         assessment.Hint + "\n\nChoose a stronger, less predictable password and try again.";
 
+    private static bool IsNumericOnly(string password)
+    {
+        var hasDigit = false;
+        foreach (var rune in password.EnumerateRunes())
+        {
+            if (Rune.IsWhiteSpace(rune)) continue;
+            if (!Rune.IsDigit(rune)) return false;
+            hasDigit = true;
+        }
+        return hasDigit;
+    }
+
     private static bool IsSimpleRepeat(string password)
     {
-        for (var period = 1; period <= 2; period++)
+        var runes = password.EnumerateRunes();
+        if (!runes.MoveNext()) return false;
+        var first = runes.Current;
+        if (!runes.MoveNext()) return true;
+        var second = runes.Current;
+        var expectFirst = true;
+        while (runes.MoveNext())
         {
-            if (password.Length % period != 0) continue;
-            var repeat = true;
-            for (var i = period; i < password.Length; i++)
-                if (password[i] != password[i % period]) { repeat = false; break; }
-            if (repeat) return true;
+            if (runes.Current != (expectFirst ? first : second)) return false;
+            expectFirst = !expectFirst;
         }
-        return false;
+        return true;
     }
 
     private static bool IsCommon(string password)
@@ -88,10 +110,19 @@ public static class PasswordStrength
         {
             if (!lower.StartsWith(prefix, StringComparison.Ordinal)) continue;
             var rest = lower.AsSpan(prefix.Length);
-            if (rest.IsEmpty || rest.ToString().All(c =>
-                    char.IsDigit(c) || c is '!' or '?' or '.' or '-' or '_'))
+            if (rest.IsEmpty || IsPredictableSuffix(rest))
                 return true;
         }
         return false;
+    }
+
+    private static bool IsPredictableSuffix(ReadOnlySpan<char> suffix)
+    {
+        foreach (var rune in suffix.EnumerateRunes())
+        {
+            if (Rune.IsDigit(rune)) continue;
+            if (!rune.IsAscii || "!?-._".IndexOf((char)rune.Value) < 0) return false;
+        }
+        return true;
     }
 }

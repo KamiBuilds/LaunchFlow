@@ -2,16 +2,20 @@
 
 ## Candidate and compatibility
 
-This workstream starts from `0.8.3` at
-`9b4a302c5cb3f413daadfe7eb728b26197c98723` on
-`fix/v0.8.3-vault-first-run-reliability-20261123`.
-The candidate version is **0.8.4**, following the repository's patch-version
-policy. It is not a stable release. No protected branch merge is authorized.
+This workstream started from `0.8.3` at
+`9b4a302c5cb3f413daadfe7eb728b26197c98723`. The current review baseline is
+`0.8.7` at `6258e8d45254216d26097ca5fe6866a06057b90e` on
+`fix/v0.8.7-vault-native-stabilization-20261125`.
+The follow-up candidate version is **0.8.8** on
+`fix/v0.8.8-reviewed-stabilization-20261125`, following the patch-version policy.
+It is not a stable release. No protected branch merge is authorized.
 
-The existing encrypted format, derivation parameters, minimum password rules,
-legacy compatibility, per-user data path, installer AppId and credential
+The existing encrypted format, derivation parameters, legacy unlock/decryption
+compatibility, per-user data path, installer AppId and credential
 boundaries remain unchanged. Existing databases must never be silently adopted,
 replaced or removed. New helpers remain under their existing UI/service owners.
+New-password eligibility is intentionally stricter than legacy decryption.
+Policy inspection must not rewrite the password supplied to storage.
 
 ## Reproduced defects
 
@@ -63,8 +67,40 @@ replaced or removed. New helpers remain under their existing UI/service owners.
 
 ## Verification status
 
-The integrated candidate builds without an external compiler adapter and with
-zero warnings/errors. Parent-run local verification completed successfully:
+### Latest verified baseline: 0.8.7
+
+Run `45619632703`, bound to `6258e8d45254216d26097ca5fe6866a06057b90e`,
+passed the native Windows mechanism preflight, original CMD/installer build and
+all six installed cases: `short_correction`, `valid_keyboard`, `valid_unicode`,
+`owned_wrong`, `recovery_cancel` and `valid_clipboard`. All six retained reports
+are accepted, bind the same installer/runtime manifest, reach final payload
+verification and report zero remaining owned processes. The installed payload
+manifest contains 439 files; the source snapshot contains 362 files.
+
+That run's installer SHA-256 is
+`74d57db0fdf158fa42096fee18bcf94c7bab93fb1185d74c78e7670a4f0a5bcc`.
+Other installers built from the same source are separate artifacts, not
+implicitly byte-identical tested installers.
+
+The earlier Unicode and wrong-password failures are not current baseline
+failures. These results do not certify the new `0.8.8` candidate. Its exact
+committed source must pass the candidate regression and native gates before
+acceptance; passing a predecessor is not sufficient.
+
+### 0.8.8 additional source contracts
+
+The 0.8.8 source also distinguishes a closed reset shell from a live unloaded
+cleanup owner, and checks cancellation before a new SQLite fallback picker for
+either confirmation answer. Its native harness gives pending exit phases a
+270-second supervisor budget covering both existing child waits, preserves an
+initially absent root, and classifies preservation mismatches separately from
+inspection or ownership failures. These changes still require their own final
+integrated and native evidence; the predecessor run above does not cover them.
+
+### Historical 0.8.4 local evidence
+
+The earlier integrated source built without an external compiler adapter and
+with zero warnings/errors. Its parent-run local verification completed:
 
 - All ten top-level gate commands exited zero, including nineteen maintained
   gates (policy 124 cases; storage integrity 49 cases).
@@ -89,9 +125,9 @@ The native harness corrections, including conservative spawn accounting,
 complete recovery-root preservation checks and creation-time Windows Job Object
 assignment, passed bounded independent source review. Its ten portable
 preparation checks passed; Windows-targeted C# compilation is compile-only.
-Actual Windows PowerShell 5.1 mechanism preflight, original CMD/installer build
-and all six installed-product scenarios remain unperformed. No candidate Windows
-installer/UI acceptance is claimed yet.
+Those original preparation results are historical. The later `0.8.7` Windows
+results above supersede the earlier statement that native execution had not
+been performed; they do not retroactively make older failed runs successful.
 
 ## Separate unresolved incident
 
@@ -101,9 +137,10 @@ an exact throw operation. Passing controls and the reproduced short-password
 failure do not prove its cause or resolution. This candidate must not be
 represented as fixing that incident without matching evidence.
 
-The previous native clipboard scenario was blocked by external driver ownership
-checks, not an observed application password rejection. Its failed result and
-its retry remain unverified app acceptance, not successful product tests.
+Earlier original-source clipboard attempts were blocked by external driver
+ownership checks, not an observed application password rejection. Later
+`0.8.7` clipboard acceptance is separately bound to its exact source and
+installer above; the older failed attempts remain retained as failures.
 
 ## Safety for contributors
 

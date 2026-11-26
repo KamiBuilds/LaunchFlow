@@ -1,3 +1,14 @@
+# v0.8.8 — Review repair candidate (unreleased)
+
+- Continue from the exact v0.8.7 review base `6258e8d45254216d26097ca5fe6866a06057b90e` without replacing its newer recovery or password-popup repairs.
+- Assess padding on a separate inspection-only view, reject incomplete repeating patterns, and classify numeric/common-prefix suffixes by Unicode scalar. Keep exact submitted strings for confirmation, KDF and storage; preserve old vault/backup decoding.
+- Route installer/build exits through startup cancellation or the real main window's existing durable-save/cleanup/refusal gate, including constructed-but-unloaded reset shells. Prevent stale consent and late main construction.
+- Distinguish already-closed reset shells from live cleanup owners, and check cancellation before opening a SQLite fallback picker after either confirmation answer.
+- Add mandatory no-instance/setup/unlock/recovery exit controls inside the existing six native cases. Keep exact synthetic root/WAL/SHM preservation, primary/helper exit codes, final payload checks and zero residual ownership.
+- Give pending-exit phases their full supervisor budget, preserve initially absent-root semantics, and distinguish application preservation mismatches from harness failures.
+- Retain 29 production-linked admission/storage/legacy regressions, including supplementary-scalar repetition, and the source-linked startup controls. Exact-SHA integrated and native Windows gates remain required before distribution; predecessor Windows results do not certify this candidate.
+- Preserve encrypted formats, KDF parameters, data paths and installer AppId. No protected-branch merge or release is authorized.
+
 # v0.8.7 — Actionable password rejection popup (development branch)
 
 - Show a clear, reason-specific warning when a newly created master or backup password is too weak; do not silently refuse or close the prompt.
@@ -5,7 +16,7 @@
 - Apply the same new-password popup to first-run setup, password changes, portable exports, and recovery setup. Existing-vault unlock, old-password confirmation, and backup import are NOT revalidated.
 - Add actual production-handler regression coverage for setup and standalone password prompts, including the warning, correction, and legacy unlock behavior.
 
-# v0.8.7 — Vault and native test stabilization (unreleased)
+## Vault and native test stabilization (unreleased)
 
 - Integrated the independent first-run staging and cold-unlock safeguards with a single new-password acceptance policy for setup, rotation and new portable backups.
 - Reject short, whitespace-only, repeated and common word-plus-number passwords; preserve decrypt/unlock compatibility for existing vaults and exports.

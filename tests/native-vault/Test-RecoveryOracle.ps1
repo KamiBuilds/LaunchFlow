@@ -10,7 +10,21 @@ function Assert-WindowsHost {}
 function Import-Native {}
 function Assert-FreshUser {}
 function Assert-Files {}
-function Start-Owned {return [pscustomobject]@{Id=1}}
+function Start-Owned([string]$Path,[string]$Arguments='') {
+    if($Arguments -ceq '--exit-for-install'){
+        Require ($script:Report.phase -ceq 'RecoveryPendingExit') 'RecoveryPendingExitPhaseMissing'
+        switch($script:Mutation){
+            'pending-wal' {[IO.File]::WriteAllText((Join-Path $script:DataRoot 'launchflow.db-wal'),'')}
+            'pending-shm' {[IO.File]::WriteAllText((Join-Path $script:DataRoot 'launchflow.db-shm'),'')}
+            'pending-main' {[IO.File]::WriteAllText((Join-Path $script:DataRoot 'launchflow.db'),'changed')}
+        }
+    }
+    $p=[pscustomobject]@{Id=1;ExitCode=0;Waits=0}
+    $p|Add-Member ScriptMethod WaitForExit {param($Timeout) $this.Waits++;return $true}
+    $script:Processes+=@($p);return $p
+}
+function Check-App {}
+function Count-Owned {return 0}
 function Wait-OwnedExit {}
 function Read-Package {return [pscustomobject]@{binding=$script:Binding;runtime=@()}}
 function Wait-Window {return [pscustomobject]@{Handle=1}}
@@ -32,17 +46,28 @@ function Click-Button($Window,[string]$Name) {
 $script:Binding=[ordered]@{schema=1;sourceSha=('a'*40);archiveSha256=('a'*64);sourceBeforeSha256=('a'*64);sourceAfterSha256=('a'*64);runtimeManifestSha256=('a'*64);installerSha256=('a'*64);version='1.2.3';sourceFiles=1;runtimeFiles=1;builderExit=0}
 $root=Join-Path ([IO.Path]::GetTempPath()) ('native-recovery-'+[Guid]::NewGuid().ToString('N'))
 try {
-    foreach($script:Mutation in @('healthy','extra-file','diagnostics','quarantine-dir','staging-file','main-hash','wal','diagnostics-lookalike','diagnostics-directory','diagnostics-oversized','nested-diagnostics')) {
+    foreach($script:Mutation in @('healthy','extra-file','diagnostics','quarantine-dir','staging-file','main-hash','wal','diagnostics-lookalike','diagnostics-directory','diagnostics-oversized','nested-diagnostics','pending-wal','pending-shm','pending-main')) {
         $Case='recovery_cancel';$PackageRoot='synthetic-unused';$SourceSha=('a'*40)
         $ResultRoot=Join-Path $root $script:Mutation;[void][IO.Directory]::CreateDirectory((Join-Path $ResultRoot 'private'))
         $script:DataRoot=Join-Path $ResultRoot 'data';$script:Exe='synthetic-unused';$script:Installer='synthetic-unused';$script:Report=New-Report $Case
-        $refused=$false
+        $refused=$false;$script:Processes=@()
         try{Invoke-Scenario}catch{if($_.Exception.Message -cne 'RecoveryChanged'){throw};$refused=$true}
         $shouldPass=$script:Mutation -cin @('healthy','diagnostics')
         if(-not $refused){$script:Report.phase='Complete';$script:Report.completed=$true;$script:Report.category='None';$script:Report.reason='None';$script:Report.remaining=0}
         $projected=Project-Report $script:Report
         Require ($projected.accepted -eq $shouldPass) ('RecoveryOracleIncorrect-'+$script:Mutation)
-        Require ($script:Report.milestones.RecoveryPreserved -eq $shouldPass) ('PreservationMilestoneIncorrect-'+$script:Mutation)
+        if($script:Mutation -like 'pending-*'){
+            Require ($script:Report.milestones.RecoveryPreserved -and -not $script:Report.milestones.RecoveryPendingPreserved) ('PendingPreservationMilestoneIncorrect-'+$script:Mutation)
+        }else{
+            Require ($script:Report.milestones.RecoveryPreserved -eq $shouldPass) ('PreservationMilestoneIncorrect-'+$script:Mutation)
+        }
+        if($shouldPass){
+            Require ($script:Processes.Count -eq 4 -and $script:Processes[2].Waits -eq 1 -and $script:Processes[3].Waits -eq 1) 'RecoveryPrimaryOrHelperNotWaited'
+            foreach($m in @('RecoveryPendingExit','RecoveryPendingPreserved')){
+                Require ($script:Report.milestones.Contains($m) -and $script:Report.milestones[$m]) ('MissingRecoveryStartupMilestone-'+$m)
+                $script:Report.milestones[$m]=$false;Require (-not (Project-Report $script:Report).accepted) ('OptionalRecoveryStartupMilestone-'+$m);$script:Report.milestones[$m]=$true
+            }
+        }
         'PASS actual scenario modeled-boundary recovery oracle: '+$script:Mutation
     }
 }finally{if([IO.Directory]::Exists($root)){[IO.Directory]::Delete($root,$true)}}

@@ -28,15 +28,16 @@ require removing an identifiable owned temporary fixture root afterward.
 Coverage:
 
 - 100 independently generated eligible inputs spanning boundary lengths,
-  alphanumeric/letter/digit/passphrase patterns and actual non-ASCII input.
+  alphanumeric/letter/digit-heavy mixed/passphrase patterns and actual non-ASCII input.
 - Two additional creations with the same freshly generated control input,
   proving distinct random salts, derived keys and encrypted verifiers.
 - Constructor/inspection/unlock do not create an absent database or ownership.
 - Successful creation has the expected current encrypted schema/config rows.
 - Owner unlock from a fresh storage instance works; unrelated generated input
   and the common run control refuse every other owner's vault.
-- Invalid input is refused consistently by assessment and storage without
-  creating a database.
+- Fifteen invalid-input controls are refused consistently by assessment and
+  storage without creating a database, including eight independently generated
+  numeric-only controls. Numeric-only inputs are not eligible creation fixtures.
 - Lock revokes the live key; raw generated passwords, raw SHA-256 password
   bytes and derived key bytes are not found in retained DB/WAL/SHM content.
 

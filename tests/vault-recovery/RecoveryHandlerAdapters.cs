@@ -12,8 +12,16 @@ namespace Microsoft.Win32
 }
 namespace LaunchFlow
 {
+    public partial class App
+    {
+        // Startup cancellation is tested separately against the complete source-linked startup partial.
+        private static bool StartupExitRequested => false;
+        private static bool ShowStartupDialog(System.Windows.Window dialog) => dialog.ShowDialog() == true;
+        private static bool ShowStartupDialog(SecretPromptWindow dialog) => dialog.ShowDialog() == true;
+    }
     public sealed class SecretPromptWindow
     {
+        public bool RequireStrongPassword { get; set; }
         public static Queue<string?> Submissions { get; } = new();
         public System.Windows.Window? Owner { get; set; }
         public string Secret { get; private set; } = "";

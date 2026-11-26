@@ -1,7 +1,15 @@
 # Native installed-product scenarios. No reflection, password ValuePattern, fallback or storage bypass.
 function Snapshot-RecoveryRoot([string]$Root) {
     Assert-NoReparse $Root
-    if(-not [IO.Directory]::Exists($Root)){throw 'RecoveryChanged'}
+    try{$attributes=[IO.File]::GetAttributes($Root)}catch{
+        $cause=$_.Exception
+        while($null -ne $cause.InnerException){$cause=$cause.InnerException}
+        if($cause -is [IO.FileNotFoundException] -or $cause -is [IO.DirectoryNotFoundException]){
+            return [pscustomobject]@{exists=$false;entries=@()}
+        }
+        throw
+    }
+    if(($attributes -band [IO.FileAttributes]::Directory) -eq 0){throw 'RecoveryChanged'}
     $prefix=[IO.Path]::GetFullPath($Root).TrimEnd([char[]]'\/')+[IO.Path]::DirectorySeparatorChar
     $pending=[Collections.Generic.Stack[string]]::new();$pending.Push($Root)
     $entries=@(while($pending.Count -gt 0){
@@ -20,20 +28,31 @@ function Snapshot-RecoveryRoot([string]$Root) {
     foreach($entry in $entries){
         if($entry.path -cin @('startup-diagnostics.log','startup-diagnostics.log.previous') -and ($entry.kind -cne 'File' -or $entry.bytes -gt 262144)){throw 'RecoveryChanged'}
     }
-    return $entries
+    return [pscustomobject]@{exists=$true;entries=@($entries)}
 }
-function Assert-RecoveryRoot([string]$Root,[object[]]$Before) {
-    $after=@(Snapshot-RecoveryRoot $Root)
+function Assert-RecoveryRoot([string]$Root,$Before) {
+    $after=Snapshot-RecoveryRoot $Root
     $diagnostics=@('startup-diagnostics.log','startup-diagnostics.log.previous')
+    if($Before.exists -and -not $after.exists){throw 'RecoveryChanged'}
+    # A previously absent root may appear only to contain bounded diagnostic files.
+    if(-not $Before.exists -and $after.exists){
+        if($after.entries.Count -eq 0 -or @($after.entries|Where-Object {$_.path -cnotin $diagnostics}).Count -ne 0){throw 'RecoveryChanged'}
+    }
     # Snapshot all entries, including diagnostics; except only their known bounded writes.
-    $expected=@($Before|Where-Object {$_.path -cnotin $diagnostics}|Sort-Object path)
-    $actual=@($after|Where-Object {$_.path -cnotin $diagnostics}|Sort-Object path)
+    $expected=@($Before.entries|Where-Object {$_.path -cnotin $diagnostics}|Sort-Object path)
+    $actual=@($after.entries|Where-Object {$_.path -cnotin $diagnostics}|Sort-Object path)
     if($expected.Count -ne $actual.Count){throw 'RecoveryChanged'}
     for($i=0;$i -lt $expected.Count;$i++){
         foreach($key in @('path','kind','bytes','sha256')){if($expected[$i].$key -cne $actual[$i].$key){throw 'RecoveryChanged'}}
     }
 }
 function Save-State { Write-Json (Join-Path $ResultRoot 'private/record.json') $script:Report }
+function Assert-PreservedRoot([string]$Root,$Before) {
+    try{Assert-RecoveryRoot $Root $Before}catch{
+        if((Safe-Reason $_) -ceq 'RecoveryChanged'){App-Fail 'RecoveryChanged'}
+        throw
+    }
+}
 function Phase([string]$Name) {$script:Report.phase=$Name;Save-State}
 function Mark([string]$Name) {$script:Report.milestones.$Name=$true;Save-State}
 function App-Fail([string]$Reason) {$script:Report.category='Application';$script:Report.reason=$Reason;throw $Reason}
@@ -125,10 +144,22 @@ function Wait-Main([string]$Milestone,[string]$Previous) {
 function Full-Exit([string]$Milestone) {
     Check-App
     $helper=Start-Owned $script:Exe '--exit-for-install'
-    if(-not $script:App.WaitForExit(240000) -or -not $helper.WaitForExit(15000)){throw 'Deadline'}
+    $primaryExited=$script:App.WaitForExit(240000)
+    $helperExited=$helper.WaitForExit(15000)
+    if(-not $primaryExited -or -not $helperExited){throw 'Deadline'}
     if($script:App.ExitCode -ne 0 -or $helper.ExitCode -ne 0){App-Fail 'ExitFailed'}
     if((Count-Owned) -ne 0){throw 'ExitFailed'}
     Mark $Milestone
+}
+function No-InstanceExit {
+    if((Count-Owned) -ne 0){throw 'ExitFailed'}
+    $before=Snapshot-RecoveryRoot $script:DataRoot
+    $helper=Start-Owned $script:Exe '--exit-for-install'
+    Wait-OwnedExit $helper 30
+    if((Count-Owned) -ne 0){throw 'ExitFailed'}
+    # Exact comparison includes any unexpected database, WAL or SHM; only bounded diagnostics differ.
+    Assert-PreservedRoot $script:DataRoot $before
+    Mark 'NoInstanceExit'
 }
 function Invoke-Scenario {
     Assert-WindowsHost
@@ -157,17 +188,36 @@ function Invoke-Scenario {
         $db=Join-Path $script:DataRoot 'launchflow.db'
         $stream=[IO.File]::Open($db,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None);$stream.Dispose()
         $before=Get-FileDigest $db
-        $rootBefore=@(Snapshot-RecoveryRoot $script:DataRoot)
+        $rootBefore=Snapshot-RecoveryRoot $script:DataRoot
         $script:App=Start-Owned $script:Exe
         $dialog=Wait-Window 'Recovery';Mark 'RecoverySeen';Click-Button $dialog ('Cancel '+[char]0x2014+' exit without moving files');Mark 'RecoveryCancel'
         Wait-OwnedExit $script:App 30;Mark 'RecoveryExited'
         if((Get-FileDigest $db) -cne $before -or (Test-Path -LiteralPath ($db+'-wal')) -or (Test-Path -LiteralPath ($db+'-shm'))){App-Fail 'RecoveryChanged'}
-        try{Assert-RecoveryRoot $script:DataRoot $rootBefore}catch{App-Fail 'RecoveryChanged'}
+        Assert-PreservedRoot $script:DataRoot $rootBefore
         Mark 'RecoveryPreserved'
+        $script:App=Start-Owned $script:Exe
+        $null=Wait-Window 'Recovery'
+        Phase 'RecoveryPendingExit'
+        Full-Exit 'RecoveryPendingExit'
+        if((Get-FileDigest $db) -cne $before -or (Test-Path -LiteralPath ($db+'-wal')) -or (Test-Path -LiteralPath ($db+'-shm'))){App-Fail 'RecoveryChanged'}
+        Assert-PreservedRoot $script:DataRoot $rootBefore
+        Mark 'RecoveryPendingPreserved'
     } else {
         $script:Owner='Aa9!'+[Guid]::NewGuid().ToString('N')
         if($Case -ceq 'valid_unicode'){$script:Owner+=([char]0x03a9).ToString()+[char]0x4e2d+[char]0x0301;Mark 'UnicodeExercised'}
-        Phase 'Setup';$script:App=Start-Owned $script:Exe
+        Phase 'Setup'
+        if($Case -ceq 'owned_wrong'){
+            No-InstanceExit
+            $setupBefore=Snapshot-RecoveryRoot $script:DataRoot
+            $script:App=Start-Owned $script:Exe
+            $null=Wait-Window 'Setup'
+            Phase 'SetupPendingExit'
+            Full-Exit 'SetupPendingExit'
+            Assert-PreservedRoot $script:DataRoot $setupBefore
+            Mark 'SetupPendingPreserved'
+            Phase 'Setup'
+        }
+        $script:App=Start-Owned $script:Exe
         $setup=Wait-Window 'Setup';Mark 'SetupSeen'
         if($Case -ceq 'short_correction') {
             Phase 'ShortCorrection';$short='Aa1!'+[Guid]::NewGuid().ToString('N').Substring(0,6)
@@ -185,7 +235,19 @@ function Invoke-Scenario {
         Click-Button $setup 'Create vault & continue';Mark 'SetupSubmitted'
         Phase 'FirstMain';Wait-Main 'FirstMain' 'Setup'
         Phase 'FirstExit';Full-Exit 'FirstExit'
-        Phase 'ColdUnlock';$script:App=Start-Owned $script:Exe
+        Phase 'ColdUnlock'
+        if($Case -ceq 'owned_wrong'){
+            # Capture the cold root before SQLite inspection; do not exempt transient WAL/SHM residue.
+            $unlockBefore=Snapshot-RecoveryRoot $script:DataRoot
+            $script:App=Start-Owned $script:Exe
+            $null=Wait-Window 'Unlock'
+            Phase 'UnlockPendingExit'
+            Full-Exit 'UnlockPendingExit'
+            Assert-PreservedRoot $script:DataRoot $unlockBefore
+            Mark 'UnlockPendingPreserved'
+            Phase 'ColdUnlock'
+        }
+        $script:App=Start-Owned $script:Exe
         $unlock=Wait-Window 'Unlock';Mark 'UnlockSeen'
         if($Case -ceq 'owned_wrong') {
             Phase 'WrongRefusal';$wrong='Bb8!'+[Guid]::NewGuid().ToString('N')

@@ -220,8 +220,9 @@ check('Content="No login required' in ET.tostring(ui, encoding="unicode") and
       'SaveWorkspaceButton.Content = Text("Save");' in source and
       'PreviewWorkspaceButton.Content = Text("Preview");' in source,
       "existing website login modes are clear and workspace actions avoid clipping")
-app_source = (root / "LaunchFlow/App.xaml.cs").read_text(encoding="utf-8")
+app_source = '\n'.join(p.read_text(encoding='utf-8') for p in sorted((root / 'LaunchFlow').glob('App*.cs')))
 check('EXIT_FOR_INSTALL' in app_source and 'RequestShutdownForInstallAsync()' in app_source and
+      'RequestInstallerExit();' in app_source and
       '--exit-for-install' in app_source and
       'internal async Task RequestShutdownForInstallAsync()' in source,
       "installer requests coordinated app shutdown through single-instance pipe")

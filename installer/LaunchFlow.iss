@@ -1,4 +1,4 @@
-#define AppVersion "0.8.7"
+#define AppVersion "0.8.8"
 ; This override avoids Inno Setup MAX_PATH failures in deep extracted source trees.
 #ifndef LfSourceRoot
 #define LfSourceRoot "..\publish"

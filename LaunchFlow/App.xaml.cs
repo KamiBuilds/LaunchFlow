@@ -140,17 +140,16 @@ public partial class App : Application
                 return;
             }
             StartupDiagnostics.Record(StartupDiagnostics.Stage.VaultUnlockStarted);
-            if (!InitializeVault())
+            if (!InitializeVaultForStartup())
             {
                 StartupDiagnostics.Record(StartupDiagnostics.Stage.VaultUnlockCancelled);
-                Shutdown();
+                ShutdownStartupOnce();
                 return;
             }
             StartupDiagnostics.Record(StartupDiagnostics.Stage.VaultReady);
             StartupDiagnostics.Record(StartupDiagnostics.Stage.WindowConstructionStarted);
-            var window = new MainWindow();
-            MainWindow = window;
-            ShutdownMode = ShutdownMode.OnMainWindowClose;
+            var window = CreateStartupMainWindow();
+            if (window is null) return;
             if (startInTray)
             {
                 // Avoid a visible flash when Windows autostart launches LaunchFlow.
@@ -175,6 +174,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
+            if (_startupExitRequested) { ShutdownStartupOnce(); return; }
             StartupDiagnostics.Record(StartupDiagnostics.Stage.StartupException, ex);
             // Avoid displaying exception.Message: paths or credential material
             // from third-party exceptions must not be copied into dialogs.
@@ -212,8 +212,9 @@ public partial class App : Application
     /// </summary>
     private static bool TryRecoverIncompleteVault()
     {
+        if (StartupExitRequested) return false;
         var recovery = new VaultRecoveryWindow();
-        if (recovery.ShowDialog() != true || recovery.Choice == VaultRecoveryWindow.RecoveryChoice.Cancel)
+        if (!ShowStartupDialog(recovery) || recovery.Choice == VaultRecoveryWindow.RecoveryChoice.Cancel)
             return false;
         if (recovery.Choice == VaultRecoveryWindow.RecoveryChoice.StartFresh)
         {
@@ -239,16 +240,18 @@ public partial class App : Application
                     "\n\nThe broken vault will be moved aside first (not deleted).",
                     "Restore SQLite backup", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
             {
+                if (StartupExitRequested) return false;
                 var dialog = new Microsoft.Win32.OpenFileDialog
                 {
                     Title = "Choose a LaunchFlow SQLite recovery copy",
                     Filter = "SQLite vault (*.db)|*.db|All files (*.*)|*.*",
                     InitialDirectory = VaultRecoveryService.RecoveryDirectory
                 };
-                if (dialog.ShowDialog() != true) return false;
+                if (dialog.ShowDialog() != true || StartupExitRequested) return false;
                 pick = dialog.FileName;
             }
 
+            if (StartupExitRequested) return false;
             try
             {
                 var quarantine = VaultRecoveryService.RestoreSqliteBackup(pick);
@@ -275,11 +278,11 @@ public partial class App : Application
             Title = "Choose a LaunchFlow portable backup",
             Filter = "LaunchFlow file (*.launchflow)|*.launchflow"
         };
-        if (exportDialog.ShowDialog() != true) return false;
+        if (exportDialog.ShowDialog() != true || StartupExitRequested) return false;
 
         var exportPassword = new SecretPromptWindow("Portable backup password",
             "Enter the password used when this .launchflow file was exported.");
-        if (exportPassword.ShowDialog() != true) return false;
+        if (!ShowStartupDialog(exportPassword)) return false;
 
         PortableExport.PortablePackage package;
         try { package = SecureTransferService.Read(exportDialog.FileName, exportPassword.Secret); }
@@ -294,7 +297,7 @@ public partial class App : Application
             $"Choose a new master password (at least {PasswordStrength.MinimumLength} characters). " +
             "This unlocks LaunchFlow on this PC after the broken vault is moved aside.")
         { RequireStrongPassword = true };
-        if (master.ShowDialog() != true) return false;
+        if (!ShowStartupDialog(master)) return false;
         if (!PasswordStrength.MeetsMinimum(master.Secret))
         {
             MessageBox.Show(PasswordStrength.RejectionNotice(PasswordStrength.Evaluate(master.Secret)),
@@ -303,8 +306,9 @@ public partial class App : Application
         }
         var confirm = new SecretPromptWindow("Confirm new master password",
             "Enter the same new master password again.");
-        if (confirm.ShowDialog() != true || confirm.Secret != master.Secret)
+        if (!ShowStartupDialog(confirm) || confirm.Secret != master.Secret)
         {
+            if (StartupExitRequested) return false;
             MessageBox.Show("Passwords did not match.", "Import canceled",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return false;
@@ -320,6 +324,7 @@ public partial class App : Application
                 workflow.Enabled = false;
             if (!TryCreateAndVerifyVault(VaultDatabase.Current, master.Secret, projected, package.Credentials))
                 return false;
+            if (StartupExitRequested) return false;
             MessageBox.Show(
                 "Portable backup imported into a new vault. Automatic website launches are disabled until you review them.\n\n" +
                 "Broken vault kept at:\n" + quarantine,
@@ -338,9 +343,11 @@ public partial class App : Application
 
     private static bool InitializeVault()
     {
+        if (StartupExitRequested) return false;
         // After a "forgot password" reset, fall through to first-run setup.
         for (int round = 0; round < 3; round++)
         {
+            if (StartupExitRequested) return false;
             var db = VaultDatabase.Current;
             if (VaultRecoveryService.HasIncompletePreservation(db.DataDirectory))
             {
@@ -353,6 +360,7 @@ public partial class App : Application
                 return false;
             }
             var diskState = db.InspectStorage();
+            if (StartupExitRequested) return false;
             // A prior creation may have committed encrypted data to a staging
             // directory even though the live vault path is absent. Do not offer
             // ordinary broken-DB quarantine or an automatic fresh start: those
@@ -370,6 +378,7 @@ public partial class App : Application
                         ? "An interrupted vault creation left retained staging files."
                         : "LaunchFlow found SQLite companion files without a main vault database.",
                     "Vault recovery requires preservation", MessageBoxButton.OK, MessageBoxImage.Warning);
+                if (StartupExitRequested) return false;
                 MessageBox.Show(
                     "No files were deleted or replaced. Preserve the entire %LOCALAPPDATA%\\LaunchFlow folder, " +
                     "including hidden .launchflow.db.create-* directories and -wal/-shm companions, as one set. " +
@@ -380,7 +389,7 @@ public partial class App : Application
             }
             if (diskState == VaultStorageState.IncompleteOrUnsupported)
             {
-                if (!TryRecoverIncompleteVault())
+                if (!TryRecoverIncompleteVault() || StartupExitRequested)
                     return false;
                 // Portable import initializes+unlocks immediately; SQLite restore still needs Unlock.
                 if (VaultDatabase.Current.IsUnlocked)
@@ -407,11 +416,11 @@ public partial class App : Application
                     "Do you want to proceed?",
                     "Security upgrade required", MessageBoxButton.YesNo,
                     MessageBoxImage.Warning);
-                if (choice != MessageBoxResult.Yes) return false;
+                if (choice != MessageBoxResult.Yes || StartupExitRequested) return false;
 
                 var prompt = new SecretPromptWindow("Upgrade encrypted vault",
                     "Enter your existing vault master password. LaunchFlow will verify your complete encrypted recovery copy before changing the vault.");
-                if (prompt.ShowDialog() != true) return false;
+                if (!ShowStartupDialog(prompt)) return false;
                 try
                 {
                     var backup = db.UpgradeLegacyVault(prompt.Secret);
@@ -421,6 +430,7 @@ public partial class App : Application
                         "Vault security upgrade completed. A verified legacy recovery copy was retained at:\\n" +
                         backup + "\\n\\nReview saved website credentials before enabling automatic launches.",
                         "Security upgrade completed", MessageBoxButton.OK, MessageBoxImage.Information);
+                    if (StartupExitRequested) return false;
                     try { ProfileVaultService.UnsealAll(); }
                     catch (Exception ex)
                     {
@@ -449,8 +459,9 @@ public partial class App : Application
                 for (int attempt = 0; attempt < 5; attempt++)
                 {
                     var dialog = new UnlockWindow();
-                    if (dialog.ShowDialog() != true)
+                    if (!ShowStartupDialog(dialog))
                     {
+                        if (StartupExitRequested) return false;
                         if (dialog.ResetRequested)
                         {
                             // Cold start: no MainWindow browsers yet; wipe then retry for setup.
@@ -497,7 +508,7 @@ public partial class App : Application
                 {
                     var dialog = new SecretPromptWindow("Upgrade your LaunchFlow vault",
                         "Enter your previous LaunchFlow password to move your saved websites into the updated secure storage. Your existing files will be kept.");
-                    if (dialog.ShowDialog() != true) return false;
+                    if (!ShowStartupDialog(dialog)) return false;
                     if (!LegacyMigration.VerifyOldMaster(dialog.Secret))
                     {
                         MessageBox.Show("Incorrect previous master password. Your old data has not been changed.",
@@ -512,7 +523,7 @@ public partial class App : Application
             }
 
             var setup = new SetupWindow();
-            if (setup.ShowDialog() != true) return false;
+            if (!ShowStartupDialog(setup)) return false;
             var password = setup.ChosenPassword;
             var handoffOrdinalEqual = string.Equals(password, setup.TakeChosenPassword(), StringComparison.Ordinal);
             StartupDiagnostics.Record(StartupDiagnostics.Stage.SetupHandoff);
@@ -538,6 +549,7 @@ public partial class App : Application
                 }
             }
             finally { password = ""; }
+            if (StartupExitRequested) return false;
             try
             {
                 // First-run setup (also after vault reset) must reconcile BOTH
@@ -574,20 +586,22 @@ public partial class App : Application
 
     internal void ContinueVaultResetSetup()
     {
+        if (_startupInitializationInProgress || _startupExitRequested ||
+            MainWindow is LaunchFlow.MainWindow { IsLoaded: true }) return;
         try
         {
-            if (!InitializeVault())
+            if (!InitializeVaultForStartup())
             {
-                Shutdown();
+                ShutdownStartupOnce();
                 return;
             }
-            var window = new MainWindow();
-            MainWindow = window;
-            ShutdownMode = ShutdownMode.OnMainWindowClose;
+            var window = CreateStartupMainWindow();
+            if (window is null) return;
             window.Show();
         }
         catch (Exception ex)
         {
+            if (_startupExitRequested) { ShutdownStartupOnce(); return; }
             // Fire-and-forget reset handoff must not leave OnExplicitShutdown
             // with no window while holding the single-instance mutex.
             CrashLog.Write("ContinueVaultResetSetup", ex);
@@ -660,8 +674,7 @@ public partial class App : Application
                 {
                     _ = Dispatcher.BeginInvoke(new Action(() =>
                     {
-                        if (MainWindow is LaunchFlow.MainWindow window && window.IsLoaded)
-                            _ = window.RequestShutdownForInstallAsync();
+                        RequestInstallerExit();
                     }));
                 }
             }
@@ -684,6 +697,7 @@ public partial class App : Application
 
     private void HandleExternalOpen(string path)
     {
+        if (_startupExitRequested) return;
         if (MainWindow is LaunchFlow.MainWindow window && window.IsLoaded)
             window.QueueOpenFile(path);
         else
@@ -695,6 +709,7 @@ public partial class App : Application
 
     private void RestoreRunningWindow()
     {
+        if (_startupExitRequested) return;
         if (MainWindow is LaunchFlow.MainWindow window && window.IsLoaded)
         {
             window.RestoreFromExternalLaunch();
@@ -723,6 +738,7 @@ public partial class App : Application
 
     internal void NotifyMainWindowReady(LaunchFlow.MainWindow window)
     {
+        if (_startupExitRequested) return;
         if (_pendingOpenPath is not null)
         {
             var path = _pendingOpenPath;

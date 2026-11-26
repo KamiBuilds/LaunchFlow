@@ -15,6 +15,11 @@ namespace LaunchFlow
 {
     public partial class App
     {
+        // Cancellation is exercised in startup-exit; these handoff assertions use no exit request.
+        private static bool StartupExitRequested => false;
+        private static bool ShowStartupDialog(SetupWindow dialog) => dialog.ShowDialog() == true;
+        private static bool ShowStartupDialog(UnlockWindow dialog) => dialog.ShowDialog() == true;
+        private static bool ShowStartupDialog(SecretPromptWindow dialog) => dialog.ShowDialog() == true;
         private static bool TryRecoverIncompleteVault() => false;
         internal static bool StartForTest() => InitializeVault();
     }
@@ -51,6 +56,10 @@ namespace LaunchFlow
 }
 namespace LaunchFlow.Services
 {
+    public static class StartupStorageAdapter
+    {
+        public static bool HasRetainedCreationStage(this VaultDatabase _) => false;
+    }
     public enum VaultStorageState { Absent, IncompleteOrUnsupported, LegacyUpgradeRequired, PresentNeedsAuthentication }
     public static class LegacyMigration
     {

@@ -55,7 +55,7 @@ function Invoke-Supervisor {
             Start-Sleep -Milliseconds 200
             $r=Read-State
             if($r.phase -cne $previous){$previous=$r.phase;$phaseTimer.Restart()}
-            $budget=if($r.phase -cin @('FirstExit','FinalExit')){270}elseif($r.phase -ceq 'InstallBinding' -or $r.phase -ceq 'FreshUser'){210}else{100}
+            $budget=if($r.phase -cin @('FirstExit','FinalExit','SetupPendingExit','UnlockPendingExit','RecoveryPendingExit')){270}elseif($r.phase -ceq 'InstallBinding' -or $r.phase -ceq 'FreshUser'){210}else{100}
             if($phaseTimer.Elapsed.TotalSeconds -gt $budget -or $timer.Elapsed.TotalSeconds -gt 900){$timeout=$true;Stop-Host $child;break}
         }
         $script:Report=Read-State

@@ -2,7 +2,7 @@
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'Package.ps1')
 $Cases=@('valid_keyboard','valid_unicode','short_correction','owned_wrong','recovery_cancel','valid_clipboard','preflight')
-$Phases=@('Preflight','InstallBinding','FreshUser','Recovery','Setup','ShortCorrection','FirstMain','FirstExit','ColdUnlock','WrongRefusal','ColdMain','FinalExit','Cleanup','Complete')
+$Phases=@('Preflight','InstallBinding','FreshUser','Recovery','Setup','SetupPendingExit','UnlockPendingExit','RecoveryPendingExit','ShortCorrection','FirstMain','FirstExit','ColdUnlock','WrongRefusal','ColdMain','FinalExit','Cleanup','Complete')
 $Reasons=@('None','OperationFailed','Deadline','ExistingUserData','PathRejected','ManifestRejected','BindingMismatch','UnexpectedWindow','UnexpectedSetupDialog','UnexpectedWeakDialog','UnexpectedOwnedDialog','ApplicationExited','ApplicationError','ShortLabelIncorrect','ShortAccepted','DatabaseCreatedForShort','WrongAccepted','RecoveryChanged','ExitFailed','WorkerFailed','CleanupIncomplete','ClipboardPayloadMismatch','ClipboardUnavailable','ClipboardClearFailed','ControlObscured','PasswordFocusNotConfirmed','KeyboardCharacterNotMappable','KeyboardLayoutChanged','CapsLockActive','SendInputNotAccepted','ModifierKeyHeld','WindowIdentityLost','ButtonNotUnique','ControlNotInteractable','ClickablePointUnavailable','ClickablePointOutsideDesktop','PasswordControlNotFound','EntryModeInvalid','HostRejected','DesktopUnavailable','NativeImportFailed','NativeInputLayoutInvalid','NativeClipboardPreflightFailed')
 function Get-FileDigest([string]$Path) {
     $stream=[IO.File]::OpenRead($Path); $hash=[Security.Cryptography.SHA256]::Create()
@@ -62,10 +62,10 @@ function Required-Milestones([string]$Case) {
     if ($Case -cnotin $Cases) { throw 'HostRejected' }
     if ($Case -ceq 'preflight') { return @('Host','ClipboardPreflight','NestedHost') }
     $m=@('Host','Payload','FreshUser','BinaryUnchanged')
-    if ($Case -ceq 'recovery_cancel') { return $m+@('RecoverySeen','RecoveryCancel','RecoveryExited','RecoveryPreserved') }
+    if ($Case -ceq 'recovery_cancel') { return $m+@('RecoverySeen','RecoveryCancel','RecoveryExited','RecoveryPreserved','RecoveryPendingExit','RecoveryPendingPreserved') }
     $m+=@('SetupSeen','SetupInput','ConfirmInput','SetupSubmitted','FirstMain','FirstExit','UnlockSeen','OwnerInput','OwnerSubmitted','ColdMain','FinalExit')
     if ($Case -ceq 'short_correction') { $m+=@('TooShort','ShortSubmitted','ShortWarningAcknowledged','SetupRetained','NoDatabaseAfterShort') }
-    if ($Case -ceq 'owned_wrong') { $m+=@('WrongSubmitted','WrongRefused','WrongAcknowledged','UnlockRetained') }
+    if ($Case -ceq 'owned_wrong') { $m+=@('WrongSubmitted','WrongRefused','WrongAcknowledged','UnlockRetained','NoInstanceExit','SetupPendingExit','SetupPendingPreserved','UnlockPendingExit','UnlockPendingPreserved') }
     if ($Case -ceq 'valid_unicode') { $m+=@('UnicodeExercised') }
     if ($Case -ceq 'valid_clipboard') { $m+=@('ClipboardPreflight') }
     return $m

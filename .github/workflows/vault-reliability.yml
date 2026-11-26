@@ -1,10 +1,11 @@
 name: Vault reliability native acceptance
 on:
   push:
-    branches: [fix/v0.8.3-vault-first-run-reliability-20261123, fix/v0.8.6-native-wrong-unicode-20261125, fix/v0.8.7-vault-native-stabilization-20261125]
+    branches: [fix/v0.8.3-vault-first-run-reliability-20261123, fix/v0.8.6-native-wrong-unicode-20261125, fix/v0.8.7-vault-native-stabilization-20261125, fix/v0.8.8-reviewed-stabilization-20261125]
     paths:
       - 'LaunchFlow/**'
       - 'tests/native-vault/**'
+      - 'tests/startup-exit/**'
       - 'BUILD-*'
       - 'installer/**'
       - '.github/workflows/vault-reliability.yml'
@@ -18,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   preflight:
-    if: github.ref == 'refs/heads/fix/v0.8.3-vault-first-run-reliability-20261123' || github.ref == 'refs/heads/fix/v0.8.6-native-wrong-unicode-20261125' || github.ref == 'refs/heads/fix/v0.8.7-vault-native-stabilization-20261125'
+    if: github.ref == 'refs/heads/fix/v0.8.3-vault-first-run-reliability-20261123' || github.ref == 'refs/heads/fix/v0.8.6-native-wrong-unicode-20261125' || github.ref == 'refs/heads/fix/v0.8.7-vault-native-stabilization-20261125' || github.ref == 'refs/heads/fix/v0.8.8-reviewed-stabilization-20261125'
     runs-on: windows-2022
     timeout-minutes: 8
     steps:
@@ -60,6 +61,9 @@ jobs:
           & ./tests/native-vault/Test-RecoveryOracle.ps1
           & ./tests/native-vault/Test-BuildOwnership.ps1
           & ./tests/native-vault/Test-Package.ps1
+          $isolatedHost=Join-Path $env:WINDIR 'System32/WindowsPowerShell/v1.0/powershell.exe'
+          & $isolatedHost -NoLogo -NoProfile -NonInteractive -File ./tests/native-vault/Test-StartupExit.ps1
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           & ./tests/native-vault/Test-NativeVault.ps1 -Case preflight -ResultRoot "$env:RUNNER_TEMP/vault-preflight"
           exit $LASTEXITCODE
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f

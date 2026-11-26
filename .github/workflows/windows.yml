@@ -2,7 +2,7 @@ name: Windows installer — build and gated draft release
 
 on:
   push:
-    branches: ['fix/v0.8.7-vault-native-stabilization-20261125']
+    branches: ['fix/v0.8.7-vault-native-stabilization-20261125', 'fix/v0.8.8-reviewed-stabilization-20261125']
   pull_request:
   workflow_dispatch:
     inputs:
@@ -58,6 +58,12 @@ jobs:
         run: python3 tools/Verify-LaunchFlow-Source.py
       - name: Verify structural controllers, mapping and production test links
         run: python3 tests/architecture/check_partials.py
+      - name: Verify new-password rejection popups and unchanged existing-password admission
+        run: dotnet run --project tests/setup-validation/SetupValidationTests.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
+      - name: Verify isolated new-password creation, rotation, export and legacy decoding
+        run: python3 tests/password-admission/run.py --dotnet dotnet
+      - name: Verify startup exit, main-window refusal and cancellation ownership
+        run: dotnet run --project tests/startup-exit/StartupExitTests.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
       - name: Verify source-linked independent service boundaries
         run: dotnet run --project tests/architecture/ServiceContracts.csproj -c Release -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
       - name: Verify encrypted configuration Save/reopen and rejection contracts

@@ -45,7 +45,7 @@ Add("mixed-16",20,()=>Mixed(16));
 Add("mixed-24",16,()=>Mixed(24));
 Add("alphanumeric-16",12,()=>Mixed(16,"aZ7","abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"));
 Add("lowercase-passphrase",8,()=>string.Join(' ',Enumerable.Range(0,8).Select(_=>Pick("abcdefghjkmnpqrstuvwxyz",4))));
-Add("digits-20",8,()=>Pick("0123456789",20));
+Add("digit-heavy-mixed",8,()=>Mixed(20,"aZ7!","0123456789"));
 Add("letters-16",8,()=>Mixed(16,"aZ","abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"));
 Add("unicode-mixed",8,()=>"aZ7!"+Pick("界éЖλøΩβ中",16));
 if(corpus.Count!=100||corpus.Select(x=>x.Value).Distinct().Count()!=100||corpus.Any(x=>x.Value==reference))throw new InvalidOperationException("Corpus construction failed");
@@ -135,7 +135,8 @@ foreach(var item in corpus)
   Console.WriteLine(JsonSerializer.Serialize(progress));
  }
 }
-var rejectedCases=new(string Label,string? Value)[]{("null",null),("empty",""),("short-mixed-4","Ax1!"),("short-mixed-10",Mixed(10)),("short-mixed-11",Mixed(11)),("lowercase-only-12",Pick("abcdefghjkmnpqrstuvwxyz",12)),("common-phrase","password123456789!")};
+var rejectedCases=new List<(string Label,string? Value)>{("null",null),("empty",""),("short-mixed-4","Ax1!"),("short-mixed-10",Mixed(10)),("short-mixed-11",Mixed(11)),("lowercase-only-12",Pick("abcdefghjkmnpqrstuvwxyz",12)),("common-phrase","password123456789!")};
+for(var n=1;n<=8;n++)rejectedCases.Add(($"numeric-only-{n:D2}",Pick("0123456789",20)));
 var refusals=new List<object>();
 foreach(var item in rejectedCases)
 {
@@ -147,4 +148,4 @@ foreach(var item in rejectedCases)
 var summary=new{assembly_sha256=Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(app,"LaunchFlow.dll")))),assembly=assembly.GetName().FullName,mvid=assembly.ManifestModule.ModuleVersionId,runtime=RuntimeInformation.FrameworkDescription,scope="Actual complete production application DLL methods; not native UI or resolution of the VMware incident. Bind source separately to this assembly digest.",random_creation_cases=100,reference_creation_cases=2,total_creation_cases=results.Count,creation_passed=results.Count(x=>x.TryGetValue("passed",out var passed)&&passed is true),unique_salts=salts.Count,unique_derived_keys=keys.Count,unique_encrypted_verifiers=verifiers.Count,elapsed_seconds=(DateTimeOffset.UtcNow-start).TotalSeconds,results,refusal_controls=refusals};
 File.WriteAllText(Path.Combine(output,"results.json"),JsonSerializer.Serialize(summary,new JsonSerializerOptions{WriteIndented=true}));
 Console.WriteLine(JsonSerializer.Serialize(new{completed=results.Count,passed=summary.creation_passed,unique_salts=salts.Count,unique_derived_keys=keys.Count,runtime=summary.runtime}));
-return summary.creation_passed==102&&salts.Count==102&&keys.Count==102&&verifiers.Count==102&&refusals.All(x=>(bool)x.GetType().GetProperty("passed")!.GetValue(x)!)?0:1;
+return summary.creation_passed==102&&salts.Count==102&&keys.Count==102&&verifiers.Count==102&&refusals.Count==15&&refusals.All(x=>(bool)x.GetType().GetProperty("passed")!.GetValue(x)!)?0:1;

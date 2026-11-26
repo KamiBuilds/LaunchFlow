@@ -63,8 +63,47 @@ try
         var assessment = PasswordStrength.Evaluate(weak);
         Require(!assessment.Acceptable && !PasswordStrength.MeetsMinimum(weak) &&
             assessment.Label is not ("Good" or "Strong"),
-            "Known guessable or short input was approved: " + weak.Length);
+            "Known guessable or short input was approved.");
     }
+    var numericCases = new (string Id, string Value)[]
+    {
+        ("trailing_whitespace", "123456789012 "),
+        ("leading_whitespace", " 123456789012"),
+        ("embedded_whitespace", "1234 5678 9012"),
+        ("nonbreaking_whitespace", "123456789012\u00a0"),
+        ("supplementary_digits", string.Concat(Enumerable.Range(0, 8).Select(i => char.ConvertFromUtf32(0x1D7CE + i)))),
+        ("supplementary_digits_with_whitespace", " " + string.Concat(Enumerable.Range(0, 8).Select(i => char.ConvertFromUtf32(0x1D7CE + i))) + " ")
+    };
+    foreach (var (id, value) in numericCases)
+    {
+        Require(!PasswordStrength.Evaluate(value).Acceptable && !PasswordStrength.MeetsMinimum(value),
+            "Numeric-only new-password admission bypass: " + id);
+        System.Windows.MessageBox.Reset();
+        var numericSetup = Ready(value); numericSetup.SubmitForTest();
+        Require(numericSetup.DialogResult is null && numericSetup.ChosenPassword == "" &&
+            numericSetup.PasswordBox.Password == value && System.Windows.MessageBox.Count == 1,
+            "Numeric setup refusal did not remain correctable: " + id);
+        var numericPrompt = new SecretPromptWindow("New password", "Choose one") { RequireStrongPassword = true };
+        numericPrompt.SecretBox.Password = value;
+        System.Windows.MessageBox.Reset(); numericPrompt.SubmitForTest();
+        Require(numericPrompt.DialogResult is null && numericPrompt.Secret == "" &&
+            numericPrompt.SecretBox.Password == value && System.Windows.MessageBox.Count == 1,
+            "Numeric standalone new-password refusal failed: " + id);
+        var legacyNumeric = new SecretPromptWindow("Existing password", "Use original input");
+        legacyNumeric.SecretBox.Password = value;
+        System.Windows.MessageBox.Reset(); legacyNumeric.SubmitForTest();
+        Require(legacyNumeric.DialogResult == true && legacyNumeric.Secret == value && System.Windows.MessageBox.Count == 0,
+            "Legacy numeric-password prompt was incorrectly revalidated: " + id);
+    }
+    Console.WriteLine("PASS numeric_only_whitespace_and_unicode_new_password_refusal_legacy_prompt_unchanged");
+    foreach (var value in new[] { "quiet river amber lantern", "  quiet River7! amber Lantern  ", "\u6f22\u00e9\U0001f642e\u0301Z7!\u6f22\u00e9\U0001f642e\u0301Z7!" })
+    {
+        Require(PasswordStrength.MeetsMinimum(value), "Healthy mixed input was rejected by numeric guard.");
+        var exactSetup = Ready(value); exactSetup.SubmitForTest();
+        Require(exactSetup.DialogResult == true && exactSetup.TakeChosenPassword() == value,
+            "Healthy input representation changed at setup handoff.");
+    }
+    Console.WriteLine("PASS spaced_passphrase_and_unicode_exact_snapshot_controls");
     Require(PasswordStrength.MeetsMinimum("Abcdefgh12!?") &&
         PasswordStrength.Evaluate("Abcdefgh12!?").Acceptable,
         "Healthy 12-character password was rejected.");

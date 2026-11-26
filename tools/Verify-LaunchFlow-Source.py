@@ -179,11 +179,14 @@ check('CredentialDeleteGuard.IsCurrent(' in main_code and
       'VaultDatabase.Current.SessionGeneration != capturedSession' in main_code,
       'import and destructive credential deletion use identity and one authoritative configuration projection')
 app_startup=(root/'LaunchFlow/App.xaml.cs').read_text(encoding='utf-8')
+app_startup_exit=(root/'LaunchFlow/App.StartupExit.cs').read_text(encoding='utf-8')
 builder=(root/'BUILD-INSTALLER.ps1').read_text(encoding='utf-8')
 compat=(root/'LaunchFlow/Services/Workspaces/WindowsApplicationControl.cs').read_text(encoding='utf-8')
 check('WindowsApplicationControl.CheckRequiredComponents()' in app_startup and
+      'InitializeVaultForStartup()' in app_startup and
+      'return InitializeVault() && !_startupExitRequested;' in app_startup_exit and
       app_startup.index('WindowsApplicationControl.CheckRequiredComponents()') <
-      app_startup.index('InitializeVault())'),
+      app_startup.index('InitializeVaultForStartup()'),
       'application control dependencies checked before master password and vault setup')
 check('0x800711C7' in compat and 'Data Source=:memory:' in compat and
       'Microsoft.Data.Sqlite' in compat,
