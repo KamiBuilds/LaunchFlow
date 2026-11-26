@@ -123,8 +123,12 @@ if($Gate -ceq 'Root'){
         return $process
     }
     $scratch=Join-Path ([IO.Path]::GetTempPath()) ('startup-root-'+[Guid]::NewGuid().ToString('N'))
+    $fixtureInitialized=$false
     try{
         $script:Outside=Join-Path $scratch 'outside';[void][IO.Directory]::CreateDirectory($script:Outside)
+        $sentinel=Join-Path $script:Outside 'retained-sentinel'
+        [IO.File]::WriteAllText($sentinel,'fixed synthetic target')
+        $fixtureInitialized=$true
         foreach($script:Mode in @('absent','empty','diagnostics','diagnostic-limit','empty-created','diagnostic-oversized','db','wal','shm','unknown-file','unknown-directory','root-file','root-reparse','diagnostic-directory','diagnostic-lookalike','nested-diagnostic','reparse','deleted-root')){
             $script:DataRoot=Join-Path $scratch $script:Mode
             $initiallyExists=$script:Mode -cin @('empty','deleted-root')
@@ -141,7 +145,22 @@ if($Gate -ceq 'Root'){
             Require ($refused -ne $shouldPass -and $script:Report.milestones.NoInstanceExit -eq $shouldPass) 'RootPreservationControlIncorrect'
             'PASS startup-root '+$script:Mode
         }
-    }finally{if([IO.Directory]::Exists($scratch)){[IO.Directory]::Delete($scratch,$true)}}
+    }finally{
+        foreach($link in @((Join-Path $scratch 'root-reparse'),(Join-Path $scratch 'reparse/linked'))){
+            if([IO.Directory]::Exists($link)){
+                Require (([IO.File]::GetAttributes($link) -band [IO.FileAttributes]::ReparsePoint) -ne 0) 'FixtureLinkIdentityChanged'
+                # Unlink owned junctions before recursive deletion on .NET Framework.
+                [IO.Directory]::Delete($link,$false)
+            }
+        }
+        if($fixtureInitialized){
+            Require ([IO.Directory]::Exists($script:Outside) -and [IO.File]::Exists($sentinel)) 'FixtureTargetMissing'
+            Require ([IO.File]::ReadAllText($sentinel) -ceq 'fixed synthetic target') 'FixtureTargetChanged'
+        }
+        if([IO.Directory]::Exists($scratch)){[IO.Directory]::Delete($scratch,$true)}
+    }
+    Require (-not [IO.Directory]::Exists($scratch)) 'FixtureCleanupIncomplete'
+    'PASS startup-root cleanup-owned-links'
 }
 if($Gate -ceq 'Worker'){
     # Import only the maintained process/input boundary adapters, never its test loop.
