@@ -1,3 +1,10 @@
+# v0.8.11 — Startup shortcut guidance follows actual configured hotkey
+
+- Remove the misleading fixed Ctrl+M label from Start hidden with Windows; starting hidden does not define which hotkey is enabled.
+- Bind the Startup help text to the existing active shortcut field so changing the shortcut in Settings → Shortcuts immediately updates the displayed instructions.
+- Keep the guided Startup step and generated written guide consistent with the new checkbox label, including a contract test guarding against hardcoded hotkeys.
+- The default Ctrl+M shortcut and real registration behavior remain unchanged.
+
 # v0.8.11 — Remove redundant Settings autosave bar (owner-test candidate)
 
 - Hide the entire Settings save/status strip when the app is saving normally, including after successful automatic saves; reclaim its vertical space in the auto-sized layout.

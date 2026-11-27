@@ -118,6 +118,18 @@ check('Text="General"' in markup and 'Text="Saving your changes"' in markup and
       'Text="Language / Taal"' in markup and
       named["LanguageCombo"].get("Width") == "220",
       "general settings has clear language and autosave explanation")
+startup_shortcut = named.get("StartupShortcutLabel")
+startup_toggle = named.get("StartupCheck")
+check(startup_toggle is not None and
+      startup_toggle.get("Content") == "Start LaunchFlow hidden with Windows" and
+      startup_shortcut is not None and
+      startup_shortcut.get("Text", "").startswith("{Binding Text, ElementName=ShortcutBox, StringFormat=") and
+      "Current shortcut: {0}" in startup_shortcut.get("Text", "") and
+      startup_shortcut.get("TextWrapping") == "Wrap" and
+      'Ctrl+M: run all.' not in markup and
+      'enables Ctrl+M' not in markup,
+      "Startup help follows configured shortcut rather than a fixed Ctrl+M")
+
 startup_check = named.get("TaskSchedulerCheck")
 check(startup_check is not None and
       any(el.tag == presentation + "TextBlock" and el.get("TextWrapping") == "Wrap"

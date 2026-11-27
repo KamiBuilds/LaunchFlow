@@ -164,8 +164,8 @@ After PASS-04, Saved password continues with PASS-05–08. No login required and
    - **Where:** LaunchFlow → Settings · category list. Look for **Startup**.
    - **You should see:** Background and trigger options are visible.
    - **Can't find it?** These settings can be restricted by company policy. Do not enable them on a managed PC without approval.
-3. **Review Windows startup** (STARTUP-03): Review Start hidden with Windows (enables Ctrl+M).
-   - **Where:** LaunchFlow → Settings → Startup. Look for **Start hidden with Windows (enables Ctrl+M)**.
+3. **Review Windows startup** (STARTUP-03): Review Start LaunchFlow hidden with Windows.
+   - **Where:** LaunchFlow → Settings → Startup. Look for **Start LaunchFlow hidden with Windows**.
    - **You should see:** The checkbox reflects the current preference.
    - **Can't find it?** Turning this on requests startup registration; a checked setting alone does not prove Windows allowed it.
 4. **Review unlock automation** (STARTUP-04): Review Run enabled websites after Windows unlock.

@@ -598,7 +598,7 @@
                 HorizontalAlignment="Stretch" Margin="0,0,0,10">
         <StackPanel>
           <TextBlock Text="BACKGROUND &amp; TRIGGERS" FontWeight="SemiBold" Foreground="#A0B4CC" FontSize="11" Margin="0,0,0,7"/>
-          <CheckBox x:Name="StartupCheck" Content="Start hidden with Windows (enables Ctrl+M)"/>
+          <CheckBox x:Name="StartupCheck" Content="Start LaunchFlow hidden with Windows"/>
           <CheckBox x:Name="UnlockCheck" Content="Run enabled websites after Windows unlock"/>
           <CheckBox x:Name="LaunchCheck" Content="Run enabled websites when LaunchFlow starts"/>
           <CheckBox x:Name="TrayCheck" Content="Allow LaunchFlow to run in the background (system tray)"/>
@@ -607,7 +607,10 @@
             <TextBlock Text="Use Windows Task Scheduler for Start with Windows (more reliable on some PCs)"
                        TextWrapping="Wrap"/>
           </CheckBox>
-          <TextBlock Text="Ctrl+M: run all. Minimize: taskbar. X: choose Exit or Background. Tray menu: Exit." Foreground="#C0D4E5" TextWrapping="Wrap" FontSize="11"/>
+          <TextBlock x:Name="StartupShortcutLabel"
+                     Text="{Binding Text, ElementName=ShortcutBox, StringFormat='Current shortcut: {0} — run all enabled websites. Minimize: taskbar. X: choose Exit or Background. Tray menu: Exit.'}"
+                     Foreground="#C0D4E5" TextWrapping="Wrap" FontSize="11"
+                     ToolTip="Change the shortcut in Settings → Shortcuts."/>
           <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
             <TextBlock Text="Delay after unlock (seconds)" Foreground="#9DAFC5" VerticalAlignment="Center" Margin="0,0,12,0"/>
             <TextBox x:Name="DelayBox" Width="64" Text="5"/>
