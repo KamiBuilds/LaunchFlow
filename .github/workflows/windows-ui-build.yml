@@ -2,6 +2,13 @@ name: LaunchFlow Windows UI and installer smoke
 
 on:
   workflow_dispatch:
+  push:
+    branches: [fix/v0.8.9-settings-ui-cleanup-20261127]
+    paths:
+      - 'LaunchFlow/UI/Shell/MainWindow.xaml'
+      - 'LaunchFlow/UI/Shell/MainWindow.Navigation.cs'
+      - 'tests/ui/verify_ui.py'
+      - '.github/workflows/windows-ui-build.yml'
   pull_request:
     branches: [main]
 
