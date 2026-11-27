@@ -5,6 +5,7 @@ on:
     paths:
       - 'LaunchFlow/**'
       - 'tests/native-vault/**'
+      - 'tests/ui/**'
       - 'tests/startup-exit/**'
       - 'BUILD-*'
       - 'installer/**'

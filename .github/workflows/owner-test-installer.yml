@@ -7,6 +7,7 @@ on:
       - '.github/workflows/owner-test-installer.yml'
       - 'LaunchFlow/**'
       - 'tests/setup-validation/**'
+      - 'tests/ui/**'
       - 'installer/**'
   workflow_dispatch:
 
@@ -31,6 +32,11 @@ jobs:
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
+      - name: Verify UI source and password-status visibility
+        shell: pwsh
+        run: |
+          python tests/ui/verify_ui.py
+          if ($LASTEXITCODE -ne 0) { throw 'UI source-contract tests failed' }
       - name: Verify password-popup behavior using production handlers
         shell: pwsh
         run: |
