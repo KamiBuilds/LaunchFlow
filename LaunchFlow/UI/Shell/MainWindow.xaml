@@ -421,7 +421,8 @@
                     Margin="12,0,0,0"
                     ToolTip="{Binding ToolTip, ElementName=SaveChangesButton}">
               <Button.Style>
-                <Style TargetType="Button">
+                <!-- Keep the app's dark button template and hover states. -->
+                <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                   <Setter Property="Content" Value="Save now"/>
                   <Style.Triggers>
                     <DataTrigger Binding="{Binding Content, ElementName=SaveChangesButton}" Value="Retry save">

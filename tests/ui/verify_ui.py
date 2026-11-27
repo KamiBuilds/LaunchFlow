@@ -98,8 +98,10 @@ check(settings_button is not None and settings_status is not None and
           if n.tag == presentation + "Setter") and
       "Website passwords: save separately below" in markup and
       settings_status.get("TextTrimming") == "CharacterEllipsis" and
-      settings_button.get("ToolTip") == "{Binding ToolTip, ElementName=SaveChangesButton}",
-      "settings save strip distinguishes password edits and retains failed-save retry")
+      settings_button.get("ToolTip") == "{Binding ToolTip, ElementName=SaveChangesButton}" and
+      any(el.tag == presentation + "Style" and el.get("BasedOn") == "{StaticResource {x:Type Button}}"
+          for el in settings_button.iter()),
+      "settings save strip distinguishes password edits and keeps the dark button theme")
 startup_check = named.get("TaskSchedulerCheck")
 check(startup_check is not None and
       any(el.tag == presentation + "TextBlock" and el.get("TextWrapping") == "Wrap"
