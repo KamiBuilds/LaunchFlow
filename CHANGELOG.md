@@ -1,3 +1,11 @@
+# v0.8.9 — Contextual Settings UI cleanup (unreleased)
+
+- Hide website-only Add, Run/Stop and editor toolbar while Settings is selected; the custom title bar shrinks to one row instead of leaving dead vertical space.
+- Keep Getting started and About in the normal title bar on both pages, including draggable-chrome hit-test overrides.
+- Preserve application save status and immediate Save now/retry in an independent compact Settings strip on every settings category. Saved credentials still require their explicit Save credentials operation.
+- Group the General page into concise language and saving cards, remove duplicate headings and respect text wrapping and keyboard access.
+- Extend XAML structural tests to verify contextual actions, stable title-bar help, and visible settings save feedback.
+
 # v0.8.9 — Non-mutating inspection repair candidate (unreleased)
 
 - Repair the confirmed cold-unlock inspection side effect without ignoring or deleting live SQLite companions. Existing vault formats, derivation parameters, ownership and recovery boundaries remain compatibility requirements.

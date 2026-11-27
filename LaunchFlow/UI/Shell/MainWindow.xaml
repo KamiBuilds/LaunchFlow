@@ -107,7 +107,7 @@
   </Window.Resources>
   <Grid Background="#0B1220">
     <Grid.RowDefinitions>
-      <RowDefinition Height="108"/>
+      <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="*"/>
     </Grid.RowDefinitions>
@@ -115,7 +115,7 @@
     <Border Grid.Row="0" Background="#101827" BorderBrush="#294254"
             BorderThickness="0,0,0,1" Padding="18,0">
       <Grid>
-        <Grid.RowDefinitions><RowDefinition Height="49"/><RowDefinition Height="59"/></Grid.RowDefinitions>
+        <Grid.RowDefinitions><RowDefinition Height="49"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <Grid Grid.Row="0">
           <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="22"/>
             <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
@@ -139,6 +139,15 @@
                          Style="{StaticResource TopNavStyle}" Click="TopNavigation_Click"
                          shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
           </StackPanel>
+          <!-- Help stays available on both Websites and Settings without an extra toolbar. -->
+          <StackPanel Grid.Column="3" Orientation="Horizontal" HorizontalAlignment="Right"
+                      VerticalAlignment="Center" Margin="0,0,8,0">
+            <Button x:Name="GettingStartedButton" Content="Getting started" Click="Help_Click"
+                    ToolTip="Step-by-step guide" Height="31" Padding="10,5" Margin="0,0,6,0"
+                    FontSize="12" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+            <Button Content="About" Click="About_Click" Height="31" Padding="10,5"
+                    FontSize="12" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+          </StackPanel>
           <Border Grid.Column="4" Background="#223950" BorderBrush="#29425D"
                   BorderThickness="1" CornerRadius="9" Padding="10,5" VerticalAlignment="Center"
                   Margin="0,0,12,0">
@@ -155,11 +164,20 @@
                     Click="WindowClose_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
           </StackPanel>
         </Grid>
-        <!-- Equal-width side columns keep the Run / Stop primary action group at
-             the exact horizontal center, regardless of the lengths of the left
-             save/status and right help groups. No absolute pixel positioning. -->
+        <!-- Website-specific actions are absent from Settings. Auto-sized rows
+             eliminate the unused second title-bar strip on Settings. -->
         <Grid x:Name="ActionToolbar" Grid.Row="1" Margin="0,6,0,6"
               SizeChanged="ActionToolbar_SizeChanged" VerticalAlignment="Center">
+          <Grid.Style>
+            <Style TargetType="Grid">
+              <Setter Property="Visibility" Value="Visible"/>
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding IsChecked, ElementName=SettingsNav}" Value="True">
+                  <Setter Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </Grid.Style>
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="Auto"/>
@@ -200,14 +218,6 @@
             </StackPanel>
           </Border>
 
-          <!-- Secondary help actions stay at the right edge, never displace Run. -->
-          <StackPanel Grid.Column="2" Orientation="Horizontal"
-                      HorizontalAlignment="Right" VerticalAlignment="Center">
-            <Button x:Name="GettingStartedButton" Content="Getting started" Click="Help_Click"
-                    ToolTip="Step-by-step guide" Height="34" Padding="11,7" Margin="0,0,8,0"/>
-            <Button Content="About" Click="About_Click"
-                    Height="34" Padding="11,7" Margin="0"/>
-          </StackPanel>
         </Grid>
       </Grid>
     </Border>
@@ -396,7 +406,29 @@
       </Border>
     </Grid>
     </TabItem><TabItem Header="Settings">
-      <TabControl x:Name="SettingsTabs" Margin="0" Background="#111A2A" TabStripPlacement="Left" BorderThickness="0" Padding="8" SelectionChanged="SettingsTabs_SelectionChanged">
+      <Grid Background="#111A2A">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <!-- Persistent save feedback stays visible in every settings category;
+             credential edits retain their own explicit Save credentials action. -->
+        <Border x:Name="SettingsSaveStrip" Grid.Row="0" Background="#172438"
+                BorderBrush="#293D52" BorderThickness="0,0,0,1" Padding="16,7">
+          <DockPanel LastChildFill="True">
+            <Button x:Name="SettingsSaveNowButton" DockPanel.Dock="Right"
+                    Content="Save now" Click="Save_Click" Height="30" Padding="12,5"
+                    Margin="12,0,0,0" ToolTip="Immediately save website and application settings"/>
+            <TextBlock DockPanel.Dock="Right" Text="{Binding Text, ElementName=SaveStatusLabel}"
+                       Foreground="{Binding Foreground, ElementName=SaveStatusLabel}"
+                       VerticalAlignment="Center" FontSize="11" Margin="0,0,4,0"
+                       AutomationProperties.LiveSetting="Polite"/>
+            <TextBlock Text="Application settings save automatically"
+                       Foreground="#BDD1E4" FontSize="12" VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis"/>
+          </DockPanel>
+        </Border>
+      <TabControl x:Name="SettingsTabs" Grid.Row="1" Margin="0" Background="#111A2A" TabStripPlacement="Left" BorderThickness="0" Padding="8" SelectionChanged="SettingsTabs_SelectionChanged">
         <TabControl.Resources>
           <Style TargetType="TabItem">
             <Setter Property="MinWidth" Value="175"/>
@@ -427,20 +459,41 @@
           </Style>
         </TabControl.Resources>
         <TabItem Header="General"><ScrollViewer VerticalScrollBarVisibility="Auto">
-          <StackPanel Margin="28" MaxWidth="760" HorizontalAlignment="Left">
-            <TextBlock Text="Settings" FontSize="25" FontWeight="SemiBold" Margin="0,0,0,12"/>
-            <TextBlock Text="Choose a category from the left. Website and app settings save automatically after editing. Save changes forces an immediate save; passwords still require Save credentials."
-                       Foreground="#AEC5DD" FontSize="14" TextWrapping="Wrap" Margin="0,0,0,22"/>
-            <TextBlock Text="Language / Taal" FontWeight="SemiBold" FontSize="18" Margin="0,0,0,7"/>
-            <ComboBox x:Name="LanguageCombo" Width="200" HorizontalAlignment="Left"
-                      AutomationProperties.Name="Application language">
-              <ComboBoxItem Content="System default" Tag="auto"/>
-              <ComboBoxItem Content="English" Tag="en"/>
-              <ComboBoxItem Content="Nederlands" Tag="nl"/>
-            </ComboBox>
-            <TextBlock Text="Navigation and website controls support English and Dutch. Other text remains English."
-                       Foreground="#A1BCD2" TextWrapping="Wrap" Margin="0,7,0,16"/>
-            
+          <StackPanel Margin="28" MaxWidth="720" HorizontalAlignment="Left">
+            <TextBlock Text="General" FontSize="26" FontWeight="SemiBold" Margin="0,0,0,7"/>
+            <TextBlock Text="Personalize LaunchFlow and choose how the app displays its controls."
+                       Foreground="#B3C6DA" FontSize="13" TextWrapping="Wrap" Margin="0,0,0,22"/>
+            <Border Background="#1B293C" BorderBrush="#30455D" BorderThickness="1"
+                    CornerRadius="12" Padding="22,19" Margin="0,0,0,15">
+              <StackPanel>
+                <TextBlock Text="Language / Taal" FontWeight="SemiBold" FontSize="18"
+                           Foreground="#E7F4FA" Margin="0,0,0,7"/>
+                <TextBlock Text="Choose the language used for navigation and website controls."
+                           Foreground="#B2C8DE" FontSize="12" TextWrapping="Wrap"
+                           Margin="0,0,0,13"/>
+                <ComboBox x:Name="LanguageCombo" Width="220" HorizontalAlignment="Left"
+                          AutomationProperties.Name="Application language">
+                  <ComboBoxItem Content="System default" Tag="auto"/>
+                  <ComboBoxItem Content="English" Tag="en"/>
+                  <ComboBoxItem Content="Nederlands" Tag="nl"/>
+                </ComboBox>
+                <TextBlock Text="Some advanced text is still available in English only."
+                           Foreground="#94AEC7" FontSize="12" TextWrapping="Wrap"
+                           Margin="0,12,0,0"/>
+              </StackPanel>
+            </Border>
+            <Border Background="#162538" BorderBrush="#294056" BorderThickness="1"
+                    CornerRadius="12" Padding="20,16">
+              <StackPanel>
+                <TextBlock Text="Saving your changes" FontSize="16" FontWeight="SemiBold"
+                           Foreground="#DAEAF6" Margin="0,0,0,8"/>
+                <TextBlock Text="Website and application settings save automatically. Use Save now above to save immediately."
+                           Foreground="#B6CBDE" FontSize="12" TextWrapping="Wrap"
+                           Margin="0,0,0,8"/>
+                <TextBlock Text="Website passwords are different: choose Passwords on the left and press Save for selected website."
+                           Foreground="#A2BACF" FontSize="12" TextWrapping="Wrap"/>
+              </StackPanel>
+            </Border>
           </StackPanel>
         </ScrollViewer></TabItem>
         <TabItem x:Name="PasswordsSettingsTab" Header="Passwords"><ScrollViewer VerticalScrollBarVisibility="Auto" Background="#111A2A"><StackPanel Margin="28" MaxWidth="840" HorizontalAlignment="Left"><TextBlock Text="Website passwords" FontSize="24" FontWeight="Bold" Margin="0,0,0,8"/><TextBlock Text="One master-password unlock lasts one hour, even if you visit other tabs. The encrypted vault relocks after your configurable Windows-lock timeout (10 minutes by default)." Foreground="#B6C8DD" TextWrapping="Wrap" Margin="0,0,0,7"/>
@@ -608,4 +661,4 @@
 <Border Background="#18283C" CornerRadius="10" Padding="14,12" Margin="0,8,0,0"><StackPanel>
 <TextBlock Text="Older workspace groups" FontWeight="SemiBold" Foreground="#D7E8F5" Margin="0,0,0,6"/>
 <TextBlock Text="Earlier LaunchFlow versions could save named workspace groups. Those encrypted records are still kept and still import/export with your configuration. The main screen now focuses on websites: enable the sites you need and use Run all. Named workspace edit controls stay hidden so they do not compete with the websites list." TextWrapping="Wrap" Foreground="#A9C0D3" FontSize="12"/>
-</StackPanel></Border></StackPanel></ScrollViewer></TabItem></TabControl></TabItem></TabControl></Grid></Window>
+</StackPanel></Border></StackPanel></ScrollViewer></TabItem></TabControl></Grid></TabItem></TabControl></Grid></Window>

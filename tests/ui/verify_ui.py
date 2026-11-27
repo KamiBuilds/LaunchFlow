@@ -51,7 +51,9 @@ grid_column = "Grid.Column"  # XAML attached property is an unprefixed XML attri
 columns = toolbar.find(presentation + "Grid.ColumnDefinitions") if toolbar is not None else None
 direct_children = list(toolbar) if toolbar is not None else []
 centred_group = [child for child in direct_children if child.get(grid_column) == "1"]
-right_group = [child for child in direct_children if child.get(grid_column) == "2"]
+help_buttons = [el for el in ui.iter()
+                if el.tag == presentation + "Button"
+                and el.get("Content") in {"Getting started", "About"}]
 check(toolbar is not None and
       toolbar.get("SizeChanged") == "ActionToolbar_SizeChanged" and
       columns is not None and
@@ -59,10 +61,26 @@ check(toolbar is not None and
       len(centred_group) == 1 and
       any(node.get(xns + "Name") == "RunAllButton" for node in centred_group[0].iter()) and
       any(node.get(xns + "Name") == "StopButton" for node in centred_group[0].iter()) and
-      len(right_group) == 1 and
-      any(node.get("Content") == "Getting started" for node in right_group[0].iter()) and
-      any(node.get("Content") == "About" for node in right_group[0].iter()),
-      "toolbar has symmetric sides, centered primary actions and right-aligned help")
+      len(help_buttons) == 2 and
+      all(button.get("{clr-namespace:System.Windows.Shell;assembly=PresentationFramework}WindowChrome.IsHitTestVisibleInChrome")
+          == "True" or button.get("shell:WindowChrome.IsHitTestVisibleInChrome") == "True"
+          for button in help_buttons),
+      "toolbar centers website actions; title bar retains help and About")
+check(toolbar is not None and
+      'Binding="{Binding IsChecked, ElementName=SettingsNav}"' in markup and
+      'Value="Collapsed"' in markup and
+      ui.find(presentation + "Grid/" + presentation + "Grid.RowDefinitions/"
+              + presentation + "RowDefinition").get("Height") == "Auto",
+      "settings navigation hides website-only toolbar and reclaims title-bar space")
+settings_strip = named.get("SettingsSaveStrip")
+check(settings_strip is not None and named.get("SettingsSaveNowButton") is not None and
+      'Text="{Binding Text, ElementName=SaveStatusLabel}"' in markup and
+      named["SettingsSaveNowButton"].get("Click") == "Save_Click",
+      "settings keeps durable save/retry and live status without website actions")
+check('Text="General"' in markup and 'Text="Saving your changes"' in markup and
+      'Text="Language / Taal"' in markup and
+      named["LanguageCombo"].get("Width") == "220",
+      "general settings has clear language and autosave cards")
 selector = named.get("WorkspaceCombo")
 check(selector is not None and selector.get("IsEditable") == "False"
       and selector.get("DisplayMemberPath") == "Name"
