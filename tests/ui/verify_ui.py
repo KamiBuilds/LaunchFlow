@@ -87,10 +87,16 @@ settings_button = named.get("SettingsSaveNowButton")
 settings_status = named.get("SettingsSaveStatus")
 settings_hint = named.get("SettingsSaveHint")
 def has_context_trigger(element):
-    return (element is not None and
+    if element is None:
+        return False
+    # The status uses a MULTI-data trigger: hide only 'All changes saved' on
+    # Passwords while leaving failures and unsaved settings visible.
+    return (any(el.get("Binding") == "{Binding SelectedIndex, ElementName=SettingsTabs}" and
+                el.get("Value") == "1"
+                for el in element.iter() if el.tag == presentation + "DataTrigger") or
             any(el.get("Binding") == "{Binding SelectedIndex, ElementName=SettingsTabs}" and
                 el.get("Value") == "1"
-                for el in element.iter() if el.tag == presentation + "DataTrigger"))
+                for el in element.iter() if el.tag == presentation + "Condition"))
 check(settings_button is not None and settings_status is not None and
       settings_hint is not None and
       all(has_context_trigger(x) for x in (settings_button, settings_status, settings_hint)) and
