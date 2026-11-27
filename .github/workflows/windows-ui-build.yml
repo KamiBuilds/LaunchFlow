@@ -3,7 +3,7 @@ name: LaunchFlow Windows UI and installer smoke
 on:
   workflow_dispatch:
   push:
-    branches: [fix/v0.8.9-settings-ui-cleanup-20261127]
+    branches: [fix/v0.8.9-settings-ui-cleanup-20261127, fix/v0.8.10-release-gates-and-save-status-20261127]
     paths:
       - 'LaunchFlow/UI/Shell/MainWindow.xaml'
       - 'LaunchFlow/UI/Shell/MainWindow.Navigation.cs'

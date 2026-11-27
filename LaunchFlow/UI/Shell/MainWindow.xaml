@@ -432,6 +432,24 @@
                     <DataTrigger Binding="{Binding SelectedIndex, ElementName=SettingsTabs}" Value="1">
                       <Setter Property="Visibility" Value="Collapsed"/>
                     </DataTrigger>
+                    <!-- Passwords do not save through this button, but an unsaved
+                         GENERAL setting must still be recoverable here. -->
+                    <MultiDataTrigger>
+                      <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding SelectedIndex, ElementName=SettingsTabs}" Value="1"/>
+                        <Condition Binding="{Binding Text, ElementName=SaveStatusLabel}" Value="Save failed"/>
+                      </MultiDataTrigger.Conditions>
+                      <Setter Property="Visibility" Value="Visible"/>
+                      <Setter Property="Content" Value="Retry settings save"/>
+                    </MultiDataTrigger>
+                    <MultiDataTrigger>
+                      <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding SelectedIndex, ElementName=SettingsTabs}" Value="1"/>
+                        <Condition Binding="{Binding Text, ElementName=SaveStatusLabel}" Value="Unsaved changes"/>
+                      </MultiDataTrigger.Conditions>
+                      <Setter Property="Visibility" Value="Visible"/>
+                      <Setter Property="Content" Value="Save pending settings"/>
+                    </MultiDataTrigger>
                   </Style.Triggers>
                 </Style>
               </Button.Style>
@@ -446,9 +464,15 @@
               <TextBlock.Style>
                 <Style TargetType="TextBlock">
                   <Style.Triggers>
-                    <DataTrigger Binding="{Binding SelectedIndex, ElementName=SettingsTabs}" Value="1">
+                    <!-- Do not imply that the website password itself was saved;
+                         keep failures, unsaved edits and startup warnings visible. -->
+                    <MultiDataTrigger>
+                      <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding SelectedIndex, ElementName=SettingsTabs}" Value="1"/>
+                        <Condition Binding="{Binding Text, ElementName=SaveStatusLabel}" Value="All changes saved"/>
+                      </MultiDataTrigger.Conditions>
                       <Setter Property="Visibility" Value="Collapsed"/>
-                    </DataTrigger>
+                    </MultiDataTrigger>
                   </Style.Triggers>
                 </Style>
               </TextBlock.Style>
@@ -456,7 +480,7 @@
             <TextBlock x:Name="SettingsSaveHint" Foreground="#BDD1E4"
                        FontSize="12" VerticalAlignment="Center"
                        TextTrimming="CharacterEllipsis"
-                       ToolTip="Website and application settings save automatically. Website credentials need their own Save for selected website button.">
+                       ToolTip="Website and application settings save automatically. Save failed and unsaved settings remain visible here. Website credentials require Save for selected website.">
               <TextBlock.Style>
                 <Style TargetType="TextBlock">
                   <Setter Property="Text" Value="Settings save automatically"/>

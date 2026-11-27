@@ -102,6 +102,23 @@ check(settings_button is not None and settings_status is not None and
       any(el.tag == presentation + "Style" and el.get("BasedOn") == "{StaticResource {x:Type Button}}"
           for el in settings_button.iter()),
       "settings save strip distinguishes password edits and keeps the dark button theme")
+# Passwords must suppress only the misleading green success indicator. A write
+# failure or dirty application setting must not disappear when Passwords opens.
+def is_context_condition(trigger, value):
+    conditions = trigger.find(presentation + "MultiDataTrigger.Conditions")
+    return (conditions is not None and
+            any(c.get("Binding") == "{Binding SelectedIndex, ElementName=SettingsTabs}"
+                and c.get("Value") == "1" for c in conditions) and
+            any(c.get("Binding") == "{Binding Text, ElementName=SaveStatusLabel}"
+                and c.get("Value") == value for c in conditions))
+status_triggers = [el for el in settings_status.iter() if el.tag == presentation + "MultiDataTrigger"]
+button_triggers = [el for el in settings_button.iter() if el.tag == presentation + "MultiDataTrigger"]
+check(any(is_context_condition(t, "All changes saved") for t in status_triggers) and
+      not any(is_context_condition(t, "Save failed") for t in status_triggers) and
+      all(any(is_context_condition(t, state) for t in button_triggers)
+          for state in ("Save failed", "Unsaved changes")) and
+      "Retry settings save" in markup and "Save pending settings" in markup,
+      "passwords tab keeps genuine save failures recoverable instead of hiding them")
 startup_check = named.get("TaskSchedulerCheck")
 check(startup_check is not None and
       any(el.tag == presentation + "TextBlock" and el.get("TextWrapping") == "Wrap"

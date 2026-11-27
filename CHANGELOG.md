@@ -1,3 +1,10 @@
+# v0.8.10 — Save-status visibility, update version and native release gates (owner-test candidate)
+
+- New version number across WPF assembly, Inno Setup, AppInfo, README and safe ZIP generation; upgrade from v0.8.9 is no longer presented as a same-version repair.
+- In Settings → Passwords, keep genuine application save errors, pending edits and startup-registration warnings visible while suppressing only the misleading green "All changes saved" status. Offer "Retry settings save" or "Save pending settings" as appropriate, separate from the credential-specific Save action.
+- Run exact-SHA native Windows vault acceptance, full Windows installer/regression workflow, and a streamlined owner-test EXE builder for this branch. No production release is implied by an owner-test artifact.
+- Extend structural UI regression checks for failure visibility, context-aware retry controls and new version metadata. No vault encryption, KDF, saved credential or browser-runtime behavior changed.
+
 # v0.8.9 — Settings alignment and compact-window polish
 
 - Preserve the intended alignment hierarchy: headings and form descriptions left aligned, workflow actions centered, and window controls right aligned.

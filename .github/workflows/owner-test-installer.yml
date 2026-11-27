@@ -2,11 +2,12 @@ name: Owner-test LaunchFlow Windows installer
 
 on:
   push:
-    branches: [fix/v0.8.7-vault-native-stabilization-20261125]
+    branches: [fix/v0.8.7-vault-native-stabilization-20261125, fix/v0.8.10-release-gates-and-save-status-20261127]
     paths:
       - '.github/workflows/owner-test-installer.yml'
       - 'LaunchFlow/**'
       - 'tests/setup-validation/**'
+      - 'installer/**'
   workflow_dispatch:
 
 permissions:
@@ -45,21 +46,25 @@ jobs:
         run: |
           ./BUILD-INSTALLER.ps1 -NoAutoInstall
           if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
-          if (-not (Test-Path -LiteralPath 'dist/LaunchFlow-Setup-v0.8.7-x64.exe' -PathType Leaf)) { throw 'Setup executable missing' }
+          [xml]$project = Get-Content ./LaunchFlow/LaunchFlow.csproj
+          $version = [string]$project.Project.PropertyGroup.Version
+          $setup = "dist/LaunchFlow-Setup-v$version-x64.exe"
+          if (-not (Test-Path -LiteralPath $setup -PathType Leaf)) { throw 'Setup executable missing' }
+          "LF_VERSION=$version" >> $env:GITHUB_ENV
       - name: Record tested source and checksum
         shell: pwsh
         run: |
-          $path='dist/LaunchFlow-Setup-v0.8.7-x64.exe'
+          $path="dist/LaunchFlow-Setup-v$env:LF_VERSION-x64.exe"
           $sum=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$sum  LaunchFlow-Setup-v0.8.7-x64.exe" | Set-Content -LiteralPath 'dist/SHA256SUMS.txt' -Encoding ascii
+          "$sum  LaunchFlow-Setup-v$env:LF_VERSION-x64.exe" | Set-Content -LiteralPath 'dist/SHA256SUMS.txt' -Encoding ascii
           "Source commit: $env:GITHUB_SHA" | Set-Content -LiteralPath 'dist/BUILD-SOURCE.txt'
           "Status: owner-test installer, not a release; full CI and independent Windows acceptance required." | Add-Content -LiteralPath 'dist/BUILD-SOURCE.txt'
       - name: Upload installer ZIP for owner testing
         uses: actions/upload-artifact@v6
         with:
-          name: LaunchFlow-v0.8.7-OWNER-TEST-${{ github.sha }}
+          name: LaunchFlow-v${{ env.LF_VERSION }}-OWNER-TEST-${{ github.sha }}
           path: |
-            dist/LaunchFlow-Setup-v0.8.7-x64.exe
+            dist/LaunchFlow-Setup-v${{ env.LF_VERSION }}-x64.exe
             dist/SHA256SUMS.txt
             dist/BUILD-SOURCE.txt
           if-no-files-found: error
