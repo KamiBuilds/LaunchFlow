@@ -411,82 +411,55 @@
           <RowDefinition Height="Auto"/>
           <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
-        <!-- Credentials require their own explicit Save action. Never imply that
-             clicking Save now saves an unsubmitted password. -->
-        <Border x:Name="SettingsSaveStrip" Grid.Row="0" Background="#172438"
-                BorderBrush="#293D52" BorderThickness="0,0,0,1" Padding="16,7">
+        <!-- The routine autosave banner is intentionally absent. Reserve
+             vertical space ONLY for a real write or startup-registration failure.
+             Normal pending edits are debounced and do not flash a toolbar. -->
+        <Border x:Name="SettingsSaveStrip" Grid.Row="0" Background="#392637"
+                BorderBrush="#9A5766" BorderThickness="0,0,0,1" Padding="16,7">
+          <Border.Style>
+            <Style TargetType="Border">
+              <Setter Property="Visibility" Value="Collapsed"/>
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding Text, ElementName=SaveStatusLabel}" Value="Save failed">
+                  <Setter Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Text, ElementName=SaveStatusLabel}" Value="Saved · Startup setup failed">
+                  <Setter Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </Border.Style>
           <DockPanel LastChildFill="True">
             <Button x:Name="SettingsSaveNowButton" DockPanel.Dock="Right"
                     Click="Save_Click" Height="30" Padding="12,5"
-                    Margin="12,0,0,0"
-                    ToolTip="{Binding ToolTip, ElementName=SaveChangesButton}">
+                    Margin="12,0,0,0" ToolTip="Retry the failed settings operation">
               <Button.Style>
-                <!-- Keep the app's dark button template and hover states. -->
                 <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                  <Setter Property="Content" Value="Save now"/>
+                  <Setter Property="Content" Value="Retry save"/>
                   <Style.Triggers>
-                    <DataTrigger Binding="{Binding Content, ElementName=SaveChangesButton}" Value="Retry save">
-                      <Setter Property="Content" Value="Retry save"/>
-                      <Setter Property="FontWeight" Value="SemiBold"/>
+                    <DataTrigger Binding="{Binding Text, ElementName=SaveStatusLabel}" Value="Saved · Startup setup failed">
+                      <Setter Property="Content" Value="Retry startup setup"/>
                     </DataTrigger>
-                    <DataTrigger Binding="{Binding SelectedIndex, ElementName=SettingsTabs}" Value="1">
-                      <Setter Property="Visibility" Value="Collapsed"/>
-                    </DataTrigger>
-                    <!-- Passwords do not save through this button, but an unsaved
-                         GENERAL setting must still be recoverable here. -->
-                    <MultiDataTrigger>
-                      <MultiDataTrigger.Conditions>
-                        <Condition Binding="{Binding SelectedIndex, ElementName=SettingsTabs}" Value="1"/>
-                        <Condition Binding="{Binding Text, ElementName=SaveStatusLabel}" Value="Save failed"/>
-                      </MultiDataTrigger.Conditions>
-                      <Setter Property="Visibility" Value="Visible"/>
-                      <Setter Property="Content" Value="Retry settings save"/>
-                    </MultiDataTrigger>
-                    <MultiDataTrigger>
-                      <MultiDataTrigger.Conditions>
-                        <Condition Binding="{Binding SelectedIndex, ElementName=SettingsTabs}" Value="1"/>
-                        <Condition Binding="{Binding Text, ElementName=SaveStatusLabel}" Value="Unsaved changes"/>
-                      </MultiDataTrigger.Conditions>
-                      <Setter Property="Visibility" Value="Visible"/>
-                      <Setter Property="Content" Value="Save pending settings"/>
-                    </MultiDataTrigger>
                   </Style.Triggers>
                 </Style>
               </Button.Style>
             </Button>
             <TextBlock x:Name="SettingsSaveStatus" DockPanel.Dock="Right"
                        Text="{Binding Text, ElementName=SaveStatusLabel}"
-                       Foreground="{Binding Foreground, ElementName=SaveStatusLabel}"
-                       VerticalAlignment="Center" FontSize="11" Margin="0,0,4,0"
-                       MaxWidth="160" TextTrimming="CharacterEllipsis"
+                       Foreground="#FFB5A1" VerticalAlignment="Center" FontSize="12"
+                       FontWeight="SemiBold" Margin="0,0,8,0"
+                       MaxWidth="190" TextTrimming="CharacterEllipsis"
                        ToolTip="{Binding Text, ElementName=SaveStatusLabel}"
-                       AutomationProperties.LiveSetting="Polite">
-              <TextBlock.Style>
-                <Style TargetType="TextBlock">
-                  <Style.Triggers>
-                    <!-- Do not imply that the website password itself was saved;
-                         keep failures, unsaved edits and startup warnings visible. -->
-                    <MultiDataTrigger>
-                      <MultiDataTrigger.Conditions>
-                        <Condition Binding="{Binding SelectedIndex, ElementName=SettingsTabs}" Value="1"/>
-                        <Condition Binding="{Binding Text, ElementName=SaveStatusLabel}" Value="All changes saved"/>
-                      </MultiDataTrigger.Conditions>
-                      <Setter Property="Visibility" Value="Collapsed"/>
-                    </MultiDataTrigger>
-                  </Style.Triggers>
-                </Style>
-              </TextBlock.Style>
-            </TextBlock>
-            <TextBlock x:Name="SettingsSaveHint" Foreground="#BDD1E4"
+                       AutomationProperties.LiveSetting="Assertive"/>
+            <TextBlock x:Name="SettingsSaveHint" Foreground="#F4D0D4"
                        FontSize="12" VerticalAlignment="Center"
-                       TextTrimming="CharacterEllipsis"
-                       ToolTip="Website and application settings save automatically. Save failed and unsaved settings remain visible here. Website credentials require Save for selected website.">
+                       TextTrimming="CharacterEllipsis">
               <TextBlock.Style>
                 <Style TargetType="TextBlock">
-                  <Setter Property="Text" Value="Settings save automatically"/>
+                  <Setter Property="Text" Value="Your changes could not be saved. Check the settings and retry."/>
                   <Style.Triggers>
-                    <DataTrigger Binding="{Binding SelectedIndex, ElementName=SettingsTabs}" Value="1">
-                      <Setter Property="Text" Value="Website passwords: save separately below"/>
+                    <DataTrigger Binding="{Binding Text, ElementName=SaveStatusLabel}" Value="Saved · Startup setup failed">
+                      <Setter Property="Text" Value="Settings saved, but Windows startup registration failed."/>
                     </DataTrigger>
                   </Style.Triggers>
                 </Style>

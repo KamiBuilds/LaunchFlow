@@ -1,7 +1,7 @@
 name: Vault reliability native acceptance
 on:
   push:
-    branches: [fix/v0.8.3-vault-first-run-reliability-20261123, fix/v0.8.6-native-wrong-unicode-20261125, fix/v0.8.7-vault-native-stabilization-20261125, fix/v0.8.8-reviewed-stabilization-20261125, fix/v0.8.10-release-gates-and-save-status-20261127]
+    branches: [fix/v0.8.3-vault-first-run-reliability-20261123, fix/v0.8.6-native-wrong-unicode-20261125, fix/v0.8.7-vault-native-stabilization-20261125, fix/v0.8.8-reviewed-stabilization-20261125, fix/v0.8.10-release-gates-and-save-status-20261127, fix/v0.8.11-hide-redundant-settings-bar-20261127]
     paths:
       - 'LaunchFlow/**'
       - 'tests/native-vault/**'
@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   preflight:
-    if: github.ref == 'refs/heads/fix/v0.8.3-vault-first-run-reliability-20261123' || github.ref == 'refs/heads/fix/v0.8.6-native-wrong-unicode-20261125' || github.ref == 'refs/heads/fix/v0.8.7-vault-native-stabilization-20261125' || github.ref == 'refs/heads/fix/v0.8.8-reviewed-stabilization-20261125' || github.ref == 'refs/heads/fix/v0.8.10-release-gates-and-save-status-20261127'
+    if: github.ref == 'refs/heads/fix/v0.8.3-vault-first-run-reliability-20261123' || github.ref == 'refs/heads/fix/v0.8.6-native-wrong-unicode-20261125' || github.ref == 'refs/heads/fix/v0.8.7-vault-native-stabilization-20261125' || github.ref == 'refs/heads/fix/v0.8.8-reviewed-stabilization-20261125' || github.ref == 'refs/heads/fix/v0.8.10-release-gates-and-save-status-20261127' || github.ref == 'refs/heads/fix/v0.8.11-hide-redundant-settings-bar-20261127'
     runs-on: windows-2022
     timeout-minutes: 8
     steps:

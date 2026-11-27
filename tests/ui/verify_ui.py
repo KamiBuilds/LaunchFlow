@@ -72,59 +72,52 @@ check(toolbar is not None and
       ui.find(presentation + "Grid/" + presentation + "Grid.RowDefinitions/"
               + presentation + "RowDefinition").get("Height") == "Auto",
       "settings navigation hides website-only toolbar and reclaims title-bar space")
+# Routine Settings autosave has no permanent save/status toolbar. The
+# same dark-themed control is available only if an actual write or startup
+# registration FAILED. Existing password editors keep their explicit Save.
 settings_strip = named.get("SettingsSaveStrip")
-check(settings_strip is not None and named.get("SettingsSaveNowButton") is not None and
-      'Text="{Binding Text, ElementName=SaveStatusLabel}"' in markup and
-      named["SettingsSaveNowButton"].get("Click") == "Save_Click",
-      "settings keeps durable save/retry and live status without website actions")
-check('Text="General"' in markup and 'Text="Saving your changes"' in markup and
-      'Text="Language / Taal"' in markup and
-      named["LanguageCombo"].get("Width") == "220",
-      "general settings has clear language and autosave cards")
-# All labels should remain left-aligned for readability while the toolbar
-# keeps the primary actions centered. The Passwords tab has separate saving.
 settings_button = named.get("SettingsSaveNowButton")
 settings_status = named.get("SettingsSaveStatus")
 settings_hint = named.get("SettingsSaveHint")
-def has_context_trigger(element):
-    if element is None:
-        return False
-    # The status uses a MULTI-data trigger: hide only 'All changes saved' on
-    # Passwords while leaving failures and unsaved settings visible.
-    return (any(el.get("Binding") == "{Binding SelectedIndex, ElementName=SettingsTabs}" and
-                el.get("Value") == "1"
-                for el in element.iter() if el.tag == presentation + "DataTrigger") or
-            any(el.get("Binding") == "{Binding SelectedIndex, ElementName=SettingsTabs}" and
-                el.get("Value") == "1"
-                for el in element.iter() if el.tag == presentation + "Condition"))
-check(settings_button is not None and settings_status is not None and
-      settings_hint is not None and
-      all(has_context_trigger(x) for x in (settings_button, settings_status, settings_hint)) and
-      any(n.get("Value") == "Retry save" for n in settings_button.iter()
-          if n.tag == presentation + "Setter") and
-      "Website passwords: save separately below" in markup and
-      settings_status.get("TextTrimming") == "CharacterEllipsis" and
-      settings_button.get("ToolTip") == "{Binding ToolTip, ElementName=SaveChangesButton}" and
-      any(el.tag == presentation + "Style" and el.get("BasedOn") == "{StaticResource {x:Type Button}}"
+def has_visibility_trigger(element, state):
+    return (element is not None and
+            any(el.tag == presentation + "DataTrigger" and
+                el.get("Binding") == "{Binding Text, ElementName=SaveStatusLabel}" and
+                el.get("Value") == state and
+                any(n.tag == presentation + "Setter" and
+                    n.get("Property") == "Visibility" and n.get("Value") == "Visible"
+                    for n in el.iter())
+                for el in element.iter()))
+check(settings_strip is not None and
+      any(s.tag == presentation + "Setter" and
+          s.get("Property") == "Visibility" and s.get("Value") == "Collapsed"
+          for s in settings_strip.iter()) and
+      has_visibility_trigger(settings_strip, "Save failed") and
+      has_visibility_trigger(settings_strip, "Saved · Startup setup failed") and
+      not has_visibility_trigger(settings_strip, "Unsaved changes"),
+      "Settings saves automatically; no persistent bar, only actionable failures")
+check(settings_button is not None and
+      settings_button.get("Click") == "Save_Click" and
+      settings_button.get("ToolTip") == "Retry the failed settings operation" and
+      any(el.tag == presentation + "Style" and
+          el.get("BasedOn") == "{StaticResource {x:Type Button}}"
+          for el in settings_button.iter()) and
+      any(el.tag == presentation + "Setter" and el.get("Value") == "Retry save"
+          for el in settings_button.iter()) and
+      any(el.tag == presentation + "Setter" and el.get("Value") == "Retry startup setup"
           for el in settings_button.iter()),
-      "settings save strip distinguishes password edits and keeps the dark button theme")
-# Passwords must suppress only the misleading green success indicator. A write
-# failure or dirty application setting must not disappear when Passwords opens.
-def is_context_condition(trigger, value):
-    conditions = trigger.find(presentation + "MultiDataTrigger.Conditions")
-    return (conditions is not None and
-            any(c.get("Binding") == "{Binding SelectedIndex, ElementName=SettingsTabs}"
-                and c.get("Value") == "1" for c in conditions) and
-            any(c.get("Binding") == "{Binding Text, ElementName=SaveStatusLabel}"
-                and c.get("Value") == value for c in conditions))
-status_triggers = [el for el in settings_status.iter() if el.tag == presentation + "MultiDataTrigger"]
-button_triggers = [el for el in settings_button.iter() if el.tag == presentation + "MultiDataTrigger"]
-check(any(is_context_condition(t, "All changes saved") for t in status_triggers) and
-      not any(is_context_condition(t, "Save failed") for t in status_triggers) and
-      all(any(is_context_condition(t, state) for t in button_triggers)
-          for state in ("Save failed", "Unsaved changes")) and
-      "Retry settings save" in markup and "Save pending settings" in markup,
-      "passwords tab keeps genuine save failures recoverable instead of hiding them")
+      "failed autosaves retain a themed retry control including startup setup")
+check(settings_status is not None and settings_hint is not None and
+      settings_status.get("Text") == "{Binding Text, ElementName=SaveStatusLabel}" and
+      settings_status.get("TextTrimming") == "CharacterEllipsis" and
+      "Settings saved, but Windows startup registration failed." in markup and
+      "Your changes could not be saved." in markup and
+      "Website passwords: save separately below" not in markup,
+      "error-only banner reports failures without suggesting auto-saved passwords")
+check('Text="General"' in markup and 'Text="Saving your changes"' in markup and
+      'Text="Language / Taal"' in markup and
+      named["LanguageCombo"].get("Width") == "220",
+      "general settings has clear language and autosave explanation")
 startup_check = named.get("TaskSchedulerCheck")
 check(startup_check is not None and
       any(el.tag == presentation + "TextBlock" and el.get("TextWrapping") == "Wrap"

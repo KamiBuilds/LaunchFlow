@@ -2,7 +2,7 @@ name: Windows installer — build and gated draft release
 
 on:
   push:
-    branches: ['fix/v0.8.7-vault-native-stabilization-20261125', 'fix/v0.8.8-reviewed-stabilization-20261125', 'fix/v0.8.10-release-gates-and-save-status-20261127']
+    branches: ['fix/v0.8.7-vault-native-stabilization-20261125', 'fix/v0.8.8-reviewed-stabilization-20261125', 'fix/v0.8.10-release-gates-and-save-status-20261127', 'fix/v0.8.11-hide-redundant-settings-bar-20261127']
   pull_request:
   workflow_dispatch:
     inputs:

@@ -1,3 +1,12 @@
+# v0.8.11 — Remove redundant Settings autosave bar (owner-test candidate)
+
+- Hide the entire Settings save/status strip when the app is saving normally, including after successful automatic saves; reclaim its vertical space in the auto-sized layout.
+- Show the strip only for actionable `Save failed` or `Saved · Startup setup failed` statuses. A user can retry either error directly without searching for the website toolbar.
+- Never show a transient "Unsaved changes" strip during the normal 200 ms debounce, and never imply unsaved website credentials were saved.
+- Preserve the dark button style, explicit credential saving, underlying encrypted auto-save, and original save/recovery flows.
+- Bump application and Inno Setup to v0.8.11 to make the subsequent installer update clearly distinguishable from v0.8.10.
+- Extend UI source-contract tests to require error-only visibility and retry actions.
+
 # v0.8.10 — Save-status visibility, update version and native release gates (owner-test candidate)
 
 - New version number across WPF assembly, Inno Setup, AppInfo, README and safe ZIP generation; upgrade from v0.8.9 is no longer presented as a same-version repair.

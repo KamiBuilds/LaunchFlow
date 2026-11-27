@@ -14,7 +14,7 @@ $root = $PSScriptRoot
 . (Join-Path $root 'BUILD-PACKAGING-HELPERS.ps1')
 $staging = Join-Path ([IO.Path]::GetTempPath()) ('launchflow-safe-zip-' + [guid]::NewGuid().ToString('N'))
 if (-not $OutputPath) {
-    $OutputPath = Join-Path $root ("dist/LaunchFlow-v0.8.10-$($Kind.ToLowerInvariant())-clean.zip")
+    $OutputPath = Join-Path $root ("dist/LaunchFlow-v0.8.11-$($Kind.ToLowerInvariant())-clean.zip")
 }
 $output = [IO.Path]::GetFullPath($OutputPath)
 if ($output.StartsWith([IO.Path]::GetFullPath($staging), [StringComparison]::OrdinalIgnoreCase)) {
