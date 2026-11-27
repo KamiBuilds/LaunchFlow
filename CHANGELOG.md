@@ -1,3 +1,11 @@
+# v0.8.9 — Settings alignment and compact-window polish
+
+- Preserve the intended alignment hierarchy: headings and form descriptions left aligned, workflow actions centered, and window controls right aligned.
+- Make the Settings save bar contextual. Passwords now indicate that credentials need their own explicit save, with general Save now and the unrelated save status hidden; on other pages the action changes to Retry save after an unsuccessful save.
+- Truncate only the live save status when space is limited, with its full text available as a tooltip.
+- Make the Startup panel flexible up to 640px and wrap its lengthy Task Scheduler label, removing an unnecessary nested scroll viewer.
+- Extend structural checks for tab-specific saving, retry visibility and compact-width wrapping.
+
 # v0.8.9 — Contextual Settings UI cleanup (unreleased)
 
 - Hide website-only Add, Run/Stop and editor toolbar while Settings is selected; the custom title bar shrinks to one row instead of leaving dead vertical space.

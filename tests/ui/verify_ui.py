@@ -81,6 +81,33 @@ check('Text="General"' in markup and 'Text="Saving your changes"' in markup and
       'Text="Language / Taal"' in markup and
       named["LanguageCombo"].get("Width") == "220",
       "general settings has clear language and autosave cards")
+# All labels should remain left-aligned for readability while the toolbar
+# keeps the primary actions centered. The Passwords tab has separate saving.
+settings_button = named.get("SettingsSaveNowButton")
+settings_status = named.get("SettingsSaveStatus")
+settings_hint = named.get("SettingsSaveHint")
+def has_context_trigger(element):
+    return (element is not None and
+            any(el.get("Binding") == "{Binding SelectedIndex, ElementName=SettingsTabs}" and
+                el.get("Value") == "1"
+                for el in element.iter() if el.tag == presentation + "DataTrigger"))
+check(settings_button is not None and settings_status is not None and
+      settings_hint is not None and
+      all(has_context_trigger(x) for x in (settings_button, settings_status, settings_hint)) and
+      any(n.get("Value") == "Retry save" for n in settings_button.iter()
+          if n.tag == presentation + "Setter") and
+      "Website passwords: save separately below" in markup and
+      settings_status.get("TextTrimming") == "CharacterEllipsis" and
+      settings_button.get("ToolTip") == "{Binding ToolTip, ElementName=SaveChangesButton}",
+      "settings save strip distinguishes password edits and retains failed-save retry")
+startup_check = named.get("TaskSchedulerCheck")
+check(startup_check is not None and
+      any(el.tag == presentation + "TextBlock" and el.get("TextWrapping") == "Wrap"
+          for el in startup_check.iter()) and
+      'MaxWidth="640"' in markup and
+      '<ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel>' not in
+      markup.split('x:Name="TaskSchedulerCheck"')[0][-900:],
+      "startup settings wrap lengthy checkbox labels and avoid fixed-width nested scrolling")
 selector = named.get("WorkspaceCombo")
 check(selector is not None and selector.get("IsEditable") == "False"
       and selector.get("DisplayMemberPath") == "Name"
